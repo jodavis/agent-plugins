@@ -1,32 +1,16 @@
 ---
 description: Address build errors, test failures, or code review comments against previously implemented work. Reads the original brief and work summary for context, then fixes each issue and returns a prose summary of changes.
-argument-hint: <work-item-id>
+argument-hint: <work-item-id | context-file>
 user-invocable: false
 ---
 
-## Inputs
-
-Work item ID: `$ARGUMENTS`
-
-### Original task brief
-
-$TASK_BRIEF
-
----
-
-### Work summary (all prior implementation and fix rounds)
-
-$WORK_SUMMARIES
-
----
-
-### Issues to fix
-
-$ISSUES
-
----
-
 ## Steps
+
+### 0 - Prepare
+
+Determine the work-item-id for the active task.
+
+Ensure the working repository and task context file are in a clean, ready-to-work state.
 
 ### 1 — Load standards
 
@@ -35,17 +19,13 @@ Read `CLAUDE.md` for quality gates and operational conventions.
 
 ### 2 — Understand context
 
-Read the original task brief and work summary to understand what was built and why. Then
-read each issue to be fixed.
+Read the context file for tthe original task brief and work summary to understand what 
+was built and why. Then read each issue to be fixed.
 
 ### 3 — Fetch review comment threads from the PR
 
-If `$ISSUES` contains code review comments (i.e., it references a PR URL), fetch the open
-review comment threads directly from the PR using the GitHub MCP rather than relying solely
-on the summary in `$ISSUES`. This ensures you see all comments including those from human
-reviewers and GitHub Copilot, not only those the orchestrator relayed.
-
-Use `$ISSUES` for non-review-comment issues (build errors, test failures) as provided.
+If the `pr_url` is populated in the context file, fetch the open review comment threads 
+directly from the PR using the GitHub MCP.
 
 ### 4 — Triage
 

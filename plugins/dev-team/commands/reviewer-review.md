@@ -1,18 +1,14 @@
 ---
 description: First-pass code review for the AdaptiveRemote dev-team pipeline. Creates a GitHub PR if one does not exist, retrieves the PR diff, reviews all changes against requirements and quality criteria, and posts a GitHub PR review. Outputs a JSON result indicating approved or changes_requested.
+argument-hint: <work-item-id | context-file>
 user-invocable: false
 ---
 
-You are performing the first-pass code review for work item $WORK_ITEM_ID.
+### Step 0 - Prepare
 
-**Task brief:**
-$TASK_BRIEF
+Determine the work-item-id for the active task.
 
-**PR URL (empty = not yet created):** $PR_URL
-
-**Spec file path:** $SPEC_PATH
-
----
+Ensure the working repository and task context file are in a clean, ready-to-work state.
 
 ## Step 1 — Load guidelines
 
@@ -30,13 +26,12 @@ read the `Summary:` line of each match to find the relevant ones.
 
 ## Step 3 — Verify PR exists
 
-`$PR_URL` must be set before this skill runs — the pipeline creates the PR via
-`developer-create-pr` before invoking the reviewer. If `$PR_URL` is empty, report an
+`pr_url` must be set in the context file before this skill runs. If `pr_url` is empty, report an
 error and stop.
 
 ## Step 4 — Retrieve and read the diff
 
-Extract the pull number from `$PR_URL` (last path segment). Parse `owner` and `repo` from
+Extract the pull number from `pr_url` (last path segment). Parse `owner` and `repo` from
 the URL (e.g. `https://github.com/owner/repo/pull/123`).
 
 Fetch the PR diff using the GitHub MCP:
