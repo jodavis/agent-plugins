@@ -3,15 +3,14 @@ name: workflow-script
 description: >
   **Runs a Python script as part of a multi-agent orchestrated workflow.**
   Use this skill when an agent is instructed to run a script step in an orchestrated workflow.
-argument-hint: --context-file <path> --write-section <section> --script <script> [--script-args <args>]
+argument-hint: --context-file <path> --write-section <section> --command <command>
 ---
 
 ## Arguments
 
 - `--context-file` — absolute path to the workflow context file (e.g. `~/.dev-team/org/repo/ADR-123.md`)
 - `--write-section` — name of the section to write the log file path to (e.g. `Build Result`)
-- `--script` — absolute path to the Python script to run
-- `--script-args` — (optional) arguments to pass to the script
+- `--command` — the shell command to run (e.g. `python -u /path/to/validate.py ADR-123`)
 
 ## Steps
 
@@ -26,12 +25,12 @@ section_slug=$(echo "<write-section>" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' 
 log_file="${log_dir}/${stem}-${section_slug}.log"
 ```
 
-### 2 — Run the script
+### 2 — Run the command
 
-Run the script via Bash, capturing combined stdout and stderr to the log file:
+Run the command via Bash, capturing combined stdout and stderr to the log file:
 
 ```bash
-python -u "<script>" <script-args> > "<log_file>" 2>&1
+<command> > "<log_file>" 2>&1
 exit_code=$?
 ```
 
