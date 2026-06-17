@@ -16,14 +16,7 @@ argument-hint: --context-file <path> --write-section <section> --command <comman
 
 ### 1 — Derive the log file path
 
-Compute the log file path from the context file location and the write-section name:
-
-```bash
-log_dir=$(dirname "<context-file>")
-stem=$(basename "<context-file>" .md)
-section_slug=$(echo "<write-section>" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
-log_file="${log_dir}/${stem}-${section_slug}.log"
-```
+Create a log file path in the context file location, with a file name based on the write-section name, e.g. `<context-file-name>-<write-section-slug>-<timestamp>.md`.
 
 ### 2 — Run the command
 
@@ -31,7 +24,6 @@ Run the command via Bash, capturing combined stdout and stderr to the log file:
 
 ```bash
 <command> > "<log_file>" 2>&1
-exit_code=$?
 ```
 
 ### 3 — Write the log path to the context file
@@ -44,8 +36,12 @@ The section format in the file is:
 ```
 <!-- section:<write-section> -->
 
+<succeeded-or-failed-message>
+
 log: <log_file>
 ```
+
+`<succeeded-or-failed-message>`is a detailed description of the failure if the exit code is non0zero, or the word `Succeeded` if the exit code is 0.
 
 **If the sentinel `<!-- section:<write-section> -->` already exists:** use `Edit` to replace all
 content between the sentinel and the next `<!-- section:` marker or end of file.
@@ -55,8 +51,11 @@ line of the file.
 
 ### 4 — Return status
 
-- If `exit_code` is `0`: return exactly `successful`
-- If `exit_code` is non-zero: return a detailed failure description including the exit code and
-  the log file path so the orchestrator can find the output
+- If the exit code is zero: return exactly `successful`
+- If the exit code is non-zero:
+  - If the script failed because of build or test failures, that is expected and will be fixed
+  by the Developer: return exactly `successful`
+  - If the script failed for any other reason: return a detailed failure description including
+  the exit code and the log file path so the orchestrator can find the output
 
 **Never return script output directly.** All output is captured to the log file only.

@@ -17,6 +17,10 @@ Ensure the working repository and task context file are in a clean, ready-to-wor
 Read `CONTRIBUTING.md` for code guidelines.
 Read `CLAUDE.md` for quality gates and operational conventions.
 
+**IMPORTANT**: Do not run full validation scripts after you make changes, even though the
+standards say you should. In this workflow, that is the responsibility of another agent.
+Just make sure your changes build and any new tests you wrote are passing.
+
 ### 2 — Understand the task
 
 Read the task brief above in full. Identify:

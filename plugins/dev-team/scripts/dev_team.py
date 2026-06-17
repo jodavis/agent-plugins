@@ -703,9 +703,8 @@ class ValidateStep(Step):
         timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         log_path = self._log_dir / f"{ctx.work_item_id}-validate-{timestamp}.log"
         ctx.build_log = str(log_path)
-        ext = ".cmd" if sys.platform == "win32" else ".sh"
-        validate_script = REPO_ROOT / "scripts" / f"validate{ext}"
-        command = f'cmd /c "{validate_script}"' if sys.platform == "win32" else f'bash "{validate_script}"'
+        validate_script = REPO_ROOT / "scripts" / f"validate.sh"
+        command = f'bash "{validate_script}"'
         return [{
             "action": "run_script",
             "message": "Running build and test validation.",

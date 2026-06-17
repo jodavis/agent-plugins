@@ -27,20 +27,24 @@ Do NOT use this skill when:
 
 Determine both `<work-item-id>` and `<context-file>` from the first argument:
 
+If the first argument is a valid path with a `.md` extension, then that is the `<context-file>`.
+The `<work-item-id>` is the file name of the context file (without the extension).
+
+Otherwise, the first argument is the `<work-item-id>` and the context file path is
+computed with the following command:
+
 ```bash
-if [[ "$ARG1" == *.md ]] || [[ -f "$ARG1" ]]; then
-    context_file="$ARG1"
-    work_item_id=basename context_file
-else
-    work_item_id="$ARG1"
-    context_file=$(python "$SKILL_DIR/scripts/compute-context-file.py" "$work_item_id")
-fi
+python "$SKILL_DIR/scripts/compute-context-file.py" "<work-item-id>"
 ```
 
-When the path form is used, `<context-file>` is accepted as-is (it need not exist yet —
-`compute-context-file.py` is skipped in that branch). When the ID form is used, the script
-computes the canonical path and creates the file with default frontmatter if it does not
-already exist.
+If the script exits non-zero, stop and report the error.
+
+Once `<work-item-id>` and `<context-file>` are resolved (from either branch), ensure the
+file exists by running:
+
+```bash
+python "$SKILL_DIR/scripts/init-context-file.py" "<work-item-id>" "<context-file>"
+```
 
 If the script exits non-zero, stop and report the error.
 

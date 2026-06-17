@@ -1,23 +1,20 @@
 #!/usr/bin/env python3
-"""Compute and initialise the dev-team context file for a work item.
+"""Compute the dev-team context file path for a work item.
 
 Usage: compute-context-file.py <work-item-id>
 
 Prints the absolute path to the context file on stdout.
-Creates the file with default frontmatter if it does not already exist.
+Does NOT create the file — use init-context-file.py for that.
 The path follows the same convention as dev_team.py:
   <DEV_TEAM_STATE_DIR or ~/.dev-team>/<repo-slug>/<work-item-id>.md
 """
 
-import datetime
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-# Context file template from the assets directory
-_TEMPLATE_PATH = Path(__file__).parent.parent / "assets" / "context_template.md"
 
 def get_repo_slug() -> str:
     try:
@@ -59,14 +56,6 @@ def main() -> None:
 
     work_item_id = sys.argv[1]
     context_path = compute_context_path(work_item_id)
-
-    if not context_path.exists():
-        context_path.parent.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.datetime.now().isoformat()
-        template = _TEMPLATE_PATH.read_text(encoding="utf-8")
-        content = template.format(work_item_id=work_item_id, timestamp=timestamp)
-        context_path.write_text(content, encoding="utf-8")
-
     print(context_path, flush=True)
 
 
