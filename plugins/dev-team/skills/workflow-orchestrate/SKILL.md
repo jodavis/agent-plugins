@@ -30,8 +30,7 @@ appropriate agent for each step.
 ### 1 — Compute context file path
 
 ```bash
-context_file=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/get-context-path.sh" "<work-item-id>")
-mkdir -p "$(dirname "$context_file")"
+"$SKILL_DIR/scripts/get-context-path.sh" "<work-item-id>"
 ```
 
 ### 2 — Orchestration loop
@@ -41,10 +40,9 @@ Repeat the following until `action == "done"` or a terminal condition is reached
 #### 2a — Run the step machine
 
 ```bash
-python -u ${CLAUDE_PLUGIN_ROOT}/scripts/dev_team.py <work-item-id> \
-  --workflow ${CLAUDE_PLUGIN_ROOT}/scripts/<workflow>.md \
+python -u $SKILL_DIR/scripts/dev_team.py <work-item-id> \
+  --workflow $SCRIPT_DIR/assets/<workflow>.md \
   --research-skill <research-skill> \
-  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
   --context-file <context_file>
 ```
 
@@ -122,7 +120,8 @@ results = await [
     prompt="Invoke the `workflow-script` skill with arguments:
 --context-file <context_file>
 --write-section <item.write_section>
---command <item.command>"
+--command <item.command>
+--log-file <item.log_file>"
   )  if item.action == "run_script"
 
   for item in descriptors

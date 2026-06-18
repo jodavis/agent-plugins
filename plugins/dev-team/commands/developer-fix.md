@@ -44,6 +44,7 @@ For each issue:
     subsequent round.
   - In either case, always post a reply to the PR review thread explaining what was done
     (or why nothing was done). This keeps all reviewers — agent and human — informed.
+    _Do not resolve the review comment thread._ It is up to the Reviewer or human to resolve the thread when they are satisfied with the outcome.
 
 ### 5 — Fix each issue
 
