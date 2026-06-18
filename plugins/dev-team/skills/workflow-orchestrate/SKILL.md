@@ -41,7 +41,7 @@ Repeat the following until `action == "done"` or a terminal condition is reached
 
 ```bash
 python -u $SKILL_DIR/scripts/dev_team.py <work-item-id> \
-  --workflow $SCRIPT_DIR/assets/<workflow>.md \
+  --workflow $SKILL_DIR/assets/<workflow>.md \
   --research-skill <research-skill> \
   --context-file <context_file>
 ```
