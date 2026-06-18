@@ -988,9 +988,9 @@ class TestCreatePrStep:
         """Normal dispatch: agent writes PR URL section; handle_results extracts it."""
         from dev_team import CreatePrStep
         ctx, context_path = self._make_ctx(tmp_path)
-        # Simulate agent writing the PR URL section
+        # Simulate agent writing the PR URL section as JSON (standardized format)
         text = context_path.read_text(encoding="utf-8")
-        text += "\n<!-- section:PR URL -->\n\nhttps://github.com/org/repo/pull/42\n"
+        text += '\n<!-- section:PR URL -->\n\n{"pr_url": "https://github.com/org/repo/pull/42"}\n'
         context_path.write_text(text, encoding="utf-8")
 
         step = CreatePrStep(ctx, context_path)

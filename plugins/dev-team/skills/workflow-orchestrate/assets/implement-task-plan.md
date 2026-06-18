@@ -1,9 +1,7 @@
 ```mermaid
 stateDiagram-v2
     [*] --> init
-    init --> spec-finding : start
-    spec-finding --> setting-up : spec_found
-    setting-up --> researching : setup_done
+    init --> researching : setup_done
     researching --> implementing : research_done
     implementing --> validating : impl_done
     validating --> fixing : build_failed

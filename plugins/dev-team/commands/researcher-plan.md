@@ -1,21 +1,16 @@
 ---
 description: Produce a concise task brief for a Jira task, synthesized from its spec file section and the relevant architecture docs and source code
-argument-hint: <Jira task key> <path to spec file>
 user-invocable: false
 ---
 
-## Inputs
-
-Task key: the first token of `$ARGUMENTS`  
-Spec file: the second token of `$ARGUMENTS`
-
-Both are required. If either is missing, stop and tell the caller:
-
-> Usage: `/researcher-plan <task-key> <path/to/_spec_Feature.md>`
-
----
 
 ## Steps
+
+### 0 - Prepare
+
+Determine the work-item-id for the active task.
+
+Ensure the working repository and task context file are in a clean, ready-to-work state.
 
 ### 1 — Find the task section
 

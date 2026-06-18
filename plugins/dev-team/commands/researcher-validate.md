@@ -1,35 +1,20 @@
 ---
 description: Validate completed work against a task's exit criteria, returning a structured pass/fail result for each criterion
-argument-hint: <task key> <path to spec file>
+argument-hint: <work-item-id | context-file>
 user-invocable: false
----
-
-## Inputs
-
-Task key: the first token of `$ARGUMENTS`  
-Spec file: the second token of `$ARGUMENTS` (required)
-
-**Original task brief:**
-
-$TASK_BRIEF
-
----
-
-**Summary of work done:**
-
-$WORK_SUMMARIES
-
----
-
-Task key, spec file path, and task brief are required. If any are missing, stop and tell the caller what is needed.
-
 ---
 
 ## Steps
 
+### 0 - Prepare
+
+Determine the work-item-id for the active task.
+
+Ensure the working repository and task context file are in a clean, ready-to-work state.
+
 ### 1 — Identify the authoritative exit criteria
 
-**If a spec file path is provided** (second token of `$ARGUMENTS` is non-empty):  
+The spec file path should be populated in the context file.
 Read the spec file and locate the section for the task key. Extract the exit criteria
 checklist as written in the spec — this is the authoritative source, not the task brief.
 If the spec has been updated since the brief was written, use the spec version.
