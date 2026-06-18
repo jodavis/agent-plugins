@@ -4,6 +4,8 @@ argument-hint: <work-item-id | context-file>
 user-invocable: false
 ---
 
+You are performing the first-pass code review for the work item described in the context file.
+
 ### Step 0 - Prepare
 
 Determine the work-item-id for the active task.
