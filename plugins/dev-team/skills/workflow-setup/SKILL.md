@@ -21,6 +21,15 @@ Do NOT use this skill when:
   - A context file path is recognised when the argument ends in `.md` or points to an existing file.
   - When a context file path is given, the work-item-id is derived from the filename stem (e.g. `ADR-123.md` → `ADR-123`).
 
+## Determining work-item-type
+
+Derive `work-item-type` from the `work-item-id` pattern (see `identify-project-work-items`):
+
+| work-item-id pattern | work-item-type |
+|---|---|
+| `ADR-\d+` (Jira key) | `jira` |
+| `Issue-\d+` (GitHub issue) | `github` |
+
 ## Steps
 
 ### 1 — Resolve work-item-id and context file path
@@ -119,9 +128,9 @@ Use the closest ancestor `feature/*` branch.
 
 #### 4e — Fallback: use `main` for non-Jira work items
 
-If no `feature/*` branch has been found for the base branch, and the work-item-id is a Jira work item, stop and report an error to the user. For other work item types, the base branch ins `main`.
+If no `feature/*` branch has been found for the base branch, and the work-item-id is a Jira work item, stop and report an error to the user. For other work item types, the base branch is `main`.
 
-#### 4e — Write base branch to context file
+#### 4f — Write base branch to context file
 
 After resolving the base branch, write it to the frontmatter of the context file.
 
