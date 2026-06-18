@@ -30,8 +30,13 @@ elapsed=0
 
 # Poll until no checks are pending (or timeout).
 while [[ $elapsed -lt $TIMEOUT_SECONDS ]]; do
-    pending=$(gh pr checks "$pr_url" --json bucket \
-        --jq '[.[] | select(.bucket == "pending")] | length' 2>/dev/null || echo "0")
+    if ! pending=$(gh pr checks "$pr_url" --json bucket \
+        --jq '[.[] | select(.bucket == "pending")] | length' 2>&1); then
+        reason="failed to query PR checks: $pending"
+        echo "failed - $reason"
+        echo "{\"status\": \"failed\", \"reason\": \"$reason\"}"
+        exit 1
+    fi
 
     if [[ "$pending" -eq 0 ]]; then
         break
@@ -50,9 +55,14 @@ if [[ $elapsed -ge $TIMEOUT_SECONDS ]]; then
 fi
 
 # All checks have settled — inspect final states.
-failing=$(gh pr checks "$pr_url" --json bucket \
+if ! failing=$(gh pr checks "$pr_url" --json bucket \
     --jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length' \
-    2>/dev/null || echo "0")
+    2>&1); then
+    reason="failed to query PR check results: $failing"
+    echo "failed - $reason"
+    echo "{\"status\": \"failed\", \"reason\": \"$reason\"}"
+    exit 1
+fi
 
 if [[ "$failing" -gt 0 ]]; then
     reason="${failing} check(s) failed or were cancelled"
