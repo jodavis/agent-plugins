@@ -916,7 +916,7 @@ class BuildValidationStep(Step):
         ctx = self._ctx
         if ctx.signoff_build_result:
             _handle_agent_success(ctx)
-            return "approved" if ctx.signoff_build_result.strip().startswith("passed") else "failed"
+            return "approved" if ctx.signoff_build_result.strip().startswith("Succeeded") else "failed"
         _handle_agent_failure(ctx)
         _check_and_trigger_troubleshooter(
             "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
@@ -950,7 +950,7 @@ class SignoffStep(ParallelSteps):
 
         # Build the failure summary for downstream steps
         failures: list[str] = []
-        if not ctx.signoff_build_result.strip().startswith("passed"):
+        if not ctx.signoff_build_result.strip().startswith("Succeeded"):
             if ctx.signoff_build_result:
                 failures.append(
                     f"Build/test validation failed. Log: {ctx.build_log}\n"
