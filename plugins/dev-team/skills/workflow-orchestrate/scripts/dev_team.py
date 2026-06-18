@@ -556,10 +556,11 @@ class DebugStep(Step):
         ctx = self._ctx
         if ctx.debug_report:
             _handle_agent_success(ctx)
-            if "# Debug report for" not in ctx.debug_report:
-                ctx.last_failure = f"Bug could not be reproduced.\n\n{ctx.debug_report}"
-                return "reproduction_failed"
-            return "debug_done"
+            status = parse_json_output(ctx.debug_report).get("status", "")
+            if status == "reproduced":
+                return "debug_done"
+            ctx.last_failure = f"Bug could not be reproduced.\n\n{ctx.debug_report}"
+            return "reproduction_failed"
         # Agent ran but wrote nothing
         _handle_agent_failure(ctx)
         _check_and_trigger_troubleshooter(
@@ -734,15 +735,15 @@ class CreatePrStep(Step):
             # Inline path: already had pr_url
             _handle_agent_success(ctx)
             return "pr_created"
-        # Try to extract pr_url from the PR URL section written by the agent
+        # Extract pr_url from the JSON the skill wrote to the PR URL section
         text = self._context_path.read_text(encoding="utf-8")
         _, body = _parse_frontmatter(text)
         sections = _parse_sections(body)
         pr_url_section = sections.get("PR URL", "")
         if pr_url_section:
-            m = re.search(r"https://github\.com/[^\s]+/pull/\d+", pr_url_section)
-            if m:
-                ctx.pr_url = m.group(0)
+            pr_url = parse_json_output(pr_url_section).get("pr_url", "")
+            if pr_url:
+                ctx.pr_url = pr_url
                 _handle_agent_success(ctx)
                 ctx.save(self._context_path)
                 return "pr_created"
@@ -916,7 +917,8 @@ class BuildValidationStep(Step):
         ctx = self._ctx
         if ctx.signoff_build_result:
             _handle_agent_success(ctx)
-            return "approved" if ctx.signoff_build_result.strip().startswith("Succeeded") else "failed"
+            status = parse_json_output(ctx.signoff_build_result).get("status", "")
+            return "approved" if status == "passed" else "failed"
         _handle_agent_failure(ctx)
         _check_and_trigger_troubleshooter(
             "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
@@ -950,7 +952,8 @@ class SignoffStep(ParallelSteps):
 
         # Build the failure summary for downstream steps
         failures: list[str] = []
-        if not ctx.signoff_build_result.strip().startswith("Succeeded"):
+        build_status = parse_json_output(ctx.signoff_build_result).get("status", "")
+        if build_status != "passed":
             if ctx.signoff_build_result:
                 failures.append(
                     f"Build/test validation failed. Log: {ctx.build_log}\n"

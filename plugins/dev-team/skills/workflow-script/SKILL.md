@@ -35,12 +35,18 @@ The section format in the file is:
 ```
 <!-- section:<write-section> -->
 
-<succeeded-or-failed-message>
+<result>
 
 log: <log_file>
 ```
 
-`<succeeded-or-failed-message>`is a detailed description of the failure if the exit code is non0zero, or the word `Succeeded` if the exit code is 0.
+Determine `<result>` as follows:
+
+1. Read the last non-empty line of the log file.
+2. If that line is a valid JSON object (starts with `{` and ends with `}`), use it verbatim as
+   `<result>` — regardless of exit code. This lets scripts communicate structured status.
+3. Otherwise: use `Succeeded` if the exit code is 0, or a short failure description (including
+   the exit code) if non-zero.
 
 **If the sentinel `<!-- section:<write-section> -->` already exists:** use `Edit` to replace all
 content between the sentinel and the next `<!-- section:` marker or end of file.

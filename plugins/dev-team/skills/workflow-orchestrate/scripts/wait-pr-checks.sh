@@ -4,10 +4,14 @@
 # Usage: wait-pr-checks.sh <pr-url>
 #
 # Polls `gh pr checks` in a loop until no checks remain in the "pending" bucket,
-# then inspects the final states. Outputs one of:
-#   passed - all checks passed
-#   failed - one or more checks failed or were cancelled
-#   failed - checks still pending after timeout
+# then inspects the final states.
+#
+# Outputs a human-readable summary line followed by a JSON status object:
+#   {"status": "passed"}
+#   {"status": "failed", "reason": "<detail>"}
+#
+# The JSON object is always the last stdout line so workflow-script can write it
+# directly to the context file section.
 #
 # Exit code is 0 when all checks pass, 1 when checks fail or time out.
 
@@ -39,7 +43,9 @@ while [[ $elapsed -lt $TIMEOUT_SECONDS ]]; do
 done
 
 if [[ $elapsed -ge $TIMEOUT_SECONDS ]]; then
-    echo "failed - checks still pending after ${TIMEOUT_SECONDS}s timeout"
+    reason="checks still pending after ${TIMEOUT_SECONDS}s timeout"
+    echo "failed - $reason"
+    echo "{\"status\": \"failed\", \"reason\": \"$reason\"}"
     exit 1
 fi
 
@@ -49,8 +55,11 @@ failing=$(gh pr checks "$pr_url" --json bucket \
     2>/dev/null || echo "0")
 
 if [[ "$failing" -gt 0 ]]; then
-    echo "failed - $failing check(s) failed or were cancelled"
+    reason="${failing} check(s) failed or were cancelled"
+    echo "failed - $reason"
+    echo "{\"status\": \"failed\", \"reason\": \"$reason\"}"
     exit 1
 fi
 
 echo "passed - all checks passed"
+echo '{"status": "passed"}'
