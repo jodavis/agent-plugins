@@ -81,7 +81,11 @@ def is_ancestor_of_head(branch: str) -> bool:
 
 
 def checkout(branch: str) -> None:
-    result = run("git", "checkout", branch)
+    if local_branch_exists(branch):
+        result = run("git", "checkout", branch)
+    else:
+        # Branch exists only on remote — create a local tracking branch
+        result = run("git", "checkout", "-b", branch, f"origin/{branch}")
     if result.returncode != 0:
         print(f"Error: could not check out '{branch}': {result.stderr.strip()}", file=sys.stderr)
         sys.exit(1)
@@ -90,8 +94,8 @@ def checkout(branch: str) -> None:
 def pull(branch: str) -> None:
     result = run("git", "pull", "origin", branch)
     if result.returncode != 0:
-        # Pull failure is non-fatal if the branch is new on the remote
-        print(f"Warning: pull failed for '{branch}' (may be a new branch): {result.stderr.strip()}", file=sys.stderr)
+        print(f"Error: git pull failed for '{branch}': {result.stderr.strip()}", file=sys.stderr)
+        sys.exit(1)
 
 
 def create_branch(branch: str) -> None:
@@ -110,7 +114,7 @@ def main() -> None:
         print("Usage: prepare-working-branch.py <context-file>", file=sys.stderr)
         sys.exit(1)
 
-    context_path = Path(sys.argv[1])
+    context_path = Path(sys.argv[1]).expanduser()
     if not context_path.exists():
         print(f"Error: context file not found: {context_path}", file=sys.stderr)
         sys.exit(1)
