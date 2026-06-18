@@ -19,13 +19,14 @@ Read `CLAUDE.md` for quality gates and operational conventions.
 
 ### 2 — Understand context
 
-Read the context file for tthe original task brief and work summary to understand what 
+Read the context file for the original task brief and work summary to understand what 
 was built and why. Then read each issue to be fixed.
 
 ### 3 — Fetch review comment threads from the PR
 
 If the `pr_url` is populated in the context file, fetch the open review comment threads 
-directly from the PR using the GitHub MCP.
+directly from the PR using the GitHub MCP. Also fetch any PR check failures so they can
+be triaged alongside code review comments.
 
 ### 4 — Triage
 
