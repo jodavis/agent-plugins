@@ -80,6 +80,9 @@ git commit -m "$ARGUMENTS: <short description of what was implemented>"
 
 The message body (optional) can list the key decisions if they are non-obvious.
 
+**Do not prefix git commands with `cd <path> &&`.** The working directory is already the
+repository root. Prepending `cd` triggers an unnecessary permission prompt.
+
 **Do not push** — the pipeline pushes after validation passes.
 
 ### 7 — Self-review

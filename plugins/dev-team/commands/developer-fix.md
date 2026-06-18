@@ -75,6 +75,9 @@ Address issues one at a time. After each fix:
    One commit per issue keeps the git history readable and makes individual fixes easy to
    review. Do not batch multiple fixes into a single commit.
 
+   **Do not prefix git commands with `cd <path> &&`.** The working directory is already
+   the repository root. Prepending `cd` triggers an unnecessary permission prompt.
+
 **Do not push** — the pipeline pushes after all fixes pass full validation.
 
 ### 6 — Self-review
