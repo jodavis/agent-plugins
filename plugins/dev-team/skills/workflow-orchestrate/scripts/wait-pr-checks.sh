@@ -3,13 +3,13 @@
 #
 # Usage: wait-pr-checks.sh <pr-url>
 #
-# Runs `gh pr checks --watch` to block until all checks finish, then inspects
-# the final check states. Outputs one of:
+# Polls `gh pr checks` in a loop until no checks remain in the "pending" bucket,
+# then inspects the final states. Outputs one of:
 #   passed - all checks passed
 #   failed - one or more checks failed or were cancelled
+#   failed - checks still pending after timeout
 #
-# Exit code is always 0; the result is communicated on stdout for the
-# script-runner agent to write to the context file.
+# Exit code is 0 when all checks pass, 1 when checks fail or time out.
 
 set -euo pipefail
 
@@ -20,22 +20,37 @@ fi
 
 pr_url="$1"
 
-# Block until all checks complete (or timeout after 30 minutes).
-# --watch exits 0 when all checks pass, non-zero when any fail.
-# We capture the outcome without letting a non-zero exit abort this script.
-watch_exit=0
-gh pr checks "$pr_url" --watch --interval 15 2>&1 || watch_exit=$?
+TIMEOUT_SECONDS=1800  # 30 minutes
+POLL_INTERVAL=15
+elapsed=0
 
-# Inspect the final check states via JSON to determine pass/fail.
-# bucket field: pass | fail | pending | skipping | cancel
-failing=$(gh pr checks "$pr_url" --json bucket --jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length' 2>/dev/null || echo "0")
-pending=$(gh pr checks "$pr_url" --json bucket --jq '[.[] | select(.bucket == "pending")] | length' 2>/dev/null || echo "0")
+# Poll until no checks are pending (or timeout).
+while [[ $elapsed -lt $TIMEOUT_SECONDS ]]; do
+    pending=$(gh pr checks "$pr_url" --json bucket \
+        --jq '[.[] | select(.bucket == "pending")] | length' 2>/dev/null || echo "0")
 
-if [[ "$pending" -gt 0 ]]; then
-    # Checks timed out or watch exited early with pending checks
-    echo "failed - checks still pending after watch completed (exit code: $watch_exit)"
-elif [[ "$failing" -gt 0 ]]; then
-    echo "failed - $failing check(s) failed or were cancelled"
-else
-    echo "passed - all checks passed"
+    if [[ "$pending" -eq 0 ]]; then
+        break
+    fi
+
+    echo "Waiting for $pending check(s) to complete... (${elapsed}s elapsed)" >&2
+    sleep $POLL_INTERVAL
+    elapsed=$((elapsed + POLL_INTERVAL))
+done
+
+if [[ $elapsed -ge $TIMEOUT_SECONDS ]]; then
+    echo "failed - checks still pending after ${TIMEOUT_SECONDS}s timeout"
+    exit 1
 fi
+
+# All checks have settled — inspect final states.
+failing=$(gh pr checks "$pr_url" --json bucket \
+    --jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length' \
+    2>/dev/null || echo "0")
+
+if [[ "$failing" -gt 0 ]]; then
+    echo "failed - $failing check(s) failed or were cancelled"
+    exit 1
+fi
+
+echo "passed - all checks passed"
