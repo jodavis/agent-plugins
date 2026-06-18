@@ -507,43 +507,6 @@ class Step(ABC):
         ...
 
 
-class SetupWorkspaceStep(Step):
-    handles = "setting-up"
-    _PENDING_KEY = "setup"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.workspace_setup:
-            return []
-        return [{
-            "action": "spawn_agent",
-            "message": f"Setting up workspace branch for {ctx.work_item_id}.",
-            "agent": "workspace-setup",
-            "skill": "workspace-setup",
-            "args": f"{ctx.work_item_id} {ctx.spec_path}",
-            "context_file": str(self._context_path),
-            "read_sections": [],
-            "write_section": "Workspace Setup",
-            "result_format": "setup_done | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.workspace_setup:
-            _handle_agent_success(ctx)
-            return "setup_done"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "failed"
-
-
 class FindSpecStep(Step):
     handles = "spec-finding"
 
@@ -580,7 +543,7 @@ class DebugStep(Step):
         return [{
             "action": "spawn_agent",
             "message": f"Debugger is investigating {ctx.work_item_id}.",
-            "agent": "debugger",
+            "agent": "dev-team:debugger",
             "skill": "debugger-investigate",
             "context_file": str(self._context_path),
             "args": ctx.work_item_id,
@@ -593,10 +556,11 @@ class DebugStep(Step):
         ctx = self._ctx
         if ctx.debug_report:
             _handle_agent_success(ctx)
-            if "# Debug report for" not in ctx.debug_report:
-                ctx.last_failure = f"Bug could not be reproduced.\n\n{ctx.debug_report}"
-                return "reproduction_failed"
-            return "debug_done"
+            status = parse_json_output(ctx.debug_report).get("status", "")
+            if status == "reproduced":
+                return "debug_done"
+            ctx.last_failure = f"Bug could not be reproduced.\n\n{ctx.debug_report}"
+            return "reproduction_failed"
         # Agent ran but wrote nothing
         _handle_agent_failure(ctx)
         _check_and_trigger_troubleshooter(
@@ -625,7 +589,7 @@ class ResearchStep(Step):
         return [{
             "action": "spawn_agent",
             "message": f"Researcher is planning work for {ctx.work_item_id}.",
-            "agent": "researcher",
+            "agent": "dev-team:researcher",
             "skill": self._skill,
             "context_file": str(self._context_path),
             "args": f"{ctx.work_item_id} {ctx.spec_path}",
@@ -663,7 +627,7 @@ class ImplementStep(Step):
         return [{
             "action": "spawn_agent",
             "message": "Researcher has written the task brief. Developer is now implementing.",
-            "agent": "developer",
+            "agent": "dev-team:developer",
             "skill": "developer-implement",
             "args": ctx.work_item_id,
             "context_file": str(self._context_path),
@@ -703,9 +667,8 @@ class ValidateStep(Step):
         timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         log_path = self._log_dir / f"{ctx.work_item_id}-validate-{timestamp}.log"
         ctx.build_log = str(log_path)
-        ext = ".cmd" if sys.platform == "win32" else ".sh"
-        validate_script = REPO_ROOT / "scripts" / f"validate{ext}"
-        command = f'cmd /c "{validate_script}"' if sys.platform == "win32" else f'bash "{validate_script}"'
+        validate_script = REPO_ROOT / "scripts" / f"validate.sh"
+        command = str(validate_script)
         return [{
             "action": "run_script",
             "message": "Running build and test validation.",
@@ -721,7 +684,7 @@ class ValidateStep(Step):
             result = ctx.validate_result.strip()
             ctx.validate_result = ""
             ctx.pending_agent = ""
-            if result == "passed":
+            if result.startswith("Succeeded"):
                 ctx.last_failure = ""
                 _commit_and_push(ctx.work_item_id)
                 return "clean"
@@ -757,7 +720,7 @@ class CreatePrStep(Step):
         return [{
             "action": "spawn_agent",
             "message": "Implementation complete. Developer is creating a pull request.",
-            "agent": "developer",
+            "agent": "dev-team:developer",
             "skill": "developer-create-pr",
             "args": ctx.work_item_id,
             "context_file": str(self._context_path),
@@ -772,15 +735,15 @@ class CreatePrStep(Step):
             # Inline path: already had pr_url
             _handle_agent_success(ctx)
             return "pr_created"
-        # Try to extract pr_url from the PR URL section written by the agent
+        # Extract pr_url from the JSON the skill wrote to the PR URL section
         text = self._context_path.read_text(encoding="utf-8")
         _, body = _parse_frontmatter(text)
         sections = _parse_sections(body)
         pr_url_section = sections.get("PR URL", "")
         if pr_url_section:
-            m = re.search(r"https://github\.com/[^\s]+/pull/\d+", pr_url_section)
-            if m:
-                ctx.pr_url = m.group(0)
+            pr_url = parse_json_output(pr_url_section).get("pr_url", "")
+            if pr_url:
+                ctx.pr_url = pr_url
                 _handle_agent_success(ctx)
                 ctx.save(self._context_path)
                 return "pr_created"
@@ -806,7 +769,7 @@ class ReviewStep(Step):
         return [{
             "action": "spawn_agent",
             "message": "Pull request created. Reviewer is reviewing the changes.",
-            "agent": "reviewer",
+            "agent": "dev-team:reviewer",
             "skill": "reviewer-review",
             "context_file": str(self._context_path),
             "read_sections": ["Researcher Brief"],
@@ -869,7 +832,7 @@ class ReviewerSignOffStep(Step):
     def get_actions(self) -> list[dict]:
         return [{
             "action": "spawn_agent",
-            "agent": "task-runner",
+            "agent": "dev-team:reviewer",
             "skill": "reviewer-sign-off",
             "context_file": str(self._context_path),
             "read_sections": ["Researcher Brief"],
@@ -904,7 +867,7 @@ class ResearcherSignOffStep(Step):
             read_sections.append(f"Fix {i}")
         return [{
             "action": "spawn_agent",
-            "agent": "task-runner",
+            "agent": "dev-team:researcher",
             "skill": "researcher-validate",
             "context_file": str(self._context_path),
             "read_sections": read_sections,
@@ -954,7 +917,8 @@ class BuildValidationStep(Step):
         ctx = self._ctx
         if ctx.signoff_build_result:
             _handle_agent_success(ctx)
-            return "approved" if ctx.signoff_build_result.strip().startswith("passed") else "failed"
+            status = parse_json_output(ctx.signoff_build_result).get("status", "")
+            return "approved" if status == "passed" else "failed"
         _handle_agent_failure(ctx)
         _check_and_trigger_troubleshooter(
             "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
@@ -988,7 +952,8 @@ class SignoffStep(ParallelSteps):
 
         # Build the failure summary for downstream steps
         failures: list[str] = []
-        if not ctx.signoff_build_result.strip().startswith("passed"):
+        build_status = parse_json_output(ctx.signoff_build_result).get("status", "")
+        if build_status != "passed":
             if ctx.signoff_build_result:
                 failures.append(
                     f"Build/test validation failed. Log: {ctx.build_log}\n"
@@ -1050,7 +1015,7 @@ class FixStep(Step):
                 f"Build or tests failed. Developer is fixing "
                 f"(iteration {ctx.fix_iteration + 1} of {MAX_FIX_ITERATIONS})."
             ),
-            "agent": "developer",
+            "agent": "dev-team:developer",
             "skill": "developer-fix",
             "args": ctx.work_item_id,
             "context_file": str(self._context_path),
@@ -1113,7 +1078,7 @@ class FixPrStep(Step):
                 f"Review requested changes. Developer is addressing review comments "
                 f"(iteration {ctx.review_fix_iteration + 1} of {MAX_REVIEW_FIX_ITERATIONS})."
             ),
-            "agent": "developer",
+            "agent": "dev-team:developer",
             "skill": "developer-fix",
             "args": ctx.work_item_id,
             "context_file": str(self._context_path),
@@ -1167,7 +1132,6 @@ class DevTeamPipeline:
         self.machine = StateMachine(workflow.transitions, initial=ctx.state)
         self.step_handlers: dict[str, Step] = {
             "spec-finding": FindSpecStep(ctx),
-            "setting-up": SetupWorkspaceStep(ctx, context_path),
             "debugging": DebugStep(ctx, context_path),
             "researching": ResearchStep(research_skill, ctx, context_path),
             "implementing": ImplementStep(ctx, context_path),
@@ -1279,9 +1243,6 @@ def _find_repo_root() -> Path:
 
 
 REPO_ROOT = _find_repo_root()
-
-# Resolved after argument parsing; default to the directory containing this script.
-PLUGIN_ROOT: Path = Path(__file__).resolve().parent.parent
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
@@ -1401,10 +1362,6 @@ def main() -> None:
         parser.error("--research-skill is required")
     if not args.context_file:
         parser.error("--context-file is required")
-
-    global PLUGIN_ROOT
-    if args.plugin_root:
-        PLUGIN_ROOT = Path(args.plugin_root).resolve()
 
     work_item_id = args.work_item_id
     workflow_path = Path(args.workflow)

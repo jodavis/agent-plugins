@@ -1,44 +1,25 @@
 ---
 description: Implement a feature or bug fix from a Researcher task brief. Writes tests first, then implements, then returns a structured work summary.
-argument-hint: <work-item-id>
+argument-hint: <work-item-id | context-file>
 user-invocable: false
----
-
-## Inputs
-
-Work item ID: `$ARGUMENTS`
-
-Task brief:
-
-$TASK_BRIEF
-
 ---
 
 ## Steps
 
-### 0 — Ensure task branch
+### 0 - Prepare
 
-Check the current branch:
+Determine the work-item-id for the active task.
 
-```bash
-git branch --show-current
-```
-
-If the branch is `dev/claude/$ARGUMENTS`, proceed to Step 1 — the workspace is already
-set up.
-
-Otherwise, create and switch to the task branch:
-
-```bash
-git checkout -b dev/claude/$ARGUMENTS
-```
-
-Do not push — the pipeline pushes after validation passes.
+Ensure the working repository and task context file are in a clean, ready-to-work state.
 
 ### 1 — Load standards
 
 Read `CONTRIBUTING.md` for code guidelines.
 Read `CLAUDE.md` for quality gates and operational conventions.
+
+**IMPORTANT**: Do not run full validation scripts after you make changes, even though the
+standards say you should. In this workflow, that is the responsibility of another agent.
+Just make sure your changes build and any new tests you wrote are passing.
 
 ### 2 — Understand the task
 
@@ -98,6 +79,9 @@ git commit -m "$ARGUMENTS: <short description of what was implemented>"
 ```
 
 The message body (optional) can list the key decisions if they are non-obvious.
+
+**Do not prefix git commands with `cd <path> &&`.** The working directory is already the
+repository root. Prepending `cd` triggers an unnecessary permission prompt.
 
 **Do not push** — the pipeline pushes after validation passes.
 

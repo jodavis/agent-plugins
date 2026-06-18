@@ -1,63 +1,36 @@
 ---
 description: Create a draft GitHub pull request for a completed work item. Determines the correct base branch, writes a developer-authored PR body, and creates the PR as a draft. Idempotent — does nothing if the PR already exists.
-argument-hint: <work-item-id>
+argument-hint: <work-item-id | context-file>
 user-invocable: false
----
-
-## Inputs
-
-Work item ID: `$ARGUMENTS`
-
-### Task brief
-
-$TASK_BRIEF
-
----
-
-### Work summary (all prior implementation and fix rounds)
-
-$WORK_SUMMARIES
-
----
-
-### Existing PR URL (empty = not yet created)
-
-$PR_URL
-
 ---
 
 ## Steps
 
+### 0 - Prepare
+
+Determine the work-item-id for the active task.
+
+Ensure the working repository and task context file are in a clean, ready-to-work state.
+
 ### 1 — Check if PR already exists
 
-If `$PR_URL` is non-empty, the PR has already been created. Output the following JSON and
+If the context file already contains `pr_url`, the PR has already been created. Output the following JSON and
 stop:
 
 ```json
-{"pr_url": "$PR_URL"}
+{"pr_url": "<pr_url>"}
 ```
 
 ### 2 — Determine the base branch and repo coordinates
 
-Using Bash:
+The working branch name and base branch name can be found in the context file. 
 
-1. Get the current branch name: `git branch --show-current`
-2. Run `git fetch --all --quiet` to ensure remote branches are up to date.
-3. List candidate base branches in priority order:
-   - `main`
-   - Any remote `feature/*` branches: `git branch -r | grep "feature/" | sed "s|.*origin/||"`
-4. For each candidate, count how many commits HEAD is ahead of it:
-   ```bash
-   git rev-list --count origin/<candidate>..HEAD 2>/dev/null || echo 99999
-   ```
-5. Select the candidate with the fewest commits (the closest ancestor to HEAD). If two
-   candidates tie, prefer `main`. If no candidate is reachable, fall back to `main`.
-6. Parse owner and repo from the remote URL:
-   ```bash
-   git remote get-url origin
-   ```
-   Extract `owner` and `repo` from formats like `https://github.com/owner/repo.git`
-   or `git@github.com:owner/repo.git`.
+Parse owner and repo from the remote URL:
+```bash
+git remote get-url origin
+```
+Extract `owner` and `repo` from formats like `https://github.com/owner/repo.git`
+or `git@github.com:owner/repo.git`.
 
 ### 3 — Create the draft PR
 

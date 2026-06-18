@@ -1,16 +1,14 @@
 ---
 description: Sign-off review for the AdaptiveRemote dev-team pipeline. After the developer has addressed review comments, checks whether each previously requested change has been resolved and scans modified files for new issues. Outputs a JSON result indicating approved or changes_requested.
+argument-hint: <work-item-id | context-file>
 user-invocable: false
 ---
 
-You are performing a sign-off review for work item $WORK_ITEM_ID.
+### Step 0 - Prepare
 
-**Task brief:**
-$TASK_BRIEF
+Determine the work-item-id for the active task.
 
-**PR URL:** $PR_URL
-
----
+Ensure the working repository and task context file are in a clean, ready-to-work state.
 
 ## Step 1 — Load guidelines
 
@@ -23,7 +21,7 @@ The pipeline pushes the latest commits before invoking this sign-off. Check
 
 ## Step 3 — Retrieve prior review threads
 
-Extract the pull number from `$PR_URL` (last path segment). Parse `owner` and `repo` from
+Extract the pull number from `pr_url` (last path segment) in the context file. Parse `owner` and `repo` from
 the URL (e.g. `https://github.com/owner/repo/pull/123`).
 
 Fetch all review threads using the GitHub MCP:
