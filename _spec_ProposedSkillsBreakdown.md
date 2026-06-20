@@ -11,7 +11,7 @@ Recreate these as skills. Each one should have a clear "use when" statement, and
 
 ## identify-work-item (project)
 *from `skills/identify-project-work-items`*
-- [ ] Use when you need to identify a task-work-item or feature-work-item.
+Use when you need to identify a task-work-item or feature-work-item.
 - identify a work-item-id from context, like a prompt or other source
 - Describe work item relationships (Epic/Task/Subtask, e.g.)
 - Basically, what types of work tracking does this project use, so we can identify them in different projects
@@ -21,7 +21,7 @@ Recreate these as skills. Each one should have a clear "use when" statement, and
 ## work-with-GitHub-issues
 ## work-with-Jira-tasks
 *from various*
-- [ ] Use when you are working with a {type}
+Use when you are working with a {type}
 - Include instructions on how to access information and make changes in the work items (MCP, CLI, etc.)
 
 
@@ -70,7 +70,7 @@ You are working with an existing GitHub PR
 
 ## developer-standards (project)
 *from `commands`*
-- [ ] Use when planning new code, writing code, or reviewing code
+Use when planning new code, writing code, or reviewing code
 - Read CONTRIBUTING.md and CLAUDE.md. Always generate code that complies with .editorconfig
 
 ## fix-pr : Workflow
@@ -129,7 +129,7 @@ Use when you are writing new code or fixing issues in existing code
 
 ## find-repo-documentation (project)
 *from various*
-- [ ] Use when you need to learn the architecture from documentation in this repo
+Use when you need to learn the architecture from documentation in this repo
 - file format
 - locations
 - Search helper
@@ -143,26 +143,26 @@ Use when you are drafting or updating architecture documentation in this repo
 
 ## research-learn
 *from `commands/researcher-plan`*
-- [ ] Use when you are researching a work item
+Use when you are researching a work item
 - Rules from step 4
 - Basically, give a list of MCP servers and other references that the researcher can consult on various topics (find some good ones going forward)
 - More grounding information sources/patterns
 
 ## research-sources
 *from `commands/resarcher-plan`*
-- [ ] Use when you are researching a work item
+Use when you are researching a work item
 - Rules from step 3
 - Use documentation and source files to understand existing patterns
 - Understand where the work item fits in
 
 ## write-task-brief
 *from `commands/researcher-plan`*
-- [ ] Use when you are writing a task brief for a work item
+Use when you are writing a task brief for a work item
 - Rules from step 4 about what should go into a task brief
 
 ## plan : Workflow
 *from `commands/researcher-plan`*
-- [ ] Use when making a plan to implement a task-work-item
+Use when making a plan to implement a task-work-item
 You need to identify a task-work-item and learn the architecture from documentation in this repo, then you are researching the work item and writing a task brief for the work item *(or maybe don't mention the research specifically if we're going to spawn Researcher agents)*
 - Spawn researcher agents to gather information from various sources
 - Create a task brief 
@@ -294,7 +294,7 @@ You are identifying a task-work-item and orchestrating a dev-team workflow pipel
 - No other changes, just the reference to workflow-orchestration and work item skills
 
 Still to do:
-- [ ] Which things belong in agents?
-- [ ] Which agent things belong in skills?
-- [ ] Which CONTRIBUTING.md things belong in either?
+Which things belong in agents?
+Which agent things belong in skills?
+Which CONTRIBUTING.md things belong in either?
 
