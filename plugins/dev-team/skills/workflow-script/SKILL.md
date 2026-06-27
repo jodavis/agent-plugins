@@ -8,9 +8,9 @@ argument-hint: --context-file <path> --write-section <section> --command <comman
 
 ## Arguments
 
-- `--context-file` — absolute path to the workflow context file (e.g. `~/.dev-team/org/repo/ADR-123.md`)
+- `--context-file` — absolute path to the workflow context file (e.g. `~/.dev-team/org/repo/PROJ-123.md`)
 - `--write-section` — name of the section to write the log file path to (e.g. `Build Result`)
-- `--command` — the shell command to run (e.g. `python -u /path/to/validate.py ADR-123`)
+- `--command` — the shell command to run (e.g. `python -u /path/to/validate.py PROJ-123`)
 - `--log-file` — a full path to a location where the script's output should be logged 
 
 ## Steps

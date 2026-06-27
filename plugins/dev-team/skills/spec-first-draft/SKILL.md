@@ -13,7 +13,7 @@ Use this skill when:
 
 ### 1 — Gather context
 
-Use the `find-repo-documentation` skill to read the architecture docs relevant to the feature area. At minimum read `src/_doc_Projects.md`.
+Use the `find-repo-documentation` skill to read the architecture docs relevant to the feature area.
 
 Spawn one or more `dev-team:researcher` agents to research any frameworks, libraries, or patterns the feature will use. Each agent uses the `research-learn` skill and returns findings with source links.
 
@@ -44,7 +44,7 @@ Write the file using this structure:
 # \<Feature Name\>
 
 > **Status:** Draft
-> **Will become:** `_doc_<FeatureName>.md` once implementation is complete
+> **Will become:** a living architecture doc once implementation is complete
 
 ## Overview
 
@@ -96,7 +96,7 @@ _(Omit if there are no related epics.)_
 
 ## Related Docs
 
-Links to the `_doc_*.md` files consulted during drafting.
+Links to the documentation files consulted during drafting.
 
 ---
 

@@ -2,39 +2,25 @@
 name: write-e2e-test
 description: >
   Use when you are writing E2E tests.
-  Establishes where to put feature files, how to write Gherkin scenarios, and how step definitions should be structured.
+  Establishes where to put feature files, how to write test scenarios, and how they should be structured.
 ---
+
+**Extension point skill** — projects must override this skill to specify their E2E test framework,
+file locations, and conventions. Place a `SKILL.md` in `.claude/skills/write-e2e-test/` to define
+these for this repo.
 
 Use this skill when:
 - You are writing E2E tests
 
-## Location
+## Default behavior (no project override)
 
-Write new feature files in the headless E2E host:
+Examine the project's existing test structure to determine conventions:
 
-```
-test/AdaptiveRemote.EndToEndTests.Host.Headless/Features/
-```
-
-Follow all conventions in `test/_doc_EndToEndTests.md`.
-
-## Scenario writing rules
-
-**Use existing steps whenever possible.** Before writing a new step, search for matching step definitions:
-
-```bash
-grep -rl "Given\|When\|Then" test/ --include="*.cs" | head -20
-```
-
-**Write generalized step phrasing.** Each `Given`, `When`, and `Then` step must describe something a human could do or observe manually — not an internal implementation detail.
-
-- Good: `When the user opens the settings panel`
-- Bad: `When SettingsViewModel.OpenCommand is executed`
-
-**One scenario per behaviour.** Keep scenarios focused. A scenario that covers multiple independent behaviours is harder to diagnose when it fails.
-
-**Represent the correct behaviour.** For bug investigations, first write the scenario to observe the bad behaviour (it should pass), then modify it to assert the correct behaviour (it should now fail). This failing test is the investigation anchor.
-
-## Step definition rules
-
-Step definitions must delegate logic to test service methods — they should not contain application logic themselves. The step definition translates the human-readable step into a call to the appropriate service.
+1. Find the E2E or integration test directory:
+   ```bash
+   find . -type d \( -name "*e2e*" -o -name "*EndToEnd*" -o -name "*integration*" \) | head -10
+   ```
+2. Read a sample of existing test files to understand the scenario format and file structure.
+3. Place the new test file in the same directory as other E2E tests, following the same naming
+   pattern.
+4. Follow the same scenario format and step structure as existing tests.

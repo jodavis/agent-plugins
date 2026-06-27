@@ -15,7 +15,7 @@ Use this skill when:
 The context file for a work item lives at:
   `<DEV_TEAM_STATE_DIR or ~/.dev-team>/<repo-slug>/<work-item-id>.md`
 
-If the argument ends in `.md` or points to an existing file, it is already the `<context-file>` path. Derive the `<work-item-id>` from the filename stem (e.g. `ADR-228.md` → `ADR-228`).
+If the argument ends in `.md` or points to an existing file, it is already the `<context-file>` path. Derive the `<work-item-id>` from the filename stem (e.g. `PROJ-228.md` → `PROJ-228`).
 
 Otherwise, treat the argument as a `<work-item-id>` and compute the context file path:
 

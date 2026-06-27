@@ -6,34 +6,20 @@ description: >
 argument-hint: <task context or area to research>
 ---
 
+**Extension point skill** — projects should override this skill to describe where their architecture
+docs live and how to discover them. Place a `SKILL.md` in `.claude/skills/find-repo-documentation/`
+to define the doc naming convention and discovery mechanism for this repo.
+
 Use this skill when:
 - You need to learn the architecture from documentation in this repo
 
-## File format and locations
+## Default behavior (no project override)
 
-Architecture documents are named `_doc_*.md` and live at the repo root and in subdirectories. Each one starts with a `Summary:` line that describes what it covers.
+Search for architecture documentation using common patterns:
 
-## Steps
+1. Check for a `docs/` or `doc/` directory and list its contents.
+2. Look for Markdown files in the repo root (excluding `README.md`).
+3. Read `README.md` if it exists.
 
-### 1 — Discover available docs
-
-Find all architecture documents:
-
-```bash
-grep -rl "^Summary:" . --include="_doc_*.md"
-```
-
-For each file found, read only its `Summary:` line to build a list of available docs and their topics.
-
-### 2 — Select relevant docs
-
-From the task context or area you have been given, identify which subsystems and topics the task will touch. Select the docs whose summaries match those areas.
-
-### 3 — Read and summarize
-
-Read each selected doc in full. For each one, note:
-- File path
-- What it says about the areas this task will touch
-- Any constraints, patterns, or conventions the implementer must follow
-
-Return your findings as a summary with a file path for each doc consulted.
+From these, select and read the files most relevant to the current task. For each doc consulted,
+note its file path and any constraints, patterns, or conventions that apply to the work ahead.

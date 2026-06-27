@@ -59,7 +59,7 @@ Read the source code along the relevant code path. Form 1–3 specific, falsifia
 2. Identify what evidence would disprove it.
 3. Look for that evidence in code, log output, or at runtime.
 
-If logging is insufficient, add `[LoggerMessage]` entries in `src/AdaptiveRemote.App/Logging/MessageLogger.cs`, rebuild, and rerun. Use the event ID range appropriate to the subsystem.
+If logging is insufficient, add targeted log statements following the project's logging conventions — use the `developer-standards` skill to identify the project's logging pattern. Rebuild and rerun.
 
 Do not stop at "plausible" — keep going until at least one hypothesis is confirmed with direct evidence.
 

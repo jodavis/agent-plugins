@@ -11,7 +11,7 @@ Use this skill when:
 
 ## Reading a Jira issue
 
-Call `mcp__jira__getJiraIssue` with the issue key (e.g. `ADR-228`) to retrieve the issue fields, including summary, description, status, parent/epic, and assignee.
+Call `mcp__jira__getJiraIssue` with the issue key (e.g. `PROJ-228`) to retrieve the issue fields, including summary, description, status, parent/epic, and assignee.
 
 ## Common operations
 
@@ -26,4 +26,4 @@ Call `mcp__jira__getJiraIssue` with the issue key (e.g. `ADR-228`) to retrieve t
 
 ## Finding the parent Epic
 
-When you need the parent Epic key, call `mcp__jira__getJiraIssue` with the task key and look for a `parent` or `epic` field in the returned issue. Extract its key (e.g. `ADR-200`). If the field is absent, the task has no Epic parent.
+When you need the parent Epic key, call `mcp__jira__getJiraIssue` with the task key and look for a `parent` or `epic` field in the returned issue. Extract its key (e.g. `PROJ-200`). If the field is absent, the task has no Epic parent.

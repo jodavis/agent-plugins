@@ -3,7 +3,7 @@ name: spec
 description: >
   Use when writing a complete new spec for a feature or GitHub issue.
   Guides through context gathering, first draft, iterative refinement, readiness review, and task breakdown.
-argument-hint: <ADR-nnn | #nnn | feature name and description>
+argument-hint: <work-item-id | #issue | feature name and description>
 ---
 
 Use this skill when:
@@ -16,15 +16,15 @@ You are writing a complete new spec, working with the user to refine the spec, b
 
 ### 1 — Resolve the feature brief
 
-Determine the source of the work item:
+Use the `identify-project-work-items` skill to resolve the argument to a `work-item-id` and `work-item-type`, then fetch the work item:
 
-| Argument form | Source | Action |
-|---|---|---|
-| `ADR-nnn` | Jira epic | Use `work-with-Jira-tasks` to fetch the epic summary and description |
-| `#nnn` | GitHub issue | Use `work-with-GitHub-issues` to fetch the issue title and body |
-| Anything else | Plain text | Use the argument text directly |
+| `work-item-type` | Action |
+|---|---|
+| `jira` | Use `work-with-Jira-tasks` to fetch the epic summary and description |
+| `github` | Use `work-with-GitHub-issues` to fetch the issue title and body |
+| plain text | Use the argument text directly as the feature brief |
 
-If the Jira epic or GitHub issue does not exist, tell the user and stop.
+If the work item does not exist, tell the user and stop.
 
 ### 2 — Write the first draft
 
@@ -52,4 +52,4 @@ Use the `spec-readiness-review` skill again — this time focused on the task br
 
 ### 7 — Update Jira
 
-Use the `spec-task-work-items` skill to update the Jira epic and task descriptions with summaries of the finalized design decisions.
+Use the `spec-task-work-items` skill to update project work items with summaries of the finalized design decisions.

@@ -18,7 +18,7 @@ Read the spec file at the provided path in full — every section.
 
 ### 2 — Read architecture docs
 
-Use the `find-repo-documentation` skill to discover and read the architecture docs relevant to the areas described in the spec. Always include `src/_doc_Projects.md`.
+Use the `find-repo-documentation` skill to discover and read the architecture docs relevant to the areas described in the spec.
 
 ### 3 — Read relevant source
 

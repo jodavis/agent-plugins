@@ -8,7 +8,7 @@ argument-hint: --context-file <path> --write-section <section> --skill <skill> [
 
 ## Arguments
 
-- `--context-file` — absolute path to the workflow context file (e.g. `~/.dev-team/org/repo/ADR-123.md`)
+- `--context-file` — absolute path to the workflow context file (e.g. `~/.dev-team/org/repo/PROJ-123.md`)
 - `--write-section` — name of the section to write output to (e.g. `Researcher Brief`)
 - `--skill` — name of the skill to invoke
 - `--skill-args` — (optional) arguments to pass to the skill

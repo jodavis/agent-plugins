@@ -33,9 +33,9 @@ Evaluate the diff against each dimension below in priority order. For each issue
 
 ## Priority 4 — Documentation
 
-- Does new code conform to the design described in the relevant `_doc_*.md` files?
-- If the implementation changed the design (new interface, changed responsibility, new dependency), has the relevant `_doc_*.md` been updated?
-- Have new `_doc_*.md` files been added where necessary?
+- Does new code conform to the design described in the relevant architecture documentation?
+- If the implementation changed the design (new interface, changed responsibility, new dependency), has the documentation been updated?
+- Have new documentation files been added where necessary?
 
 ## Priority 5 — Code style (note, do not block)
 

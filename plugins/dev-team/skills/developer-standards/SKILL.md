@@ -5,21 +5,27 @@ description: >
   Loads project code guidelines and quality gates from CONTRIBUTING.md and CLAUDE.md.
 ---
 
-Use this skill when:
-- You are planning new code, writing code, or reviewing code
-
 ## Steps
 
 ### 1 — Read code guidelines
 
-Read `CONTRIBUTING.md` for code guidelines: naming conventions, file structure, logging standards, and test conventions.
+Check the repo root for documentation files that define coding standards: naming conventions, file structure, logging, test conventions, quality gates, and operational requirements.
 
-### 2 — Read quality gates
+Read every file that exists from this list:
 
-Read `CLAUDE.md` for quality gates and operational conventions specific to this repo.
+- `README.md`
+- `CONTRIBUTING.md`
+- `DEVELOPMENT.md`
+- `STYLE.md` / `STYLEGUIDE.md`
+- `HACKING.md`
+- `CLAUDE.md`
+- `AGENTS.md`
+- `.github/CONTRIBUTING.md`
+- `.github/copilot-instructions.md`
+- `.cursorrules`
 
-### 3 — Apply .editorconfig
+### 2 — Apply .editorconfig
 
-Always generate code that complies with `.editorconfig`. Do not override indentation, line endings, or charset settings.
+Check for `.editorconfig` in the repo root. If present, read it and treat it as the authoritative code style specification. Follow every rule exactly — indentation, tab width, line endings, charset, trailing whitespace, final newlines, and any file-type overrides. No exceptions.
 
-Apply these standards to all code you write or review.
+Apply all standards to every file you write or review.
