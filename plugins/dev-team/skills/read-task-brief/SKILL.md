@@ -1,5 +1,6 @@
 ---
 name: read-task-brief
+user-invocable: false
 description: >
   Use when you need to read the task brief for a work item.
   Resolves the context file, ensures the working branch, and extracts the task brief section.

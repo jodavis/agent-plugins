@@ -1,5 +1,6 @@
 ---
 name: implement-task
+user-invocable: false
 description: >
   Use when implementing a task from a task brief.
   Reads the task brief, loads developer standards, implements using TDD, commits, and returns a work summary.

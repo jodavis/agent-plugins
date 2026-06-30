@@ -1,5 +1,6 @@
 ---
 name: review-sign-off
+user-invocable: false
 description: >
   Use when performing a sign-off review after a developer has addressed prior review comments.
   Checks each prior thread for resolution, scans modified files for new issues, and submits a sign-off review.

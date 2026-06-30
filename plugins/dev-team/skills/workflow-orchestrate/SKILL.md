@@ -1,5 +1,6 @@
 ---
 name: workflow-orchestrate
+user-invocable: false
 description: >
   Orchestration loop for the dev-team pipeline. Drives the step machine by repeatedly
   invoking dev_team.py, parsing its JSON descriptor, and spawning the appropriate

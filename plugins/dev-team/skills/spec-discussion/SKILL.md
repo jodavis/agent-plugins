@@ -1,5 +1,6 @@
 ---
 name: spec-discussion
+user-invocable: false
 description: >
   Use when working with the user to refine a spec.
   Finds REVIEW comments in the spec file and resolves them one at a time with the user.

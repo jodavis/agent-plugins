@@ -1,5 +1,6 @@
 ---
 name: workflow-script
+user-invocable: false
 description: >
   **Runs a Python script as part of a multi-agent orchestrated workflow.**
   Use this skill when an agent is instructed to run a script step in an orchestrated workflow.

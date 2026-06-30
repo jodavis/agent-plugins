@@ -1,5 +1,6 @@
 ---
 name: research-sources
+user-invocable: false
 description: >
   Use when you are researching a work item by reading existing source code.
   Reads the relevant source files and interfaces to understand existing patterns.

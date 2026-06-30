@@ -1,5 +1,6 @@
 ---
 name: research-learn
+user-invocable: false
 description: >
   Use when you are researching a work item by learning from external resources.
   Searches for best practices, framework documentation, and technical guidance not covered by local docs.

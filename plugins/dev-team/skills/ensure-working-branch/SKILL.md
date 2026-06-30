@@ -1,5 +1,6 @@
 ---
 name: ensure-working-branch
+user-invocable: false
 description: >
   Ensures the repository is on the correct working branch for a task, creating it if it does not
   yet exist. Use this skill before reading or writing any repository files to confirm the branch

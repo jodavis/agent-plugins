@@ -1,5 +1,6 @@
 ---
 name: work-with-Jira-tasks
+user-invocable: false
 description: >
   Use when you are working with a Jira task.
   Provides tool names and patterns for reading and updating Jira issues via MCP.

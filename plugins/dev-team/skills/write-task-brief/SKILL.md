@@ -1,5 +1,6 @@
 ---
 name: write-task-brief
+user-invocable: false
 description: >
   Use when you are writing a task brief for a work item.
   Produces a structured implementation plan from a spec section and research findings.

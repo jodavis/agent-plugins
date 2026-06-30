@@ -1,5 +1,6 @@
 ---
 name: review-guidelines
+user-invocable: false
 description: >
   Use when you are reviewing code changes.
   Defines the priority-ordered criteria for evaluating a diff.

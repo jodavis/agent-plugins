@@ -1,5 +1,6 @@
 ---
 name: spec-task-breakdown
+user-invocable: false
 description: >
   Use when breaking down a spec into tasks.
   Sizes tasks to roughly one PR each, creates Jira issues, and updates the spec with task links.

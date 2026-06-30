@@ -1,5 +1,6 @@
 ---
 name: investigate-bug
+user-invocable: false
 description: >
   Use when investigating a bug report.
   Fetches the GitHub issue, reads architecture docs, writes a repro test, traces the root cause, and produces a root-cause report.

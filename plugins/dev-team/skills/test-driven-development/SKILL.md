@@ -1,5 +1,6 @@
 ---
 name: test-driven-development
+user-invocable: false
 description: >
   Use when you are writing new code or fixing issues in existing code.
   Implements using TDD: E2E tests first, then unit tests and implementation one component at a time.

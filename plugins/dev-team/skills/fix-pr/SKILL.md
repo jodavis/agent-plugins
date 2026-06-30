@@ -1,5 +1,6 @@
 ---
 name: fix-pr
+user-invocable: false
 description: >
   Use when fixing build failures, test failures, or addressing code review comments for a work item with an existing PR.
   Reads the task brief and PR threads, triages each issue, commits fixes one at a time, and returns a fix summary.

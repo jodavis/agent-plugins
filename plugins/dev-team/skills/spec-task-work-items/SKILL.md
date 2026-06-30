@@ -1,5 +1,6 @@
 ---
 name: spec-task-work-items
+user-invocable: false
 description: >
   Use when you are writing a new spec or a new part of an existing spec.
   Updates project work items with summaries after the spec is finalized.

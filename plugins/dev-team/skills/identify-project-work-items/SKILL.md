@@ -1,5 +1,6 @@
 ---
 name: identify-project-work-items
+user-invocable: false
 description: >
   Identifies the active work item from user input or conversation context.
   Use this skill when you need to know the work-item-id or work-item-type.

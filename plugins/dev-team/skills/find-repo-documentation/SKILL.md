@@ -1,5 +1,6 @@
 ---
 name: find-repo-documentation
+user-invocable: false
 description: >
   Use when you need to learn the architecture from documentation in this repo.
   Discovers available architecture docs and reads the ones relevant to the current task.

@@ -1,5 +1,6 @@
 ---
 name: final-sign-off
+user-invocable: false
 description: >
   Use when handing off an approved PR to a human reviewer.
   Converts the PR from draft to ready, assigns the Jira issue, and requests a GitHub review.

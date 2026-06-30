@@ -1,5 +1,6 @@
 ---
 name: fix-draft
+user-invocable: false
 description: >
   Use when fixing build failures or test failures for a work item that does not yet have a GitHub PR.
   Reads the task brief, triages each issue, commits fixes one at a time, and returns a fix summary.

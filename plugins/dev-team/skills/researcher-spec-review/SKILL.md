@@ -1,5 +1,6 @@
 ---
 name: researcher-spec-review
+user-invocable: false
 description: >
   Use when verifying a spec file is ready for implementation.
   Reads the spec, architecture docs, and source code, then returns blocking questions or an implementation-ready confirmation.

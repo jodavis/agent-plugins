@@ -1,5 +1,6 @@
 ---
 name: read-spec-section
+user-invocable: false
 description: >
   Use when you need to read the spec file section for a work item.
   Resolves the context file, ensures the working branch, locates the spec file,

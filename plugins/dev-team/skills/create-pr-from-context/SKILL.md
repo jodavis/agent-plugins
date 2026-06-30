@@ -1,5 +1,6 @@
 ---
 name: create-pr-from-context
+user-invocable: false
 description: >
   Use when creating a pull request for a work item using the workflow context file.
   Reads the context file, ensures the working branch, creates a PR, and writes the PR URL back to the context file.

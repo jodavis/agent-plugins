@@ -1,5 +1,6 @@
 ---
 name: plan-task
+user-invocable: false
 description: >
   Use when making a plan to implement a task-work-item.
   Identifies the work item, reads the spec, spawns parallel researcher agents to gather architecture, source, and external knowledge, and produces a task brief.

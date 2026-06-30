@@ -1,5 +1,6 @@
 ---
 name: workflow-troubleshoot
+user-invocable: false
 description: >
   Troubleshooting skill for the dev-team pipeline. Investigates and attempts to fix problems in the pipeline.
 argument-hint: --context-file <context_file> --problem "<problem_description>"

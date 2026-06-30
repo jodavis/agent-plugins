@@ -1,5 +1,6 @@
 ---
 name: spec-readiness-review
+user-invocable: false
 description: >
   Use when verifying a spec is complete and ready for implementation or task breakdown.
   Spawns a researcher to review the spec and surfaces blocking questions for the user to resolve.

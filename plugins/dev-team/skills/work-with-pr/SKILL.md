@@ -1,5 +1,6 @@
 ---
 name: work-with-pr
+user-invocable: false
 description: >
   Use when you are working with an existing GitHub PR.
   Covers reading PR details and diffs, posting inline comments, managing pending reviews, resolving threads, and requesting human review.

@@ -1,5 +1,6 @@
 ---
 name: spec-first-draft
+user-invocable: false
 description: >
   Use when writing a first draft of a complete new spec or a new part of an existing spec.
   Gathers context from docs, source code, and the user, then writes the draft to a _spec_*.md file.

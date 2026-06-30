@@ -1,5 +1,6 @@
 ---
 name: create-pr
+user-invocable: false
 description: >
   Use when creating a new pull request in GitHub.
   Determines repo coordinates from the git remote, creates a draft PR with a structured body, and returns the PR URL.

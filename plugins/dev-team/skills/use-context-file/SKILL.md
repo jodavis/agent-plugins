@@ -1,5 +1,6 @@
 ---
 name: use-context-file
+user-invocable: false
 description: >
   Use when you will read from or write to a workflow context file.
   Describes the context file format and how to resolve, initialize, read, and update it.

@@ -1,5 +1,6 @@
 ---
 name: write-e2e-test
+user-invocable: false
 description: >
   Use when you are writing E2E tests.
   Establishes where to put feature files, how to write test scenarios, and how they should be structured.
