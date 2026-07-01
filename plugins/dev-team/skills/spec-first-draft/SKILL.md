@@ -81,15 +81,15 @@ Planned classes, their roles, and important relationships.
 
 How data moves through the feature from trigger to output.
 
-## Related Epics
+## Related Features
 
 Features identified during drafting that are out of scope here and will be spec'd separately.
 
-| Epic | Scope |
+| Feature | Scope |
 |------|-------|
-| (this epic) | ... |
+| (this feature) | ... |
 
-_(Omit if there are no related epics.)_
+_(Omit if there are no related features.)_
 
 ## Open Questions
 

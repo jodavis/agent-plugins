@@ -1,0 +1,44 @@
+developer-standards:
+  README.md: "If this file exists, read it — project overview and usage"
+  CONTRIBUTING.md: "If this file exists, read it — contribution guidelines and code conventions"
+  DEVELOPMENT.md: "If this file exists, read it — development setup and workflow"
+  STYLE.md: "If this file exists, read it — code style guide"
+  STYLEGUIDE.md: "If this file exists, read it — code style guide"
+  HACKING.md: "If this file exists, read it — contributor/internals notes"
+  CLAUDE.md: "If this file exists, read it — Claude Code project instructions"
+  AGENTS.md: "If this file exists, read it — agent-facing project instructions"
+  .github/CONTRIBUTING.md: "If this file exists, read it — contribution guidelines and code conventions"
+  .github/copilot-instructions.md: "If this file exists, read it — Copilot-facing project instructions"
+  .cursorrules: "If this file exists, read it — Cursor-facing project instructions"
+  .editorconfig: "If this file exists, read it — the authoritative code style specification; follow every rule exactly (indentation, tab width, line endings, charset, trailing whitespace, final newlines, and any file-type overrides), no exceptions"
+
+work-tracking:
+
+documentation:
+  format: Markdown
+  architecture:
+    location: docs/
+    search: find docs -type f -name "*.md"
+    name-format: <slug>.md
+  specs:
+    location: specs/
+    name-format: <slug>_Spec.md
+    search: grep -l "<work-item-id>" specs/*.md
+
+git-repo:
+  user-alias: claude
+  working-branches:
+    task: dev/<user-alias>/<task-work-item-id>-<slug>
+    feature: feature/<feature-work-item-id>-<slug>
+  commit:
+    when: A task implementation is complete, or on each individual bug or code review comment addressed
+  push:
+    enabled: true
+    when: Only after a full successful run of scripts/validate.sh
+  create-pr:
+    enabled: true
+    draft: true
+    when: the working branch has been pushed and a PR does not already exist
+  promote-pr:
+    enabled: true
+    when: All review comments are addressed and validation passes

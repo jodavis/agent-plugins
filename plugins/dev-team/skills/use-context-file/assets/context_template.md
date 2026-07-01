@@ -2,7 +2,9 @@
 state: init
 work_item_id: {work_item_id}
 spec_path:
+working_branch:
 base_branch:
+parent_work_item:
 fix_iteration: 0
 review_fix_iteration: 0
 pr_url:

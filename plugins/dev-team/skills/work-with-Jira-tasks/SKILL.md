@@ -25,6 +25,6 @@ Call `mcp__jira__getJiraIssue` with the issue key (e.g. `PROJ-228`) to retrieve 
 | Transition to a new status | `mcp__jira__transitionJiraIssue` |
 | Look up a user account ID by email | `mcp__jira__lookupJiraAccountId` |
 
-## Finding the parent Epic
+## Finding the parent feature-work-item
 
-When you need the parent Epic key, call `mcp__jira__getJiraIssue` with the task key and look for a `parent` or `epic` field in the returned issue. Extract its key (e.g. `PROJ-200`). If the field is absent, the task has no Epic parent.
+When you need the parent feature-work-item's key, call `mcp__jira__getJiraIssue` with the task key and look for a `parent` or `epic` field in the returned issue. Extract its key (e.g. `PROJ-200`). If the field is absent, the task has no parent feature-work-item.

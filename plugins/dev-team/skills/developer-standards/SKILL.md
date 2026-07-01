@@ -6,27 +6,18 @@ description: >
   Loads project code guidelines and quality gates from CONTRIBUTING.md and CLAUDE.md.
 ---
 
-## Steps
+**Extension point skill** — configure this via `get-project-configuration`'s
+`developer-standards` section (preferred). Full-file override remains available as an escape
+hatch: place a `SKILL.md` in `.claude/skills/developer-standards/` to replace this skill's
+process entirely.
 
-### 1 — Read code guidelines
+## Configured behavior
 
-Check the repo root for documentation files that define coding standards: naming conventions, file structure, logging, test conventions, quality gates, and operational requirements.
+Invoke `get-project-configuration` and read `developer-standards` — a filename → description map,
+each filename relative to the repo root. Follow each entry's own description to decide whether
+it's expected to exist — see `get-project-configuration`'s `SKILL.md` for the convention that distinguishes soft (ignorable) entries from entries that are required.
 
-Read every file that exists from this list:
+Internalize all standards and apply to every file you plan, write, or review.
 
-- `README.md`
-- `CONTRIBUTING.md`
-- `DEVELOPMENT.md`
-- `STYLE.md` / `STYLEGUIDE.md`
-- `HACKING.md`
-- `CLAUDE.md`
-- `AGENTS.md`
-- `.github/CONTRIBUTING.md`
-- `.github/copilot-instructions.md`
-- `.cursorrules`
-
-### 2 — Apply .editorconfig
-
-Check for `.editorconfig` in the repo root. If present, read it and treat it as the authoritative code style specification. Follow every rule exactly — indentation, tab width, line endings, charset, trailing whitespace, final newlines, and any file-type overrides. No exceptions.
-
-Apply all standards to every file you write or review.
+**If `developer-standards` is `null`** (a project has explicitly opted out of the shipped
+default), no standards files are read.

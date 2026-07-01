@@ -42,11 +42,14 @@ Read `<context-file>` and extract these YAML frontmatter fields:
 |---|---|
 | `work_item_id` | The work item actively being worked on |
 | `spec_path` | Repo-relative path to the spec file (may be empty) |
-| `base_branch` | Base branch for this task (may be empty) |
+| `working_branch` | The working branch for this task-work-item (may be empty) |
+| `base_branch` | Base branch this task-work-item's working branch was created from (may be empty) |
+| `parent_work_item` | The parent feature-work-item ID, if one was found (may be empty) |
 | `pr_url` | URL of the GitHub PR (may be empty) |
 | `state` | Current workflow state |
 
-The working branch is always `dev/claude/<work-item-id>`.
+Fields marked "may be empty" are not guaranteed to be set — a caller that needs one and finds it
+empty must compute it itself (see e.g. `ensure-working-branch`) rather than assuming a default.
 
 ## Writing to the context file
 
