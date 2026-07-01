@@ -3,13 +3,13 @@ name: spec-task-breakdown
 user-invocable: false
 description: >
   Use when breaking down a spec into tasks.
-  Sizes tasks to roughly one PR each, creates Jira issues, and updates the spec with task links.
-argument-hint: <path to _spec_*.md file> <epic-key (optional)>
+  Sizes tasks to roughly one PR each, creates tracked work items, and updates the spec with task links.
+argument-hint: <path to _spec_*.md file> <feature-work-item-key (optional)>
 ---
 
 Use this skill when:
 - You are breaking down a spec into implementable tasks
-- You need to create Jira issues for a set of spec tasks
+- You need to create tracked work items for a set of spec tasks
 
 ## Sizing rules
 
@@ -28,35 +28,50 @@ Add a `## Tasks` section at the end of the spec file. For each task write:
 - Exit criteria as a checkbox list
 - For tasks that include new E2E tests, write exit criteria as Gherkin-style acceptance scenarios (`Given / When / Then`)
 
-If the spec has a `## Related Epics` section, add placeholder entries for those as well — titled `"Create epic: <name>"` with a one-line scope description. These become Jira epics, not tasks.
+If the spec has a `## Related Features` section, add placeholder entries for those as well —
+titled `"Create feature-work-item: <name>"` with a one-line scope description. These become
+feature-work-items, not task-work-items.
 
 ### 2 — Pause for approval
 
 Save the updated spec and tell the user:
 
-> Task breakdown written to `<path>`. Please review — edit any task or add `> **Review:** your comment`. Tell me when you're ready to create Jira issues.
+> Task breakdown written to `<path>`. Please review — edit any task or add `> **Review:** your comment`. Tell me when you're ready to create tracked work items.
 
 **PAUSE — wait for approval or change requests. Apply any changes before continuing.**
 
-### 3 — Determine the Jira epic
+### 3 — Determine the parent feature-work-item
 
-If the original input was a Jira epic key, use it directly.
+Invoke `get-project-configuration` and read `work-tracking`. If it's `null` or empty, skip
+straight to step 5 — no tracker is configured, so the spec's task list is the only record.
 
-Otherwise, use `AskUserQuestion` to ask: "Is there a Jira epic for this feature?" Provide options for "Yes — I'll provide the key", "No — create one now", "No — I'll create one later", and "No — skip Jira entirely".
+If the original input was a feature-work-item key, use it directly.
+
+Otherwise, use `AskUserQuestion` to ask: "Is there a tracked feature-work-item for this
+feature?" Provide options for "Yes — I'll provide the key", "No — create one now", "No — I'll
+provide one later", and "No — skip work-item tracking entirely".
 
 **PAUSE — wait for the answer.**
 
-If the user selects "Yes", collect the key. If "No — create one now", create it with `work-with-Jira-tasks` before proceeding.
+If the user selects "Yes", collect the key. If "No — create one now", create it with the
+matching adapter skill (per `get-project-configuration`'s provider dispatch table) before
+proceeding.
 
-### 4 — Create Jira issues
+### 4 — Create tracked work items
 
-Use the `work-with-Jira-tasks` skill to create issues:
+Use the matching adapter skill (per `get-project-configuration`'s provider dispatch table) to
+create issues:
 
-- **Tasks** → Jira Task type. Assign the epic as the parent if one is known.
-- **"Create epic" placeholders** → Jira Epic type (no parent). Use the scope description as the epic summary.
+- **Tasks** → the `task-work-item` type (`work-tracking.<provider>.task-work-item.type`, e.g.
+  `Task` for a Jira project). Assign the feature-work-item as the parent if one is known.
+- **"Create feature-work-item" placeholders** → the `feature-work-item` type
+  (`work-tracking.<provider>.feature-work-item.type`, e.g. `Epic` for a Jira project; no
+  parent). Use the scope description as the summary.
 
 ### 5 — Update the spec
 
-Replace each task title in `## Tasks` with a hyperlink to its Jira ticket. Keep all descriptions and exit criteria in place. The section remains in the spec permanently — future agents may not have Jira access.
+Replace each task title in `## Tasks` with a hyperlink to its tracked work item, if one was
+created. Keep all descriptions and exit criteria in place. The section remains in the spec
+permanently — future agents may not have tracker access.
 
-Update the `## Related Epics` table with the Jira keys assigned to related epics.
+Update the `## Related Features` table with the keys assigned to related feature-work-items.

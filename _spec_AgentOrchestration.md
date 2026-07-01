@@ -200,9 +200,9 @@ as part of plugin setup instructions.
 
 _Consequences:_ Context files persist across sessions and machines (when `DEV_TEAM_STATE_DIR`
 points to a synced location). No permission prompts after initial setup. Log files are
-co-located with context files for easy debugging. This path convention supersedes the
-`REPO_ROOT/.claude/dev-team/logs/` path described in `_spec_DevTeamPortability.md` —
-all pipeline file I/O moves to `~/.dev-team/<repo-slug>/`.
+co-located with context files for easy debugging. This path convention supersedes the earlier
+`REPO_ROOT/.claude/dev-team/logs/` path — all pipeline file I/O moves to
+`~/.dev-team/<repo-slug>/`.
 
 ## Planned Implementation
 
@@ -658,8 +658,6 @@ Implement `agents/troubleshooter.md` with the sign-off deadlock condition as the
 
 ## Related Docs
 
-- [`_spec_DevTeamPortability.md`](_spec_DevTeamPortability.md) — ADR-264/265; plugin
-  packaging, path resolution, and config loader; prerequisites for this spec
 - [`plugins/dev-team/commands/run-workflow.md`](plugins/dev-team/commands/run-workflow.md)
   — current orchestration entry point, replaced by the loop in `dev-team.md`
 - [`plugins/dev-team/agents/developer.md`](plugins/dev-team/agents/developer.md) — current
