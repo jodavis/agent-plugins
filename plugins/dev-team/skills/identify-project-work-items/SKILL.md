@@ -1,40 +1,36 @@
 ---
 name: identify-project-work-items
+user-invocable: false
 description: >
-  Defines the work item patterns for this project.
-  Use this skill when you need to know the active work-item-id or work-item-type, which can be used to create branches, look up specs, or access work item information online.
+  Identifies the active work item from user input or conversation context.
+  Use this skill when you need to know the work-item-id or work-item-type.
 ---
 
-# Work item tracking for AdaptiveRemote and related projects
+**Extension point skill** — projects must override this skill with their own work item patterns.
+Place a `SKILL.md` in `.claude/skills/identify-project-work-items/` to define how work items are
+identified for your tracker (Jira, GitHub Issues, Linear, etc.).
 
 Use this skill when:
-- Another skill requires `work-item-id` in `ADR-###` or `Issue-###` format
+- Another skill requires a `work-item-id` and `work-item-type`
 
 Do NOT use this skill when:
 - You already know the `work-item-id` and `work-item-type` that is under active development
 
-This project uses Jira for work item planning and GitHub issues for tracking bugs and public discussions. The project prefix for all Jira work items is `ADR-`.
+## Default behavior (no project override)
 
+Ask the user:
 
-## Patterns for recognizing work items
+> What work item are you working on?
 
-Look for the following patterns in user input or previous discussion to identify the work item that is under active development.
-
-| Example patterns | Canonical `work-item-id` | `work-item-type` | `numeric-id` |
-|---|---|---|---|
-| ADR-123, Task 123, Epic 123, Jira 123 | `ADR-123` | `jira` | `123` |
-| `#42`, `Issue 42`, `GitHub 42` | `Issue-42` | `github` | `42` |
-
-Note: The canonical `work-item-id` is used by other skills to create git branch names and file paths. The `Issue-42` pattern is used for GitHub because the GitHub standard `#42` would not be valid in those contexts.
+Derive a canonical `work-item-id` from their response. Use the format `<PREFIX>-<NUMBER>` (e.g.
+`PROJ-123`) for tracker issues, or `Issue-<NUMBER>` for GitHub issues.
 
 ## Output
 
 Return these fields as a short structured block:
 
 ```
-work-item-id: ADR-123
-work-item-type: jira
-numeric-id: 123
+work-item-id: <id>
+work-item-type: <jira|github|other>
+numeric-id: <number>
 ```
-
-If the input does not contain any matches for any known pattern, stop and ask: `What work item do you want to work on?`

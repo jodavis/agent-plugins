@@ -1,5 +1,6 @@
 ---
 name: workflow-orchestrate
+user-invocable: false
 description: >
   Orchestration loop for the dev-team pipeline. Drives the step machine by repeatedly
   invoking dev_team.py, parsing its JSON descriptor, and spawning the appropriate
@@ -9,7 +10,7 @@ argument-hint: --work-item-id <id> --workflow <pipeline> --research-skill <skill
 
 ## Arguments
 
-- `--work-item-id` — the resolved work item identifier (e.g. `ADR-123` or `Issue-444`)
+- `--work-item-id` — the resolved work item identifier (e.g. `PROJ-123` or `Issue-444`)
 - `--workflow` — the pipeline filename stem (e.g. `implement-task-plan` or `fix-issue-plan`)
 - `--research-skill` — the researcher skill name (e.g. `researcher-plan` or `researcher-issue`)
 
@@ -27,17 +28,52 @@ appropriate agent for each step.
 
 ## Steps
 
-### 1 — Compute context file path
+### 1 — Compute context file and todo log paths
 
 ```bash
 "$SKILL_DIR/scripts/get-context-path.sh" "<work-item-id>"
 ```
 
-### 2 — Orchestration loop
+Derive the todo log path from the context file's directory and create it:
+
+```bash
+todo_log="$(dirname "<context_file>")/logs/<work-item-id>-todo.log"
+mkdir -p "$(dirname "$todo_log")"
+touch "$todo_log"
+```
+
+### 2 — Start tailing the todo log
+
+Spawned agents never call `TodoWrite` directly — they append their todo updates to
+`<todo_log>` instead (see `workflow-worker`). Mirror those updates into your own todo
+list so the user can see subagent progress in your context.
+
+Start a persistent monitor on the todo log **before entering the orchestration loop**:
+
+```
+Monitor(
+  command: "tail -n 0 -F <todo_log>",
+  description: "todo updates for <work-item-id>",
+  persistent: true
+)
+```
+
+`tail -n 0 -F` emits only lines appended from this point forward — never the file's
+existing contents — so you only ever see incremental changes, not the full history.
+
+Each line is a complete JSON object with the same shape you would pass to `TodoWrite`
+(e.g. `{"todos": [...]}`). Whenever a notification arrives, call `TodoWrite` yourself
+with that exact payload. Do not read the rest of the log file or summarize past entries
+— only act on the new line(s) in the notification, to keep your own context clean.
+
+Keep this monitor running for the duration of the workflow. Stop it with `TaskStop` once
+the loop reaches a terminal `"done"` action (success or failure).
+
+### 3 — Orchestration loop
 
 Repeat the following until `action == "done"` or a terminal condition is reached.
 
-#### 2a — Run the step machine
+#### 3a — Run the step machine
 
 ```bash
 python -u $SKILL_DIR/scripts/dev_team.py <work-item-id> \
@@ -48,7 +84,7 @@ python -u $SKILL_DIR/scripts/dev_team.py <work-item-id> \
 
 Capture all stdout. The last JSON array on stdout is the action descriptor list.
 
-#### 2b — Parse the descriptor array
+#### 3b — Parse the descriptor array
 
 Display any non-JSON stdout lines as status updates to the user.
 
@@ -57,13 +93,15 @@ Extract the last line from stdout that is a valid JSON array (starts with `[`).
 If the descriptors contain any `"message"` fields, use them to describe to the user
 what work is being done before spawning the next agents.
 
-#### 2c — Branch on action
+#### 3c — Branch on action
 
 Let `descriptors` be the parsed JSON array. The array always has at least one item.
 
 **If `descriptors` is a single-item array and `descriptors[0].action == "done"`:**
-- If `result == "success"`: report success to the user and stop.
-- If `result == "failed"`: report the failure reason to the user and stop.
+- If `result == "success"`: report success to the user, stop the todo log monitor with
+  `TaskStop`, and stop.
+- If `result == "failed"`: report the failure reason to the user, stop the todo log
+  monitor with `TaskStop`, and stop.
 
 **If `descriptors` is a single-item array and `descriptors[0].skill == "troubleshooter"`:**
 
@@ -81,7 +119,8 @@ results = await [
 --context-file <context_file>
 --write-section <item.write_section>
 --skill <item.skill>
---skill-args <item.args>"
+--skill-args <item.args>
+--todo-log <todo_log>"
   )  if item.action == "spawn_agent"  else
 
   Agent(
@@ -107,7 +146,7 @@ Log each result:
 
 If any result is anything other than `successful` (case-insensitive), run the troubleshooter agent (see below).
 
-### 3 — Error handling
+### 4 — Error handling
 
 If `dev_team.py` exits with a non-zero code, run the troubleshooter agent (see below).
 
@@ -128,7 +167,8 @@ Agent(
 
 Handle the outcome (a JSON object with `action` field):
 - `"continue"` → continue the loop (the troubleshooter has edited the context file)
-- `"terminate"` → report the reason to the user and stop
+- `"terminate"` → report the reason to the user, stop the todo log monitor with
+  `TaskStop`, and stop
 - `"needs_user_input"` →
   1. Ask the user the troubleshooter's question
   2. Write the user's answer to the `troubleshooter_input` frontmatter key in the

@@ -12,6 +12,7 @@ tools:
   - Glob
   - Grep
   - Bash
+  - TodoWrite
   - Skill
   - mcp__plugin_github_github__pull_request_read
   - mcp__plugin_github_github__pull_request_review_write
@@ -28,6 +29,14 @@ Your job is to review code changes and ensure they meet quality, correctness, se
 and requirements standards. You create GitHub PRs and post review comments. You never
 modify source files — your only output is GitHub review comments and a structured JSON
 result.
+
+## Task tracking
+
+Before starting work, use `TodoWrite` to create a todo list of the steps you plan to take.
+Mark each item `in_progress` before you start it and `completed` immediately after you
+finish it. If you discover additional work partway through (another file to check, a
+follow-up question to raise), add it as a new item rather than silently expanding an
+existing one. All items must be `completed` before you report your review as done.
 
 ## Before reviewing any code
 
