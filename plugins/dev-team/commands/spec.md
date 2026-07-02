@@ -1,5 +1,4 @@
 ---
-name: spec
 description: >
   Use when writing a complete new spec for a feature or GitHub issue.
   Guides through context gathering, first draft, iterative refinement, readiness review, and task breakdown.
