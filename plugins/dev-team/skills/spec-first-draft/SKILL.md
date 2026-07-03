@@ -99,8 +99,9 @@ When identifying Testable components, apply these isolation patterns as authorin
   directly-observable fields on a data object. By default, only the owning/controller
   service mutates it; other services may read it. Some components legitimately invert
   this — a ViewModel-style State Object is written directly by its consumer (e.g. the UI),
-  and the owning controller subscribes to change notifications on it to react — but either
-  way, exactly one side owns a given kind of transition.
+  and the owning controller subscribes to change notifications on it to react. In this
+  inverted case, both sides may read and write the object; design each field's ownership
+  deliberately rather than assuming a single default direction.
 - Prefer synchronous logic for anything complex; gather async data up front and pass the
   results in, rather than doing async work on demand inside complex logic.
 - Where practical, build each component before its dependencies exist, using mocks of the
