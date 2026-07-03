@@ -8,21 +8,22 @@ stateDiagram-v2
     validating --> fixing : tests_failed
     validating --> creating-pr : clean
     creating-pr --> reviewing : pr_created
-    reviewing --> done : approved
+    reviewing --> handoff : approved
     reviewing --> fixing-pr : changes_requested
     fixing-pr --> signoff : fix_done
-    signoff --> done : approved
+    signoff --> handoff : approved
     signoff --> fixing-pr : changes_requested
     fixing --> validating : fix_done
     fixing --> failed : max_retries
     fixing-pr --> failed : max_retries
+    handoff --> done : handoff_done
     done --> [*]
     failed --> [*]
 ```
 
 The `signoff` state runs three tasks in parallel before making its decision:
 
-1. **`reviewer-sign-off`** — checks that all PR review threads have been resolved and scans
+1. **`review-sign-off`** — checks that all PR review threads have been resolved and scans
    modified files for new code quality issues (Priority 1–4). Resolves satisfied threads;
    leaves unresolved threads where the developer disagreed and the reviewer is pushing back.
 2. **`researcher-validate`** — checks each exit criterion from the spec against the
@@ -31,3 +32,8 @@ The `signoff` state runs three tasks in parallel before making its decision:
 
 All three must pass for `signoff` to emit `approved`. Any failure from any task emits
 `changes_requested` and routes back to `fixing-pr`, with accumulated failure details.
+
+The `handoff` state runs `final-sign-off` once a PR has been approved — either directly
+out of `reviewing` on a clean first pass, or out of `signoff` after a `fixing-pr` cycle.
+It converts the PR from draft to ready for review, assigns the Jira issue to the human
+reviewer, requests their GitHub review, and adds a Jira comment noting the hand-off.
