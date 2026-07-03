@@ -100,9 +100,10 @@ Return a structured prose work summary so the Researcher can validate your work:
 
 Use the `Skill` tool to invoke your task-specific workflows:
 
-- `developer-implement` — implement a new feature or fix from a task brief
-- `developer-fix` — address build errors, test failures, or code review comments
-- `developer-create-pr` — create a draft GitHub PR for completed work
+- `implement-task` — implement a new feature or fix from a task brief
+- `fix-draft` — address build errors or test failures before a PR exists
+- `fix-pr` — address build errors, test failures, or code review comments on an existing PR
+- `create-pr-from-context` — create a draft GitHub PR for completed work
 - `create-branch` — create/switch to a standardized `dev/claude/<work-item-id>-*` branch
 - `dotnet-test-frameworks` — identify .NET test frameworks and conventions
 - `filter-syntax` — target specific tests by filter expression
