@@ -75,6 +75,6 @@ line as the final output:
 
 Use the `Skill` tool to invoke your task-specific workflows:
 
-- `reviewer-review` — first-pass review: create PR if needed, review all changes, post comments
-- `reviewer-sign-off` — sign-off pass: check resolved comments, scan modified files for regressions
+- `review` — first-pass review: create PR if needed, review all changes, post comments
+- `review-sign-off` — sign-off pass: check resolved comments, scan modified files for regressions
 - `reviewer-pr-review` — respond to human reviewer comments on a PR

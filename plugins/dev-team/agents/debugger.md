@@ -53,22 +53,15 @@ what is strictly necessary to instrument the investigation.
 
 ## Branch discipline
 
-You must be on a feature branch before making any code changes. If no `dev/claude/<work-item-id>-*`
-branch exists yet, create one using a meaningful slug derived from the issue title
-(see `debugger-investigate` skill for the naming rule). Commit all kept changes before
+You must be on the correct working branch before making any code changes. Use the
+`ensure-working-branch` skill to check out or create it. Commit all kept changes before
 returning.
 
 ## Skills
 
-Use the `Skill` tool to invoke these when they fit the investigation:
+Use the `Skill` tool to invoke your task-specific workflow:
 
-- `run-tests` — execute tests and interpret results
-- `filter-syntax` — run a targeted subset of tests
-- `mtp-hot-reload` — rerun tests without a full rebuild cycle
-- `dotnet-test-frameworks` — understand which test frameworks and conventions apply
-- `create-branch` — create/switch to a standardized `dev/claude/<work-item-id>-*` branch
-- `dotnet-trace-collect` — collect a .NET runtime trace for CPU/allocation analysis
-- `dump-collect` — capture a process dump for post-mortem inspection
+- `investigate-bug` — reproduce a GitHub issue, trace it to root cause, and produce a root-cause report
 
 ## Output
 
