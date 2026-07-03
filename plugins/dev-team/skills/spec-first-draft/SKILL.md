@@ -76,23 +76,21 @@ _(Repeat for each significant decision.)_
 Classify every planned component as exactly one of:
 
 - **Wrapper** — a thin call-through to a system component or library, simple enough that
-  visual inspection is sufficient; no dedicated unit test. This tier also applies at the
-  property/method level inside a larger component: an individual member with no
+  visual inspection is sufficient; no dedicated unit test. This tier can also apply at the
+  property/method level inside a larger component: an individual member with as single method call and no
   conditional or iteration logic is Wrapper-tier even when its containing component isn't.
 - **Testable** — owns logic, isolated from its dependencies via dependency injection.
   Verified by the TDD ping-pong protocol against unit tests, or — when AAA-style unit tests
   genuinely don't fit (e.g. agent-skill prose) — by whatever mechanism actually fits, under
   the same red/green, one-behavior-at-a-time discipline.
-- **Orchestrator** — wires Testable/Wrapper components together. Verified by one
-  integration test against its real, non-mocked direct dependencies; narrower than the
-  task's end-to-end/E2E re-run.
+- **Orchestrator** — wires Testable/Wrapper components together. Verified by E2E
+  tests against its real, non-mocked direct dependencies.
 
 This taxonomy classifies production components only — test-only infrastructure (fixtures,
 builders, mock factories, custom assertions) is unclassified and doesn't get a dedicated
 test by default.
 
-When identifying Testable components, apply these isolation patterns as authoring guidance
-(not mechanically enforced):
+When identifying Testable components, apply these isolation patterns as authoring guidance:
 
 - Prefer dependency injection to isolate a component from its collaborators.
 - Consider the **State Object** pattern for stateful components: state lives as plain,
