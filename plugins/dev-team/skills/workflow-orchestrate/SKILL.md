@@ -37,9 +37,7 @@ appropriate agent for each step.
 Derive the todo log path from the context file's directory and create it:
 
 ```bash
-todo_log="$(dirname "<context_file>")/logs/<work-item-id>-todo.log"
-mkdir -p "$(dirname "$todo_log")"
-touch "$todo_log"
+"$SKILL_DIR/scripts/get-todo-log-path.sh" "<context_file>" "<work-item-id>"
 ```
 
 ### 2 — Start tailing the todo log
