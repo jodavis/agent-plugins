@@ -37,6 +37,39 @@ From the perspective of an implementer with only the spec and the codebase — n
 - Can unit tests and Gherkin scenarios be written without guessing expected behavior?
 - Are there missing decisions, ambiguous behavior, unspecified error cases, or unclear interfaces?
 
+**Component Breakdown check** — run this whenever the spec's own prose (Overview,
+Responsibilities & Boundaries, Key Design Decisions) describes any logic that would need
+Wrapper/Testable/Orchestrator classification, regardless of whether a `## Component
+Breakdown` section exists. A documentation-only or pure-process spec whose prose describes no
+such logic is exempt — do not flag it for lacking the section.
+
+When the gate above applies, check the spec's `## Component Breakdown` table for exactly
+these three gap types (a spec with the gate active but no table at all fails every applicable
+check below):
+
+1. **Undocumented component** — for every component the spec's prose names, confirm it
+   appears as a row in the table. Raise one blocking question per prose-described component
+   missing from the table.
+2. **Dangling dependency** — for every `Depends on` entry in the table, confirm the named
+   component is itself a row in the table. Raise one blocking question per dangling `Depends
+   on` reference.
+3. **Missing verification mechanism** — for every row of `Type` `Testable`, confirm it has an
+   identified verification mechanism: search the target repo for existing test-file patterns
+   scoped to the component's area, using the same method `missing-test-harness` uses (`find .
+   -name "*Test*" -o -name "*Spec*" -o -name "*.feature"`). If nothing fits, the gap is
+   covered only if the component's own `Depends on` entry names another `Testable` row in the
+   same table whose `Responsibility` text describes building or providing a verification
+   mechanism (a harness-building line item) — a plausible-sounding description elsewhere in
+   the table is not enough without that dependency edge. A harness-building row itself is
+   covered by its own `Responsibility` text — it verifies the components that depend on it, so
+   it does not also need an outgoing dependency to another harness. Raise one blocking
+   question per Testable component with neither an identified mechanism, a covering
+   harness-building dependency, nor a `Responsibility` that itself describes building or
+   providing a verification mechanism.
+
+Do not run these checks, and do not penalize the spec for a missing Component Breakdown
+section, when the gate above doesn't apply.
+
 **If no blocking gaps exist**, return exactly:
 
 > No blocking questions — spec is implementation-ready.
