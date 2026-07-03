@@ -40,20 +40,20 @@ If the issue is not found, stop and report the error.
 
 ### 2–5 — Exploration and brief
 
-Read `.claude/commands/researcher-plan.md` and follow **steps 2 through 5** exactly, with
-two differences:
+Use the `plan-task` skill's **steps 2 through 4** (read spec section, spawn parallel
+researcher agents, write the task brief) exactly, with two differences:
 
-- **Source of requirements (step 1 replacement):** Use `$DEBUG_REPORT` findings first. If
+- **Source of requirements (step 2 replacement):** Use `$DEBUG_REPORT` findings first. If
   issue details were fetched in step 1, use issue title/body/comments as supplemental
   context. Let this combined context guide which subsystems and areas are relevant.
 
-- **Exit criteria (step 5 difference):** The issue contains no formal exit criteria. Instead
+- **Exit criteria (step 4 difference):** The issue contains no formal exit criteria. Instead
   of copying them verbatim, **propose** a concrete, checkable list synthesized from the issue
   description and the context you gathered. Frame each criterion the same way spec exit
   criteria are written (observable behaviour, not implementation detail). Label the section
   **"Exit criteria (proposed)"** so the caller knows these are inferred, not authoritative.
 
-- **Required opening heading (step 5 addition):** The brief must open with this exact heading
+- **Required opening heading (step 4 addition):** The brief must open with this exact heading
   (substitute the real work item ID):
 
   ```
