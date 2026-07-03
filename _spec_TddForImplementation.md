@@ -694,6 +694,7 @@ output in the task's work summary; Reviewer judges the result against the task's
 as part of normal PR review — the same mechanism that already reviews code changes, with no new
 tooling required. This is a stand-in for automated verification until
 [ADR-305](https://jodasoft.atlassian.net/browse/ADR-305)'s eval framework exists.
+When creating a PR, developer should note the results of dry runs in the PR description.
 
 ### [ADR-297](https://jodasoft.atlassian.net/browse/ADR-297) — Component Breakdown section in `spec-first-draft`
 

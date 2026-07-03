@@ -36,6 +36,7 @@ Use `mcp__plugin_github_github__create_pull_request` with:
   - **Changes:** A bullet list drawn from the task brief or work summary — one bullet per logical change (new file, modified interface, new test scenario, etc.)
   - **Design decisions:** Any non-obvious choices made during implementation that a reviewer needs context for (omit if there are none)
   - If the work item ID matches `Issue-\d+` (a GitHub issue), append as the final line: `Closes #<number>` (e.g. `Issue-123` → `Closes #123`)
+  - **Testing completed:** Any unit, automated, or agent-driven testing that was done as part of the development workflow.
 
 The PR title and body are read by human reviewers — write them clearly and precisely.
 
