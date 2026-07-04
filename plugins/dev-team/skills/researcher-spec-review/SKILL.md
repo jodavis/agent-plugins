@@ -58,17 +58,16 @@ they find no gaps to raise — do not treat a missing table as also failing chec
    on` reference.
 3. **Missing verification mechanism** — for every row of `Type` `Testable`, confirm it has an
    identified verification mechanism: search the target repo for existing test-file patterns
-   scoped to the component's area, using the same method `missing-test-harness` uses (`find .
-   -name "*Test*" -o -name "*Spec*" -o -name "*.feature"`). If nothing fits, the gap is
-   covered only if the component's own `Depends on` entry names another `Testable` row in the
-   same table whose `Responsibility` text describes building or providing a verification
-   mechanism (a harness-building line item) — a plausible-sounding description elsewhere in
-   the table is not enough without that dependency edge. A harness-building row itself is
-   covered by its own `Responsibility` text — it verifies the components that depend on it, so
-   it does not also need an outgoing dependency to another harness. Raise one blocking
-   question per Testable component with neither an identified mechanism, a covering
-   harness-building dependency, nor a `Responsibility` that itself describes building or
-   providing a verification mechanism.
+   scoped to the component's area, using `missing-test-harness`'s existing-pattern search. If
+   nothing fits, the gap is covered only if the component's own `Depends on` entry names
+   another `Testable` row in the same table whose `Responsibility` text describes building or
+   providing a verification mechanism (a harness-building line item) — a plausible-sounding
+   description elsewhere in the table is not enough without that dependency edge. A
+   harness-building row itself is covered by its own `Responsibility` text — it verifies the
+   components that depend on it, so it does not also need an outgoing dependency to another
+   harness. Raise one blocking question per Testable component with neither an identified
+   mechanism, a covering harness-building dependency, nor a `Responsibility` that itself
+   describes building or providing a verification mechanism.
 
 Do not run these checks, and do not penalize the spec for a missing Component Breakdown
 section, when the gate above doesn't apply.
