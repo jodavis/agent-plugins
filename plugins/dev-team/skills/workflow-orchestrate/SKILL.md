@@ -14,6 +14,10 @@ argument-hint: --work-item-id <id> --workflow <pipeline> --research-skill <skill
 - `--workflow` — the pipeline filename stem (e.g. `implement-task-plan` or `fix-issue-plan`)
 - `--research-skill` — the researcher skill name (e.g. `plan-task` or `researcher-issue`)
 
+`<skill-dir>` below refers to this skill's own base directory — the "Base directory
+for this skill" path shown when this skill was invoked. Resolve it to that literal
+path; it is not an environment variable.
+
 ## Role
 
 You are the orchestration loop for the dev-team pipeline. You drive the step machine
@@ -31,13 +35,13 @@ appropriate agent for each step.
 ### 1 — Compute context file and todo log paths
 
 ```bash
-"$SKILL_DIR/scripts/get-context-path.sh" "<work-item-id>"
+"<skill-dir>/scripts/get-context-path.sh" "<work-item-id>"
 ```
 
 Derive the todo log path from the context file's directory and create it:
 
 ```bash
-"$SKILL_DIR/scripts/get-todo-log-path.sh" "<context_file>" "<work-item-id>"
+"<skill-dir>/scripts/get-todo-log-path.sh" "<context_file>" "<work-item-id>"
 ```
 
 ### 2 — Start tailing the todo log
@@ -74,8 +78,8 @@ Repeat the following until `action == "done"` or a terminal condition is reached
 #### 3a — Run the step machine
 
 ```bash
-python -u $SKILL_DIR/scripts/dev_team.py <work-item-id> \
-  --workflow $SKILL_DIR/assets/<workflow>.md \
+python -u <skill-dir>/scripts/dev_team.py <work-item-id> \
+  --workflow <skill-dir>/assets/<workflow>.md \
   --research-skill <research-skill> \
   --context-file <context_file>
 ```

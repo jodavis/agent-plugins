@@ -18,10 +18,13 @@ The context file for a work item lives at:
 
 If the argument ends in `.md` or points to an existing file, it is already the `<context-file>` path. Derive the `<work-item-id>` from the filename stem (e.g. `PROJ-228.md` → `PROJ-228`).
 
-Otherwise, treat the argument as a `<work-item-id>` and compute the context file path:
+Otherwise, treat the argument as a `<work-item-id>` and compute the context file path.
+`<skill-dir>` below refers to this skill's own base directory — the "Base directory for
+this skill" path shown when this skill was invoked. Resolve it to that literal path; it
+is not an environment variable.
 
 ```bash
-python "$SKILL_DIR/scripts/compute-context-file.py" "<work-item-id>"
+python "<skill-dir>/scripts/compute-context-file.py" "<work-item-id>"
 ```
 
 If the script exits non-zero, stop and report the error.
@@ -29,7 +32,7 @@ If the script exits non-zero, stop and report the error.
 Ensure the file exists (creates it with default frontmatter if missing):
 
 ```bash
-python "$SKILL_DIR/scripts/init-context-file.py" "<work-item-id>" "<context-file>"
+python "<skill-dir>/scripts/init-context-file.py" "<work-item-id>" "<context-file>"
 ```
 
 If the script exits non-zero, stop and report the error.

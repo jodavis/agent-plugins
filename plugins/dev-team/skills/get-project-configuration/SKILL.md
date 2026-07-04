@@ -13,8 +13,12 @@ Use this skill when:
 
 ## Getting the merged configuration
 
+`<skill-dir>` refers to this skill's own base directory — the "Base directory for this
+skill" path shown when this skill was invoked. Resolve it to that literal path; it is
+not an environment variable.
+
 ```bash
-python "$SKILL_DIR/scripts/merge_config.py"
+python "<skill-dir>/scripts/merge_config.py"
 ```
 
 Prints the merged configuration as JSON to stdout and exits 0. On failure (malformed YAML,
