@@ -9,4 +9,5 @@ tools:
   - Bash
   - Read
   - Edit
+  - Skill
 ---
