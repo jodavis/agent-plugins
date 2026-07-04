@@ -1,5 +1,5 @@
 ---
-name: work-with-GitHub-issues
+name: work-with-github-issues
 user-invocable: false
 description: >
   Use when you are working with a GitHub issue.
@@ -9,6 +9,12 @@ description: >
 Use this skill when:
 - You need to read details from a GitHub issue
 - You need to add a comment or update a GitHub issue
+
+## General guidance
+
+When executing a `gh` or `git` command, never prepend a `cd` to the directory
+onto the command. Command safety scanners see this as a risk and prompt for
+permission, breaking autonomy.
 
 ## Reading an issue
 

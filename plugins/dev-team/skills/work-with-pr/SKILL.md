@@ -13,6 +13,12 @@ Use this skill when:
 - You need to post a review or inline comments
 - You need to resolve review threads
 
+## General guidance
+
+When executing a `gh` or `git` command, never prepend a `cd` to the directory
+onto the command. Command safety scanners see this as a risk and prompt for
+permission, breaking autonomy.
+
 ## Extracting PR details from a URL
 
 Given a PR URL of the form `https://github.com/<owner>/<repo>/pull/<number>`:
@@ -76,7 +82,7 @@ When a review is approved and it is time to hand off to a human reviewer:
    ```
    mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullNumber=<number>, draft=false)
    ```
-2. Look up the human reviewer's GitHub account via `mcp__jira__lookupJiraAccountId` with `$REVIEW_ASSIGNEE_EMAIL`.
+2. Look up the human reviewer's GitHub account via the `lookupJiraAccountId` operation from `work-with-Jira-tasks` with `$REVIEW_ASSIGNEE_EMAIL`.
 3. Request their review:
    ```
    mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullNumber=<number>, reviewers=["<github-username>"])
