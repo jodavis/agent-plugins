@@ -25,11 +25,11 @@ mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullN
 
 ### 2 — Look up the human reviewer
 
-Call `mcp__jira__lookupJiraAccountId` with `$REVIEW_ASSIGNEE_EMAIL` to get the human reviewer's Jira account ID and GitHub username.
+Use the `lookupJiraAccountId` operation from `work-with-Jira-tasks` with `$REVIEW_ASSIGNEE_EMAIL` to get the human reviewer's Jira account ID and GitHub username.
 
 ### 3 — Assign the Jira issue
 
-Call `mcp__jira__editJiraIssue` to assign the Jira issue to the reviewer's account ID.
+Use the `editJiraIssue` operation from `work-with-Jira-tasks` to assign the Jira issue to the reviewer's account ID.
 
 ### 4 — Request a GitHub review
 
@@ -39,7 +39,7 @@ mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullN
 
 ### 5 — Add a Jira comment
 
-Call `mcp__jira__addCommentToJiraIssue` with the message:
+Use the `addCommentToJiraIssue` operation from `work-with-Jira-tasks` with the message:
 
 > PR ready for human review — reviewer requested on GitHub.
 
