@@ -37,18 +37,21 @@ From the perspective of an implementer with only the spec and the codebase — n
 - Can unit tests and Gherkin scenarios be written without guessing expected behavior?
 - Are there missing decisions, ambiguous behavior, unspecified error cases, or unclear interfaces?
 
-**Component Breakdown check** — run this whenever the spec's own prose (Overview,
-Responsibilities & Boundaries, Key Design Decisions) describes any logic that would need
-Wrapper/Testable/Orchestrator classification, regardless of whether a `## Component
-Breakdown` section exists. A documentation-only or pure-process spec whose prose describes no
-such logic is exempt — do not flag it for lacking the section.
+### 6 — Component Breakdown check
 
-When the gate above applies, check the spec's `## Component Breakdown` table for exactly
-these three gap types. If the table is missing entirely, only check 1 is mechanically
-evaluable — it iterates over the spec's prose-described components independently of the
-table, so it fails (raises one blocking question) for every one of them. Checks 2 and 3 each
-iterate over rows already in the table; with no table, there are no rows to iterate over, so
-they find no gaps to raise — do not treat a missing table as also failing checks 2 or 3.
+Run this check whenever the spec's own prose (Overview, Responsibilities & Boundaries, Key
+Design Decisions) describes any logic that would need Wrapper/Testable/Orchestrator
+classification, regardless of whether a `## Component Breakdown` section exists. A
+documentation-only or pure-process spec whose prose describes no such logic is exempt — do
+not flag it for lacking the section. Do not run this check, and do not penalize the spec for
+a missing Component Breakdown section, when this gate doesn't apply.
+
+When the gate applies, check the spec's `## Component Breakdown` table for exactly these
+three gap types. If the table is missing entirely, only check 1 is mechanically evaluable —
+it iterates over the spec's prose-described components independently of the table, so it
+fails (raises one blocking question) for every one of them. Checks 2 and 3 each iterate over
+rows already in the table; with no table, there are no rows to iterate over, so they find no
+gaps to raise — do not treat a missing table as also failing checks 2 or 3.
 
 1. **Undocumented component** — for every component the spec's prose names, confirm it
    appears as a row in the table. Raise one blocking question per prose-described component
@@ -69,8 +72,7 @@ they find no gaps to raise — do not treat a missing table as also failing chec
    mechanism, a covering harness-building dependency, nor a `Responsibility` that itself
    describes building or providing a verification mechanism.
 
-Do not run these checks, and do not penalize the spec for a missing Component Breakdown
-section, when the gate above doesn't apply.
+### 7 — Return results
 
 **If no blocking gaps exist**, return exactly:
 
