@@ -44,8 +44,11 @@ Breakdown` section exists. A documentation-only or pure-process spec whose prose
 such logic is exempt — do not flag it for lacking the section.
 
 When the gate above applies, check the spec's `## Component Breakdown` table for exactly
-these three gap types (a spec with the gate active but no table at all fails every applicable
-check below):
+these three gap types. If the table is missing entirely, only check 1 is mechanically
+evaluable — it iterates over the spec's prose-described components independently of the
+table, so it fails (raises one blocking question) for every one of them. Checks 2 and 3 each
+iterate over rows already in the table; with no table, there are no rows to iterate over, so
+they find no gaps to raise — do not treat a missing table as also failing checks 2 or 3.
 
 1. **Undocumented component** — for every component the spec's prose names, confirm it
    appears as a row in the table. Raise one blocking question per prose-described component
