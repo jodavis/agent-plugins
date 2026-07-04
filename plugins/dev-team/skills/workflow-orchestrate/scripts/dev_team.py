@@ -835,6 +835,8 @@ class ReviewerSignOffStep(Step):
         self._context_path = context_path
 
     def get_actions(self) -> list[dict]:
+        if self._ctx.signoff_review:
+            return []
         return [{
             "action": "spawn_agent",
             "agent": "dev-team:reviewer",
@@ -867,6 +869,8 @@ class ResearcherSignOffStep(Step):
 
     def get_actions(self) -> list[dict]:
         ctx = self._ctx
+        if ctx.signoff_research:
+            return []
         read_sections = ["Researcher Brief", "Implementation Summary"]
         for i in range(1, len(ctx.work_summaries)):
             read_sections.append(f"Fix {i}")
@@ -903,6 +907,8 @@ class BuildValidationStep(Step):
 
     def get_actions(self) -> list[dict]:
         ctx = self._ctx
+        if ctx.signoff_build_result:
+            return []
         self._log_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         log_path = self._log_dir / f"{ctx.work_item_id}-signoff-{timestamp}.log"
