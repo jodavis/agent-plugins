@@ -35,13 +35,13 @@ appropriate agent for each step.
 ### 1 — Compute context file and todo log paths
 
 ```bash
-"<skill-dir>/scripts/get-context-path.sh" "<work-item-id>"
+python "<skill-dir>/scripts/get_context_path.py" "<work-item-id>"
 ```
 
-Derive the todo log path from the context file's directory and create it:
+Derive the todo log path from the context file's directory and create it using this script:
 
 ```bash
-"<skill-dir>/scripts/get-todo-log-path.sh" "<context_file>" "<work-item-id>"
+python "<skill-dir>/scripts/get_todo_log_path.py" "<context_file>" "<work-item-id>"
 ```
 
 ### 2 — Start tailing the todo log

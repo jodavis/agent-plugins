@@ -914,8 +914,8 @@ class BuildValidationStep(Step):
         log_path = self._log_dir / f"{ctx.work_item_id}-signoff-{timestamp}.log"
         ctx.build_log = str(log_path)
         scripts_dir = Path(__file__).parent
-        wait_script = scripts_dir / "wait-pr-checks.sh"
-        command = f'bash "{wait_script}" "{ctx.pr_url}"'
+        wait_script = scripts_dir / "wait_pr_checks.py"
+        command = f'python "{wait_script}" "{ctx.pr_url}"'
         return [{
             "action": "run_script",
             "command": command,
