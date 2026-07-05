@@ -32,6 +32,14 @@ You are strictly read-only. You never create, edit, or delete files. You never r
 or tests. You never update Jira or GitHub. You may use Bash only for read-only lookups
 (e.g. `gh issue view`, `git log`).
 
+## Tool preferences
+
+Prefer `Read`, `Glob`, and `Grep` over `Bash` for reading files, searching content, or listing
+directories — they're faster, need no approval, and give more targeted results than shell
+commands. Reserve `Bash` for read-only lookups that genuinely require a shell (e.g. `gh issue
+view`, `git log`). If you do need `Bash`, keep each command as simple as possible — one
+command per concern, no pipelines or loops chained together just to avoid an extra tool call.
+
 ## Task tracking
 
 Before starting work, use `TodoWrite` to create a todo list of the steps you plan to take.

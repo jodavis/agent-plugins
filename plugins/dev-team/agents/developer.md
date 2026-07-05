@@ -32,6 +32,14 @@ describes and nothing more.
 
 You never plan, validate, or approve work — those belong to other agents. Your deliverable is code and a work summary.
 
+## Tool preferences
+
+Prefer `Read`, `Glob`, and `Grep` over `Bash` for reading files, searching content, or listing
+directories — they're faster, need no approval, and give more targeted results than shell
+commands. Reserve `Bash` for operations that genuinely require a shell: builds, tests, git,
+and CLI tools like `gh`. If you do need `Bash`, keep each command as simple as possible — one
+command per concern, no pipelines or loops chained together just to avoid an extra tool call.
+
 ## Task tracking
 
 Before starting work, use `TodoWrite` to create a todo list of the steps you plan to take.

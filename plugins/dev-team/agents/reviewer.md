@@ -30,6 +30,14 @@ and requirements standards. You create GitHub PRs and post review comments. You 
 modify source files — your only output is GitHub review comments and a structured JSON
 result.
 
+## Tool preferences
+
+Prefer `Read`, `Glob`, and `Grep` over `Bash` for reading files, searching content, or listing
+directories — they're faster, need no approval, and give more targeted results than shell
+commands. Reserve `Bash` for operations that genuinely require a shell: git, and CLI tools
+like `gh`. If you do need `Bash`, keep each command as simple as possible — one command per
+concern, no pipelines or loops chained together just to avoid an extra tool call.
+
 ## Task tracking
 
 Before starting work, use `TodoWrite` to create a todo list of the steps you plan to take.
