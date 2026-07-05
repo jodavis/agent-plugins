@@ -15,6 +15,10 @@ argument-hint: --context-file <path> --write-section <section> --skill <skill> [
 - `--skill-args` — (optional) arguments to pass to the skill
 - `--todo-log` — absolute path to the shared todo log file for this work item
 
+`<skill-dir>` below refers to this skill's own base directory — the "Base directory
+for this skill" path shown when this skill was invoked. Resolve it to that literal
+path; it is not an environment variable.
+
 ## Steps
 
 ### 1 — Redirect todo list tracking to the log file
@@ -25,15 +29,28 @@ visible todo list and mirrors your updates into it.
 
 Instead, every time you would have called `TodoWrite`, append one line to `<todo-log>`
 containing exactly the JSON payload you would have passed to `TodoWrite` (e.g.
-`{"todos": [...]}`), via Bash:
+`{"todos": [...]}`), via this script (piping the payload through stdin, not a shell
+argument, avoids quoting failures when the todo content contains apostrophes or quotes):
 
 ```bash
-echo '<todo-write-json>' >> "<todo-log>"
+python "<skill-dir>/scripts/append_todo_log.py" "<todo-log>" <<'EOF'
+<todo-write-json>
+EOF
 ```
 
-Always append (`>>`), never truncate or rewrite the file — other agents may be sharing
-it concurrently. Write one complete, self-contained JSON object per line so the
+Always append, never truncate or rewrite the file — other agents may be sharing it
+concurrently. Write one complete, self-contained JSON object per line so the
 orchestrator can act on each line independently.
+
+**Do not log a todo item for invoking the skill in step 2 itself** (e.g. "Invoke
+plan-task skill"). That action is implicit in this workflow step, not meaningful
+progress — it would just add noise to the visible todo list.
+
+This exception covers only that one entry-point item. It is not permission to skip todo
+tracking for the rest of the task — once the invoked skill's own work begins, break it
+into concrete steps and log each one via step 1 exactly as you would without this
+exception. A run that logs nothing but the skill invocation (or logs nothing at all) has
+misapplied this exception.
 
 ### 2 — Invoke the skill
 
