@@ -51,9 +51,11 @@ Once all components are implemented, run the full E2E scenario suite and confirm
 
 ## Practice rules
 
-These rules apply to every test written under this skill. They are process/behavioral
-conventions, not tied to any particular language or stack — only the naming rule's syntax
-defers to the target project.
+These rules apply to the unit tests written in step 2 (`a. Write unit tests`). They are
+process/behavioral conventions, not tied to any particular language or stack — only the
+naming rule's syntax defers to the target project. They do not apply to the Gherkin E2E/API
+scenarios written in step 1 — those follow `write-e2e-test`'s own scenario format and step
+structure instead.
 
 ### AAA structure
 
