@@ -52,6 +52,10 @@ fine. Rerun to confirm it now completes cleanly, then reply `structural-green: <
 Do not add any assertion-satisfying logic yet; that only happens once `tdd-tester` adds the
 real `Assert` and reports ordinary `red`.
 
+Escalation is possible here too, not just on behavioral turns: if the structural break itself
+is ambiguous, contradictory, or needs something outside this component's boundary, go through
+the same Tier 1 retry and `escalate` reply described below instead of forcing a `structural-green`.
+
 ## Behavioral turns
 
 When `tdd-tester` reports `red: <TestName> — <reason>`, make `<TestName>` pass with the

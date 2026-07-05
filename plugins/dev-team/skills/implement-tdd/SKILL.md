@@ -77,9 +77,13 @@ behaviors after the component's first should skip the structural turn.
    <Component> — no Assert yet."`
 2. `tdd-tester` replies one of:
    - `structural-red: <TestName> — <reason>` — send `tdd-implementer`: `"resolve the build
-     break for <TestName> with the smallest possible stub."` `tdd-implementer` replies
-     `structural-green: <TestName>`. Proceed to the behavioral turn (step 5) for the same
-     `<TestName>`.
+     break for <TestName> with the smallest possible stub."` `tdd-implementer` replies one of:
+     - `structural-green: <TestName>` — proceed to the behavioral turn (step 5) for the same
+       `<TestName>`.
+     - `escalate: <reason> — recommended_action: clarify|resolve_directly|split_scope` — go to
+       step 7. This escalation originated from the structural turn, so no `Assert` exists yet;
+       step 7's `clarify` handling re-sends this step's structural stub-resolution message, not
+       step 6's behavioral message.
    - `red: <TestName> — <reason>` — `tdd-tester` found Arrange/Act already clean and added the
      `Assert` in the same turn per its own rubric. Skip straight to step 6 (the implementer's
      behavioral turn) for this `<TestName>`.
@@ -98,6 +102,11 @@ selection rubric, or reply 'done' if coverage is complete. Dependencies' interfa
 
 `tdd-tester` replies one of:
 - `red: <TestName> — <reason>` — continue to step 6.
+- `structural-red: <TestName> — <reason>` — step 3's decision to skip the structural turn was a
+  guess, not a guarantee: `tdd-tester`'s Arrange/Act check is unconditional and caught that this
+  behavior wasn't actually known-clean (or `tdd-tester` chose a genuinely new behavior instead
+  of the one you expected). Route back to step 4's `structural-red` handling for this
+  `<TestName>`, then return here once `tdd-implementer` replies `structural-green`.
 - `done: <coverage summary>` — the component is fully covered. Skip to step 9 (commit); there
   is no post-`done` refactor pass in this skill (see Scope note below).
 
@@ -122,8 +131,11 @@ After every reply, check `git diff --name-only` as in step 4.
 ### 7 — Tier 2 escalation (you resolve)
 
 - **`clarify`** — answer directly from the spec/task-brief context you already hold. Send the
-  answer to `tdd-implementer` as its next turn message; it retries the behavioral turn (step 6)
-  with that answer in hand.
+  answer to `tdd-implementer` as its next turn message; it retries whichever turn raised the
+  escalation with that answer in hand — the behavioral turn (step 6) if the escalation came
+  from there, or step 4's structural stub-resolution message if it came from a structural turn
+  (no `Assert` exists yet in that case, so there is nothing for step 6's message to "make
+  pass").
 - **`resolve_directly`** — follow the `implement-direct` skill to implement the disputed piece
   yourself. Run the disputed test yourself to confirm it now passes before handing control
   back. The test is retained toward `tdd-tester`'s coverage exactly as if `tdd-implementer` had
