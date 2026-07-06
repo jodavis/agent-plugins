@@ -303,7 +303,10 @@ _Decision:_ Three narrowly constrained roles participate per Testable component:
   work" — never a generalized solution that happens to also cover untested cases. Never
   touches test files.
 - **`tdd-refactorer`** — only ever makes behavior-preserving changes, to either test or
-  production code. Runs after a component reaches `done`, not during red/green turns.
+  production code. Runs after every real green during the loop — the "refactor" third of a
+  genuine red-green-refactor cycle, not a single pass deferred to the end — never after a
+  `structural-green` (no real behavior exists yet to clean up) and never against a component
+  with a failing test.
 
 Each role's file-scope constraint is mechanically checkable: a `tdd-tester` diff that touches
 a production file, or a `tdd-implementer` diff that touches a test file, is a protocol
@@ -339,8 +342,8 @@ component aren't reused.
    - Otherwise, if the scenario's Arrange/Act genuinely doesn't differ from an existing
      (non-parameterized) frozen method, append a new `Assert` to that method.
    - Otherwise, write a new test method. Near-duplicate methods that differ only by literal
-     input/expected-output data are fine to leave as-is for now — `tdd-refactorer`
-     consolidates those into a parameterized test during its post-`done` pass (see below);
+     input/expected-output data are fine to leave as-is for now — `tdd-refactorer` consolidates
+     those into a parameterized test the next time it gets a refactor turn (see below);
      `tdd-tester` doesn't need to spot or convert them itself mid-loop.
 3. Happy path before edge cases: cover the nominal/typical case first, then expand into
    boundary, invalid-input, and error-handling cases. (Deliberately the opposite of
@@ -382,12 +385,16 @@ whether that confirmation happened in this same turn, or a prior structural-gree
    follows the existing `~/.dev-team/<repo-slug>/logs/` convention (per
    `_spec_AgentOrchestration.md`), named `<task-work-item-id>-tdd-<Component>.log`, appended
    to across every turn for that component.
-2. If `done`, the loop ends for this component and it moves to the refactor check below.
+2. If `done`, the loop ends for this component and it moves to Commits below.
 3. Developer sends `tdd-implementer` a turn: make `<TestName>` pass — the dumbest change that
    satisfies only that assertion. Run the targeted test plus the rest of the component's
    suite to confirm no regression, and reply `green: <TestName>` or
    `escalate: <reason> — recommended_action: clarify|resolve_directly|split_scope`.
-4. Repeat from step 1.
+4. If `green`, Developer gives `tdd-refactorer` one turn before continuing (see "Refactor,
+   interleaved after every green" below) — it doesn't have to make a change every turn, but it
+   gets the opportunity after every real green to steer the component toward well-designed
+   code as it's being built, rather than deferring all cleanup to a single pass at the end.
+5. Repeat from step 1.
 
 **Escalation.** Autonomy is the goal — this pipeline has no mid-run human in the loop — so a
 blocker resolves through increasingly decisive tiers rather than pausing:
@@ -404,7 +411,9 @@ blocker resolves through increasingly decisive tiers rather than pausing:
     it runs the disputed test itself to confirm it now passes before handing control back.
     That behavior counts toward `tdd-tester`'s coverage exactly as if `tdd-implementer` had
     turned it green normally — the disputed test isn't discarded or rewritten, just made to
-    pass by a different hand. Control then returns to the pair for the next behavior.
+    pass by a different hand. This counts as a real green for refactor-turn purposes too:
+    `tdd-refactorer` gets its usual turn (see "Refactor, interleaved after every green" below)
+    before control returns to the pair for the next behavior.
   - `split_scope` — the behavior needs something outside this component's declared boundary
     (an unbuilt dependency, or a Component Breakdown gap). Developer reorders the remaining
     components or adjusts scope accordingly.
@@ -415,11 +424,17 @@ blocker resolves through increasingly decisive tiers rather than pausing:
   after the fact. Developer only returns an outright task failure when continuing would mean
   knowingly producing wrong code — feeding the pipeline's existing fixing/retry path.
 
-**Refactor, after `done`.** Before moving to the next component, Developer gives
-`tdd-refactorer` one turn to review the finished component for duplication, brittle test
-setup, or a leftover naive/fake implementation (e.g. a happy-path shortcut from an early
-`tdd-implementer` turn that a later edge case should have generalized but didn't quite).
-Ground rules, adapted from the same reference reviewed for this design:
+**Refactor, interleaved after every green.** This is the "refactor" third of a genuine
+red-green-refactor cycle: after every real green (an ordinary `tdd-implementer` `green` reply,
+or a Tier 2 `resolve_directly` resolution) — never after a `structural-green`, since no real
+behavior exists yet to clean up — Developer gives `tdd-refactorer` one turn to review the
+component-so-far for duplication, brittle test setup, or a leftover naive/fake implementation
+(e.g. a happy-path shortcut from an early `tdd-implementer` turn that a later edge case should
+have generalized but didn't quite). `tdd-refactorer` doesn't have to make a change on every
+turn — most turns may legitimately end in `no-refactor-needed` — but it gets the opportunity
+after every green to steer the component toward well-designed code as it's being built, rather
+than deferring all cleanup to a single pass at the end. Ground rules, adapted from the same
+reference reviewed for this design:
 - Read the surrounding block/function/module before changing anything.
 - Preserve local naming and pattern consistency unless a new pattern is clearly better.
 - Don't introduce an abstraction that conflicts with neighboring structure.
@@ -429,20 +444,23 @@ Ground rules, adapted from the same reference reviewed for this design:
   input/expected-output literals — into a single parameterized/data-driven test. This is the
   canonical example of a behavior-preserving refactor, and the main mechanism for cleaning up
   the near-duplicate methods `tdd-tester` was deliberately allowed to leave behind mid-loop.
-- No behavior changes, ever — a behavior gap found here is a new red for `tdd-tester` to
-  pick up, not something `tdd-refactorer` fixes itself.
+- No behavior changes, ever — a behavior gap found here is a new red for `tdd-tester` to pick
+  up on its next turn for this same component, not something `tdd-refactorer` fixes itself.
 
 `tdd-refactorer` reruns the full component suite after any change to confirm nothing moved,
-and replies `refactored: <summary>` or `no-refactor-needed`. It never runs against a
-component with a failing test — only one that just reached `done`.
+and replies `refactored: <summary>` or `no-refactor-needed`. It never runs against a component
+with a failing test — only after a real green.
 
 **Commits.** Developer commits each component individually, via the existing
 `commit-changes` conventions, once its base implementation is done — Wrapper and
-Orchestrator components included, not only Testable ones. If `tdd-refactorer` makes changes,
-that's a second, separate commit for the same component. This gives a real rollback
-checkpoint and a readable audit trail per component; whether the final PR/merge history stays
-that granular or gets squashed is governed entirely by whatever convention the target repo
-already uses for that, unaffected by this feature.
+Orchestrator components included, not only Testable ones. Since `tdd-refactorer`'s turns are
+now interleaved throughout the loop and staged the same way every other turn is (never
+committed mid-loop — see "Staging between turns" in `implement-tdd`), there is a single real
+commit per Testable component, made once `tdd-tester` reports `done`; it picks up every
+tester/implementer turn plus every interleaved refactor turn staged along the way. This gives
+a real rollback checkpoint and a readable audit trail per component; whether the final
+PR/merge history stays that granular or gets squashed is governed entirely by whatever
+convention the target repo already uses for that, unaffected by this feature.
 
 Every sub-agent reply is exactly one line — no diffs, no explanations. Developer never reads
 the full test or implementation code mid-loop; it reasons only about the one-line status
@@ -584,9 +602,12 @@ re-summarize context already given on the first turn.
   the way `code-change-expectations`' generic "missing test coverage" check would otherwise
   read it.
 - `plugins/dev-team/skills/implement-tdd/SKILL.md` (new) — drives the full ping-pong +
-  refactor choreography for one Testable component: spawns `tdd-tester`/`tdd-implementer`,
-  runs the structural-then-behavioral red/green loop to `done`, `commit-changes`, then spawns
-  `tdd-refactorer` and `commit-changes` again if it made changes
+  refactor choreography for one Testable component: spawns `tdd-tester`/`tdd-implementer`/
+  `tdd-refactorer` together up front, runs the structural-then-behavioral red/green loop,
+  giving `tdd-refactorer` one turn after every real green (never after `structural-green`),
+  until `tdd-tester` reports `done`, then a single `commit-changes` picking up everything
+  staged along the way (test turns, implementation turns, and every interleaved refactor
+  turn)
 - [`plugins/dev-team/agents/developer.md`](plugins/dev-team/agents/developer.md) — role
   section updated: orchestrates the tdd-tester/tdd-implementer/tdd-refactorer trio for Testable components; implements
   Wrapper/Orchestrator components directly; unaffected in every other respect (still owns
@@ -605,20 +626,34 @@ re-summarize context already given on the first turn.
   section updated: aware of component tiers and dependencies when producing task briefs (via
   `plan-task` / `write-task-brief`). Same incidental cleanup: fix stale skill-name references
   (e.g. `researcher-plan` → `plan-task`).
-- `plugins/dev-team/agents/tdd-tester.md` (new) — tools: `Read`, `Glob`, `Grep`, `Edit`,
-  `Write`, `Bash`. Constraint-first definition: only ever edits test files, never production
-  files; adds exactly one new behavior per turn (one Assert, new method only when Arrange/Act
-  genuinely differs); never spawns further sub-agents. Judges coverage completeness against
-  `code-change-expectations`' checklist.
-- `plugins/dev-team/agents/tdd-implementer.md` (new) — tools: `Read`, `Glob`, `Grep`, `Edit`,
-  `Write`, `Bash`. Constraint-first definition: only ever edits production files, never test
-  files; makes the smallest change — the "dumbest thing that could possibly work" — that
-  satisfies the current turn's single assertion, never a generalized solution; never spawns
-  further sub-agents.
-- `plugins/dev-team/agents/tdd-refactorer.md` (new) — tools: `Read`, `Glob`, `Grep`, `Edit`,
-  `Write`, `Bash`. Constraint-first definition: only ever makes behavior-preserving changes
-  to test or production files, only after a component reaches `done`; any behavior gap it
-  notices is reported back as a new red for `tdd-tester`, never fixed in place.
+- `plugins/dev-team/agents/tdd-tester.md` / `plugins/dev-team/agents/tdd-implementer.md` /
+  `plugins/dev-team/agents/tdd-refactorer.md` (new) — each is a thin, constraint-first agent
+  file (Role / file-scope-or-behavior constraint / Ground or Practice rules / Skills), not a
+  monolith with the ping-pong protocol's turn mechanics embedded directly in it. Each invokes
+  its own turn-mechanics skill every turn to decide what to do, so Developer's messages to it
+  stay generic and it never needs to be told whether the incoming turn is structural,
+  behavioral, or (for `tdd-refactorer`) whether there's anything to clean up:
+  - `tdd-tester.md` — tools: `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash`, `Skill`.
+    Constraint-first definition: only ever edits test files, never production files; adds
+    exactly one new behavior per turn (one Assert, new method only when Arrange/Act genuinely
+    differs); never spawns further sub-agents. Judges coverage completeness against
+    `code-change-expectations`' checklist. Invokes `plugins/dev-team/skills/tdd-red-turn/SKILL.md`
+    (new) every turn for the behavior-selection rubric, the structural-vs-behavioral decision,
+    and the exact one-line reply format.
+  - `tdd-implementer.md` — tools: `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash`, `Skill`.
+    Constraint-first definition: only ever edits production files, never test files; makes the
+    smallest change — the "dumbest thing that could possibly work" — that satisfies the
+    current turn's single assertion, never a generalized solution; never spawns further
+    sub-agents. Invokes `plugins/dev-team/skills/tdd-green-turn/SKILL.md` (new) every turn for
+    resolving a structural vs. behavioral turn, the Tier 1/2 escalation tiers, and the exact
+    one-line reply format.
+  - `tdd-refactorer.md` — tools: `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash`, `Skill`.
+    Constraint-first definition: only ever makes behavior-preserving changes to test or
+    production files, after every real green (never after `structural-green`, never against a
+    failing component); any behavior gap it notices is reported back as a new red for
+    `tdd-tester`, never fixed in place. No escalation tiers, unlike the other two. Invokes
+    `plugins/dev-team/skills/tdd-refactor-turn/SKILL.md` (new) every turn for the
+    review-and-cleanup mechanics and the exact one-line reply format.
 - [`plugins/dev-team/.claude-plugin/plugin.json`](plugins/dev-team/.claude-plugin/plugin.json)
   — version bump, per existing convention for skill/agent changes
 
@@ -644,10 +679,10 @@ implement-task (Developer agent, dispatcher)
   │        Developer implements directly (no test for Wrapper, one
   │        integration test for Orchestrator), commit-changes
   │      Testable → implement-tdd:
-  │        Developer spawns tdd-tester + tdd-implementer, drives
-  │        structural-then-behavioral red/green ping-pong until
-  │        tdd-tester reports "done", commit-changes, then
-  │        tdd-refactorer reviews and (optionally) commit-changes again
+  │        Developer spawns tdd-tester + tdd-implementer + tdd-refactorer
+  │        together, drives structural-then-behavioral red/green ping-pong,
+  │        giving tdd-refactorer one turn after every real green, until
+  │        tdd-tester reports "done", then a single commit-changes
   │
   ▼
 E2E scenarios re-run (existing test-driven-development step 3, unchanged)
@@ -786,16 +821,17 @@ informational note.
 - [ ] Dry run: forcing a Tier 2 `resolve_directly` escalation confirms the disputed test ends up
       passing and is retained (not discarded) toward `tdd-tester`'s coverage count
 
-### [ADR-302](https://jodasoft.atlassian.net/browse/ADR-302) — `tdd-refactorer` agent and the post-`done` refactor pass
+### [ADR-302](https://jodasoft.atlassian.net/browse/ADR-302) — `tdd-refactorer` agent and the interleaved red-green-refactor pass
 
-Add the `tdd-refactorer` agent and wire the post-`done` refactor turn (including parameterized-
-test consolidation) into `implement-tdd`. Depends on
-[ADR-301](https://jodasoft.atlassian.net/browse/ADR-301).
+Add the `tdd-refactorer` agent and wire the refactor turn (including parameterized-test
+consolidation) into `implement-tdd`, interleaved after every real green rather than as a single
+pass at the end. Depends on [ADR-301](https://jodasoft.atlassian.net/browse/ADR-301).
 
 - [ ] `agents/tdd-refactorer.md` exists, scoped to behavior-preserving changes only, same tool
       set as the other two tdd-agents
-- [ ] `implement-tdd/SKILL.md` invokes `tdd-refactorer` for one turn after a component reaches
-      `done`, and reruns the full component suite afterward to confirm no behavior changed
+- [ ] `implement-tdd/SKILL.md` invokes `tdd-refactorer` for one turn after every real green in
+      the component's loop (never after `structural-green`), and reruns the full component
+      suite after each turn to confirm no behavior changed
 - [ ] Dry run: running the refactor pass against a synthetic component left with two
       near-identical test methods (differing only by input/expected-output literals) produces a
       single consolidated parameterized test, with the full suite still green afterward
