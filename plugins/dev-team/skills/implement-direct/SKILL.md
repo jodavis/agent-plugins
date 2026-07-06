@@ -16,8 +16,6 @@ Use this skill when:
 
 Do NOT use this skill when:
 - The component is `Testable` — use `implement-tdd` instead
-- The task brief has no Components in scope section at all — fall back to
-  `test-driven-development`'s single-agent flow
 
 ## Two callers, same implementation steps, different final step
 
@@ -45,18 +43,21 @@ file's Component Breakdown table for the same row.
   dependencies (the Wrapper/Testable components it depends on). Then write one narrow
   integration test covering only the primary/happy-path wiring scenario end-to-end, in the same
   test project/framework already established in the repo — use the `missing-test-harness` skill
-  to confirm which harness applies, and follow `test-driven-development`'s AAA structure and
-  naming convention practice rules by name for this test. This is deliberately narrower than the
+  to confirm which harness applies, and follow `tdd-practices`'s AAA structure and naming
+  convention practice rules by name for this test. This is deliberately narrower than the
   Testable tier's full coverage checklist (branches, error sources, boundary/invalid inputs,
   logging) — that rigor belongs to the Testable components the Orchestrator wires together, not
   the Orchestrator itself.
 
 ### 3 — Build and test, scoped to this component
 
-Same build/test command syntax already documented in `test-driven-development` /
-`code-change-expectations` for the target project. An incremental build (never a clean
-rebuild); a test run scoped to just this component (the new integration test for an
-Orchestrator, or a targeted manual/visual check for a Wrapper), never the full project suite.
+Same build/test command syntax already documented in `code-change-expectations` for the target
+project. An incremental build (never a clean rebuild); a test run scoped to just this component
+(the new integration test for an Orchestrator, or a targeted manual/visual check for a Wrapper),
+never the full project suite.
+
+Fix any build errors or test failures before proceeding to step 4 — never commit or stage a
+component that doesn't build cleanly or pass its own test(s).
 
 ### 4 — Commit or stage
 
@@ -82,7 +83,7 @@ intentional, tier-appropriate choice as a gap:
 
 - `missing-test-harness` — reuse the existing test project/framework for the Orchestrator's
   integration test; never invent a new harness
-- `test-driven-development` — AAA structure and naming convention practice rules, reused by
-  name for the Orchestrator's integration test
+- `tdd-practices` — AAA structure and naming convention practice rules, reused by name for the
+  Orchestrator's integration test
 - `code-change-expectations` — build/test command convention, scoped to this component
 - `commit-changes` — the standalone caller's single commit for this component
