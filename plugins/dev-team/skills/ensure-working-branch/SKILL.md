@@ -62,8 +62,8 @@ feature-work-item ID.
 #### 3b — Query the tracker if no parent feature-work-item ID found
 
 Skip if `parent_work_item` was already known from step 1. If no parent feature-work-item ID was
-found in step 3a and `work-item-type` is `jira`: call `mcp__jira__getJiraIssue` with the
-`work-item-id`. Look for a `parent` or `epic` field on the returned issue and extract its key
+found in step 3a and `work-item-type` is `jira`: use the `getJiraIssue` operation from
+`work-with-Jira-tasks` with the `work-item-id`. Look for a `parent` or `epic` field on the returned issue and extract its key
 (e.g. `ADR-200`). That key is the parent feature-work-item ID. If the issue has no parent, or the
 parent is not an issue key, continue with no parent feature-work-item ID.
 

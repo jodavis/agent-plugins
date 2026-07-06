@@ -9,22 +9,48 @@ description: >
 Use this skill when:
 - You need to read details from a Jira issue
 - You need to add a comment, update fields, or transition a Jira issue
+- Another skill tells you to use a Jira operation "from `work-with-Jira-tasks`"
 
-## Reading a Jira issue
+## Finding the right tool
 
-Call `mcp__jira__getJiraIssue` with the issue key (e.g. `PROJ-228`) to retrieve the issue fields, including summary, description, status, parent/epic, and assignee.
+The exact MCP tool name for each Jira operation depends on which Atlassian/Jira MCP server
+happens to be connected in the current environment — for example a server literally named
+`jira` exposes tools as `mcp__jira__<suffix>`, while the `claude.ai Atlassian Rovo` connector
+exposes the same operations as `mcp__claude_ai_Atlassian_Rovo__<suffix>`. Never hardcode a
+specific prefix. Instead, every time you need one of the operations below:
 
-## Common operations
+1. Call `ToolSearch` with the operation's suffix (from the table below) as the query, e.g.
+   `ToolSearch(query="editJiraIssue")`.
+2. Confirm the matched tool's full name contains `Jira` or `Atlassian` (case-insensitive)
+   before calling it — this guards against an unrelated tool that happens to share a suffix.
+3. Call the matched tool with the arguments described for that operation.
 
-| Operation | Tool |
-|---|---|
-| Read issue | `mcp__jira__getJiraIssue` |
-| Add a comment | `mcp__jira__addCommentToJiraIssue` |
-| Edit fields (assignee, description, etc.) | `mcp__jira__editJiraIssue` |
-| List available transitions | `mcp__jira__getTransitionsForJiraIssue` |
-| Transition to a new status | `mcp__jira__transitionJiraIssue` |
-| Look up a user account ID by email | `mcp__jira__lookupJiraAccountId` |
+If no tool matches, no Jira/Atlassian MCP server is connected in this environment — stop and
+report that rather than guessing a tool name.
+
+## Operations
+
+| Operation | Tool suffix | What it does |
+|---|---|---|
+| Read issue | `getJiraIssue` | Retrieve issue fields: summary, description, status, parent/epic, assignee |
+| Add a comment | `addCommentToJiraIssue` | Post a comment on the issue |
+| Edit fields | `editJiraIssue` | Update fields such as assignee or description |
+| List available transitions | `getTransitionsForJiraIssue` | List the statuses the issue can transition to |
+| Transition to a new status | `transitionJiraIssue` | Move the issue to a new status |
+| Look up account ID by email | `lookupJiraAccountId` | Resolve a user's Jira account ID (and linked GitHub username, if any) from their email |
+| Get authenticated user info | `atlassianUserInfo` | Return the identity of the currently authenticated Atlassian user |
+
+Other skills should reference these operations by name (e.g. "the `editJiraIssue` operation
+from `work-with-Jira-tasks`") rather than hardcoding a `mcp__<prefix>__<suffix>` tool name
+directly.
+
+### Reading a Jira issue
+
+Use the `getJiraIssue` operation with the issue key (e.g. `PROJ-228`) to retrieve the issue
+fields, including summary, description, status, parent/epic, and assignee.
 
 ## Finding the parent feature-work-item
 
-When you need the parent feature-work-item's key, call `mcp__jira__getJiraIssue` with the task key and look for a `parent` or `epic` field in the returned issue. Extract its key (e.g. `PROJ-200`). If the field is absent, the task has no parent feature-work-item.
+When you need the parent feature-work-item's key, use the `getJiraIssue` operation with the
+task key and look for a `parent` or `epic` field in the returned issue. Extract its key (e.g.
+`PROJ-200`). If the field is absent, the task has no parent feature-work-item.

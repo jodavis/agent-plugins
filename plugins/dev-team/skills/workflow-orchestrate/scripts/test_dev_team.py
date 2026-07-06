@@ -646,40 +646,16 @@ class TestGetFailingPrChecks:
 
 
 # ---------------------------------------------------------------------------
-# get-context-path.sh — slug extraction from various remote URL formats
+# get_context_path.py — slug extraction from various remote URL formats
 # ---------------------------------------------------------------------------
 
 import os
-import shutil
 
-GET_CONTEXT_PATH_SH = SCRIPTS_DIR / "get-context-path.sh"
-
-# On Windows the system `bash` resolves to the WSL relay stub, which cannot
-# execute POSIX scripts directly.  Prefer Git Bash if it is installed.
-_GIT_BASH_CANDIDATES = [
-    r"C:\Program Files\Git\usr\bin\bash.exe",
-    r"C:\Program Files\Git\bin\bash.exe",
-]
-
-def _find_bash() -> str | None:
-    """Return the path to a usable bash executable, or None."""
-    for candidate in _GIT_BASH_CANDIDATES:
-        if Path(candidate).is_file():
-            return candidate
-    found = shutil.which("bash")
-    # Reject the Windows System32 WSL relay stub
-    if found and "System32" not in found and "WindowsApps" not in found:
-        return found
-    return None
-
-_BASH = _find_bash()
-
-def _has_bash() -> bool:
-    return _BASH is not None
+GET_CONTEXT_PATH_PY = SCRIPTS_DIR / "get_context_path.py"
 
 
 def _make_env(tmp_path: Path, extra: dict | None = None) -> dict:
-    """Build an env for running get-context-path.sh under test."""
+    """Build an env for running get_context_path.py under test."""
     env = {**os.environ, "DEV_TEAM_STATE_DIR": str(tmp_path)}
     if extra:
         env.update(extra)
@@ -690,7 +666,7 @@ def _run_slug_extraction(remote_url: str, tmp_path: Path) -> subprocess.Complete
     """Run the script with the remote URL injected via GIT_REMOTE_URL_OVERRIDE."""
     env = _make_env(tmp_path, {"GIT_REMOTE_URL_OVERRIDE": remote_url})
     return subprocess.run(
-        [_BASH, str(GET_CONTEXT_PATH_SH), "ADR-123"],
+        [sys.executable, str(GET_CONTEXT_PATH_PY), "ADR-123"],
         capture_output=True,
         text=True,
         timeout=15,
@@ -698,7 +674,6 @@ def _run_slug_extraction(remote_url: str, tmp_path: Path) -> subprocess.Complete
     )
 
 
-@pytest.mark.skipif(not _has_bash(), reason="bash not available")
 @pytest.mark.parametrize("remote_url,expected_slug", [
     ("https://github.com/org/repo.git",  "org/repo"),
     ("https://github.com/org/repo",       "org/repo"),
@@ -706,14 +681,14 @@ def _run_slug_extraction(remote_url: str, tmp_path: Path) -> subprocess.Complete
     ("git@github.com:org/repo",           "org/repo"),
     ("https://github.com/acme-corp/cool-service.git", "acme-corp/cool-service"),
 ])
-class TestGetContextPathShSlugExtraction:
+class TestGetContextPathPySlugExtraction:
     def test_slug_in_output_path(self, tmp_path, remote_url, expected_slug):
         result = _run_slug_extraction(remote_url, tmp_path)
         assert result.returncode == 0, f"stderr: {result.stderr}"
         # The output path must contain the expected slug as path components
         output = result.stdout.strip()
         # Normalise path separators for comparison
-        slug_as_path = expected_slug.replace("/", __import__("os").sep)
+        slug_as_path = expected_slug.replace("/", os.sep)
         assert slug_as_path in output or expected_slug in output, (
             f"Expected slug {expected_slug!r} in output path {output!r}"
         )
@@ -727,8 +702,7 @@ class TestGetContextPathShSlugExtraction:
         assert result.stderr == ""
 
 
-@pytest.mark.skipif(not _has_bash(), reason="bash not available")
-class TestGetContextPathShErrorHandling:
+class TestGetContextPathPyErrorHandling:
     def test_exits_nonzero_when_git_fails(self, tmp_path):
         """Script should exit 1 and print to stderr when git fails.
 
@@ -737,12 +711,11 @@ class TestGetContextPathShErrorHandling:
         """
         empty_git_dir = tmp_path / "empty_repo"
         empty_git_dir.mkdir()
-        # Initialise a bare repo with no remotes
-        subprocess.run([_BASH, "-c", f"git init {str(empty_git_dir)!r}"],
+        subprocess.run(["git", "init", str(empty_git_dir)],
                        capture_output=True, timeout=15)
         env = _make_env(tmp_path)
         result = subprocess.run(
-            [_BASH, str(GET_CONTEXT_PATH_SH), "ADR-1"],
+            [sys.executable, str(GET_CONTEXT_PATH_PY), "ADR-1"],
             capture_output=True, text=True, timeout=15, env=env,
             cwd=str(empty_git_dir),
         )
@@ -753,7 +726,7 @@ class TestGetContextPathShErrorHandling:
         """Script should exit 1 with a usage message when called with no args."""
         env = _make_env(tmp_path)
         result = subprocess.run(
-            [_BASH, str(GET_CONTEXT_PATH_SH)],
+            [sys.executable, str(GET_CONTEXT_PATH_PY)],
             capture_output=True, text=True, timeout=15, env=env,
         )
         assert result.returncode != 0
