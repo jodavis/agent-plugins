@@ -4,7 +4,8 @@ user-invocable: false
 description: >
   Use when implementing one Testable component from a task brief's Components in scope list.
   Drives the tdd-tester / tdd-implementer pair through the structural-then-behavioral
-  red/green loop until the component is fully covered, then commits.
+  red/green loop until the component is fully covered, commits, then gives tdd-refactorer one
+  post-done cleanup turn and commits again if it made changes.
 argument-hint: <component-row> <task-brief-path> <spec-path>
 ---
 
@@ -120,12 +121,26 @@ you can't cleanly recover.
 
 Once `tdd-tester` reports `done`, use `commit-changes` with message format
 `<work-item-id>: <short description>` (no push). This is the only real commit for the
-component — everything up to this point was staged, never committed, so no commit ever
-captures a broken (red, or half-resolved structural) intermediate state.
+component's base implementation — everything up to this point was staged, never committed, so
+no commit ever captures a broken (red, or half-resolved structural) intermediate state.
 
-**Scope note:** the post-`done` `tdd-refactorer` review and its separate commit are not part of
-this skill — that's wired in by a later change to this loop. This skill's loop ends cleanly at
-"done → commit" by design.
+### 7 — Refactor pass
+
+Use `Agent` to spawn one `tdd-refactorer` sub-agent for this component. Send it this exact turn
+message: `"review <Component> for duplication, brittle setup, or naive implementations left
+over from green turns. No behavior changes."` `tdd-refactorer` invokes `tdd-refactor-turn`
+itself to decide what to do — it gets exactly one turn, never a retry loop.
+
+`tdd-refactorer` replies one of:
+- `refactored: <summary>` — it already reran the full component suite itself as part of its
+  turn and confirmed no behavior changed. Use `commit-changes` again with message format
+  `<work-item-id>: <short description>` (no push) — this is a second, separate commit for the
+  same component, never folded into step 6's commit.
+- `no-refactor-needed` — no files changed; nothing to commit. Move on to the next component.
+
+This is the only turn `tdd-refactorer` gets for this component — there is no escalation tier or
+retry here, unlike steps 2–4's ping-pong. Only proceed to this step once `tdd-tester` has
+reported `done`; never run a refactor pass against a component with a failing test.
 
 ## Staging between turns
 
@@ -154,8 +169,11 @@ the full project suite — that's reserved for the E2E re-run later in `test-dri
 - `test-driven-development` — practice rules the pair follows, and the E2E re-run step that
   still runs after all components (including this one) are implemented
 - `code-change-expectations` — coverage checklist `tdd-tester` (via `tdd-red-turn`) judges
-  `done` against
-- `commit-changes` — the single commit in step 6
+  `done` against, and that a `tdd-refactorer` consolidation must still satisfy
+- `commit-changes` — the commit in step 6, and the second, separate commit in step 7 when
+  `tdd-refactorer` makes changes
 - `implement-direct` — used for a `resolve_directly` Tier 2 escalation
 - `tdd-red-turn` / `tdd-green-turn` — the turn-mechanics skills `tdd-tester` and
   `tdd-implementer` invoke themselves each turn; Developer's messages to them stay generic
+- `tdd-refactor-turn` — the turn-mechanics skill `tdd-refactorer` invokes for its single
+  post-`done` turn
