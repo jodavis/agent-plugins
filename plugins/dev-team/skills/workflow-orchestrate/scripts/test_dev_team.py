@@ -960,7 +960,7 @@ class TestCreatePrStep:
         step = CreatePrStep(ctx, context_path)
         actions = step.get_actions()
         assert len(actions) == 1
-        assert actions[0]["skill"] == "developer-create-pr"
+        assert actions[0]["skill"] == "create-pr-from-context"
 
     def test_get_actions_returns_empty_when_pr_url_already_set(self, tmp_path):
         """Recovery re-entry: pr_url already in context — inline step."""

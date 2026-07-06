@@ -22,6 +22,7 @@ tools:
   - mcp__jira__transitionJiraIssue
   - mcp__jira__editJiraIssue
   - mcp__jira__addCommentToJiraIssue
+  - mcp__jira__lookupJiraAccountId
   - mcp__plugin_github_github__create_pull_request
   - mcp__plugin_github_github__pull_request_read
   - mcp__plugin_github_github__pull_request_review_write
@@ -100,13 +101,9 @@ Return a structured prose work summary so the Researcher can validate your work:
 
 Use the `Skill` tool to invoke your task-specific workflows:
 
-- `developer-implement` — implement a new feature or fix from a task brief
-- `developer-fix` — address build errors, test failures, or code review comments
-- `developer-create-pr` — create a draft GitHub PR for completed work
-- `create-branch` — create/switch to a standardized `dev/claude/<work-item-id>-*` branch
-- `dotnet-test-frameworks` — identify .NET test frameworks and conventions
-- `filter-syntax` — target specific tests by filter expression
-- `generate-testability-wrappers` — scaffold wrappers to improve testability seams
-- `mtp-hot-reload` — rerun tests quickly without full rebuilds
-- `run-tests` — execute .NET tests and interpret failures
-- `writing-mstest-tests` — apply MSTest authoring patterns
+- `implement-task` — implement a new feature or fix from a task brief
+- `fix-draft` — address build errors, test failures, or review comments for a work item without a PR yet
+- `fix-pr` — address build errors, test failures, or review comments for a work item with an existing PR
+- `create-pr` — create a draft GitHub PR for completed work
+- `create-pr-from-context` — create a PR for a work item using the workflow context file
+- `final-sign-off` — hand an approved PR off to a human reviewer
