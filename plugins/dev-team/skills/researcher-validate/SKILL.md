@@ -1,4 +1,5 @@
 ---
+name: researcher-validate
 description: Validate completed work against a task's exit criteria, returning a structured pass/fail result for each criterion
 argument-hint: <work-item-id | context-file>
 user-invocable: false

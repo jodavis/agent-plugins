@@ -42,3 +42,9 @@ mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullN
 Call `mcp__jira__addCommentToJiraIssue` with the message:
 
 > PR ready for human review — reviewer requested on GitHub.
+
+### 6 — Report completion
+
+Output a one-line confirmation as your final output, e.g.:
+
+> Handed off `<pr_url>` to `<github-username>` for human review; Jira issue assigned.

@@ -21,4 +21,4 @@ Then stop.
 ### 2 — Run the workflow
 
 Invoke the `workflow-orchestrate` skill with arguments:
-`--work-item-id <work-item-id> --workflow implement-task-plan --research-skill researcher-plan`
+`--work-item-id <work-item-id> --workflow implement-task-plan --research-skill plan-task`

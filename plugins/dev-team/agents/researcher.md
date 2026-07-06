@@ -82,6 +82,6 @@ as concrete questions the Developer or user can answer.
 
 Use the `Skill` tool to invoke your task-specific workflows:
 
-- `researcher-plan` — produce a task brief from a spec and task key
+- `plan-task` — produce a task brief from a spec and task key
 - `researcher-validate` — validate completed work against a plan's exit criteria
 - `researcher-spec-review` — review a spec for implementation readiness; surface blocking questions

@@ -204,6 +204,7 @@ class PipelineContext:
     signoff_research: str = ""
     signoff_build_result: str = ""
     validate_result: str = ""
+    handoff_result: str = ""
     # Counters tracked for troubleshooter trigger conditions
     signoff_cycle_count: int = 0
     consecutive_failures: int = 0
@@ -272,6 +273,9 @@ class PipelineContext:
         if self.validate_result:
             lines += ["", "<!-- section:Validate Result -->", "", self.validate_result.strip()]
 
+        if self.handoff_result:
+            lines += ["", "<!-- section:Handoff Result -->", "", self.handoff_result.strip()]
+
         log_links: list[str] = []
         if self.build_log:
             log_links.append(f"- Build: {self.build_log}")
@@ -330,6 +334,7 @@ class PipelineContext:
         ctx.signoff_research = sections.get("Signoff Research", "")
         ctx.signoff_build_result = sections.get("Signoff Build Result", "")
         ctx.validate_result = sections.get("Validate Result", "")
+        ctx.handoff_result = sections.get("Handoff Result", "")
 
         return ctx
 
@@ -544,7 +549,7 @@ class DebugStep(Step):
             "action": "spawn_agent",
             "message": f"Debugger is investigating {ctx.work_item_id}.",
             "agent": "dev-team:debugger",
-            "skill": "debugger-investigate",
+            "skill": "investigate-bug",
             "context_file": str(self._context_path),
             "args": ctx.work_item_id,
             "read_sections": [],
@@ -628,7 +633,7 @@ class ImplementStep(Step):
             "action": "spawn_agent",
             "message": "Researcher has written the task brief. Developer is now implementing.",
             "agent": "dev-team:developer",
-            "skill": "developer-implement",
+            "skill": "implement-task",
             "args": ctx.work_item_id,
             "context_file": str(self._context_path),
             "read_sections": ["Researcher Brief"],
@@ -721,7 +726,7 @@ class CreatePrStep(Step):
             "action": "spawn_agent",
             "message": "Implementation complete. Developer is creating a pull request.",
             "agent": "dev-team:developer",
-            "skill": "developer-create-pr",
+            "skill": "create-pr-from-context",
             "args": ctx.work_item_id,
             "context_file": str(self._context_path),
             "read_sections": read_sections,
@@ -770,7 +775,7 @@ class ReviewStep(Step):
             "action": "spawn_agent",
             "message": "Pull request created. Reviewer is reviewing the changes.",
             "agent": "dev-team:reviewer",
-            "skill": "reviewer-review",
+            "skill": "review",
             "context_file": str(self._context_path),
             "read_sections": ["Researcher Brief"],
             "write_section": "Review Notes",
@@ -823,7 +828,7 @@ class ParallelSteps(Step):
 
 
 class ReviewerSignOffStep(Step):
-    """Wraps the reviewer-sign-off spawn for use inside ParallelSteps."""
+    """Wraps the review-sign-off spawn for use inside ParallelSteps."""
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -833,7 +838,7 @@ class ReviewerSignOffStep(Step):
         return [{
             "action": "spawn_agent",
             "agent": "dev-team:reviewer",
-            "skill": "reviewer-sign-off",
+            "skill": "review-sign-off",
             "context_file": str(self._context_path),
             "read_sections": ["Researcher Brief"],
             "write_section": "Signoff Review",
@@ -1016,7 +1021,7 @@ class FixStep(Step):
                 f"(iteration {ctx.fix_iteration + 1} of {MAX_FIX_ITERATIONS})."
             ),
             "agent": "dev-team:developer",
-            "skill": "developer-fix",
+            "skill": "fix-draft",
             "args": ctx.work_item_id,
             "context_file": str(self._context_path),
             "read_sections": read_sections,
@@ -1079,7 +1084,7 @@ class FixPrStep(Step):
                 f"(iteration {ctx.review_fix_iteration + 1} of {MAX_REVIEW_FIX_ITERATIONS})."
             ),
             "agent": "dev-team:developer",
-            "skill": "developer-fix",
+            "skill": "fix-pr",
             "args": ctx.work_item_id,
             "context_file": str(self._context_path),
             "read_sections": read_sections,
@@ -1108,6 +1113,42 @@ class FixPrStep(Step):
             ctx.consecutive_failures, ctx, self._context_path,
         )
         return "fix_done"
+
+
+class HandoffStep(Step):
+    handles = "handoff"
+
+    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
+        self._ctx = ctx
+        self._context_path = context_path
+
+    def get_actions(self) -> list[dict]:
+        ctx = self._ctx
+        if ctx.handoff_result:
+            return []
+        return [{
+            "action": "spawn_agent",
+            "message": "PR approved. Developer is handing off to a human reviewer.",
+            "agent": "dev-team:developer",
+            "skill": "final-sign-off",
+            "args": f"{ctx.pr_url} {ctx.work_item_id}",
+            "context_file": str(self._context_path),
+            "read_sections": [],
+            "write_section": "Handoff Result",
+            "result_format": "success | failed",
+        }]
+
+    def handle_results(self) -> str:
+        ctx = self._ctx
+        if ctx.handoff_result:
+            _handle_agent_success(ctx)
+            return "handoff_done"
+        _handle_agent_failure(ctx)
+        _check_and_trigger_troubleshooter(
+            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
+            ctx.consecutive_failures, ctx, self._context_path,
+        )
+        return "handoff_done"
 
 
 # ---------------------------------------------------------------------------
@@ -1141,6 +1182,7 @@ class DevTeamPipeline:
             "reviewing": ReviewStep(ctx, context_path),
             "signoff": SignoffStep(ctx, context_path, log_dir),
             "fixing-pr": FixPrStep(ctx, context_path),
+            "handoff": HandoffStep(ctx, context_path),
         }
 
     def _dispatch_step(self, step: Step) -> str:
@@ -1341,7 +1383,7 @@ def main() -> None:
     parser.add_argument("--workflow", metavar="path", default=None,
                         help="Path to a Mermaid stateDiagram-v2 workflow file")
     parser.add_argument("--research-skill", metavar="skill", default=None,
-                        help="Researcher skill to use (e.g. researcher-plan or researcher-issue)")
+                        help="Researcher skill to use (e.g. plan-task or researcher-issue)")
     parser.add_argument("--plugin-root", metavar="path", default=None,
                         help="Plugin installation root (agents/ and commands/ resolved here)")
     parser.add_argument("--context-file", metavar="path", default=None,

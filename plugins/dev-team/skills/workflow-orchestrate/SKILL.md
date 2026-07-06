@@ -12,7 +12,7 @@ argument-hint: --work-item-id <id> --workflow <pipeline> --research-skill <skill
 
 - `--work-item-id` — the resolved work item identifier (e.g. `PROJ-123` or `Issue-444`)
 - `--workflow` — the pipeline filename stem (e.g. `implement-task-plan` or `fix-issue-plan`)
-- `--research-skill` — the researcher skill name (e.g. `researcher-plan` or `researcher-issue`)
+- `--research-skill` — the researcher skill name (e.g. `plan-task` or `researcher-issue`)
 
 ## Role
 
