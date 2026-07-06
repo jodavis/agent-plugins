@@ -2,15 +2,16 @@
 name: tdd-refactor-turn
 user-invocable: false
 description: >
-  Use when tdd-refactorer is taking its one turn for a component that just reached `done` in
-  the tdd-tester / tdd-implementer / tdd-refactorer trio. Reviews the component for
-  behavior-preserving cleanup opportunities, reruns the full component suite, and reports the
-  outcome in one line.
+  Use when tdd-refactorer is taking a turn after tdd-implementer reports a real green (not
+  structural-green) in the tdd-tester / tdd-implementer / tdd-refactorer trio's ping-pong loop.
+  Reviews the component-so-far for behavior-preserving cleanup opportunities, reruns the full
+  component suite, and reports the outcome in one line.
 ---
 
 Use this skill when:
-- You (`tdd-refactorer`) are taking your turn for a component Developer just reported reached
-  `done`
+- You (`tdd-refactorer`) are taking your turn after `tdd-implementer` reports a real green
+  (`green: <TestName>`, or a Tier 2 `resolve_directly` resolution) for the component you were
+  spawned for — every such turn, not just a final one after `tdd-tester` reports `done`
 
 ## Steps
 
@@ -38,8 +39,8 @@ case already covered — consolidation must never quietly drop a case, per
 Rerun the full component suite (never the whole project suite — that's reserved for the
 end-of-task E2E re-run). If anything that previously passed now fails, or the suite's coverage
 of the component changed, revert and treat this as no cleanup opportunity — a behavior gap here
-is never something you fix in place; it's a new red for `tdd-tester` to pick up next component
-cycle. Report `no-refactor-needed` in that case.
+is never something you fix in place; it's a new red for `tdd-tester` to pick up on its next
+turn for this same component. Report `no-refactor-needed` in that case.
 
 If the suite passes with everything from before still covered, proceed to step 3.
 
@@ -54,9 +55,11 @@ no-refactor-needed
 
 ## Turn discipline
 
-You get exactly one turn per component — there is no retry loop or escalation tier here, unlike
-`tdd-red-turn`/`tdd-green-turn`. Either the behavior-preserving mandate covers what you found, or
-you report `no-refactor-needed`; nothing routes back to Developer for a judgment call.
+You get a turn after every real green for the component — potentially many turns over the
+component's loop, not just one — but each individual turn has no retry loop or escalation tier,
+unlike `tdd-red-turn`/`tdd-green-turn`. Either the behavior-preserving mandate covers what you
+found this turn, or you report `no-refactor-needed`; nothing routes back to Developer for a
+judgment call.
 
 Run build/test commands the same way `test-driven-development` / `code-change-expectations`
 document for the target project — an incremental build, never a clean rebuild, and a test run
