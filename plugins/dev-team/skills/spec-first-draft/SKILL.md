@@ -67,6 +67,30 @@ _Consequences:_ Trade-offs accepted.
 
 _(Repeat for each significant decision.)_
 
+## Component Breakdown
+
+| Component | Type | Responsibility | Depends on |
+|---|---|---|---|
+| `<Name>` | Wrapper \| Testable \| Orchestrator | One sentence | `<Component>`, `<Component>`, or — |
+
+Use the `component-taxonomy` skill for the Wrapper/Testable/Orchestrator definitions and the
+property-level Wrapper carve-out to classify every planned component.
+
+When identifying Testable components, apply these isolation patterns as authoring guidance:
+
+- Prefer dependency injection to isolate a component from its collaborators.
+- Consider the **State Object** pattern for stateful components: state lives as plain,
+  directly-observable fields on a data object. By default, only the owning/controller
+  service mutates it; other services may read it. Some components legitimately invert
+  this — a ViewModel-style State Object is written directly by its consumer (e.g. the UI),
+  and the owning controller subscribes to change notifications on it to react. In this
+  inverted case, both sides may read and write the object; design each field's ownership
+  deliberately rather than assuming a single default direction.
+- Prefer synchronous logic for anything complex; gather async data up front and pass the
+  results in, rather than doing async work on demand inside complex logic.
+- Where practical, build each component before its dependencies exist, using mocks of the
+  interfaces, so the dependency interfaces reflect real usage rather than speculative design.
+
 ## Planned Implementation
 
 ### Interfaces

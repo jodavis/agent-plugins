@@ -26,7 +26,7 @@ Do not run full validation scripts (`scripts/validate-build`, `scripts/validate-
 
 ### Always write unit tests first (TDD)
 
-Use the `test-driven-development` skill when implementing new code. Write tests before writing implementation; confirm they fail before proceeding.
+Use the `implement-task` skill's dispatcher when implementing new code. Write tests before writing implementation; confirm they fail before proceeding.
 
 Use the `missing-test-harness` skill to determine which kinds of tests to write based on what already exists in the repo.
 
@@ -36,5 +36,8 @@ Before returning a work summary or fix summary, review the diff as if you were t
 
 - Does the change address what was asked?
 - Are there missing test cases (branches, error paths, invalid inputs)?
+- Where a component's logging differs by branch or condition, is that differentiation
+  asserted — the same as any other observable behavior? (Not required when the member is
+  branch-free.)
 - Is there any scope creep — changes not required by the task?
 - Do all files follow the code guidelines from `developer-standards`?
