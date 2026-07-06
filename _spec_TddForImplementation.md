@@ -28,7 +28,7 @@ to the Developer's "implementing" step.
     termination conditions
   - TDD practice rules (AAA structure, red-must-fail-for-the-right-reason, frozen
     Arrange/Act after first Assert, test naming convention) as standardized dev-team
-    conventions, folded into `test-driven-development` and `code-change-expectations`
+    conventions, folded into `tdd-practices` and `code-change-expectations`
   - Three new agent definitions, each defined primarily by what it is *not allowed* to touch:
     `agents/tdd-tester.md` (test files only), `agents/tdd-implementer.md` (production files
     only), `agents/tdd-refactorer.md` (behavior-preserving changes only)
@@ -51,10 +51,13 @@ to the Developer's "implementing" step.
 - **Integrates with:**
   - `spec-first-draft` — gains a Component Breakdown authoring step
   - `plan-task` / `write-task-brief` — task briefs gain a "Components in scope" section
-  - `implement-task` — rewritten as a dispatcher that branches on component type and invokes
-    `implement-direct` or `implement-tdd` per component; `test-driven-development` keeps the
-    TDD practice rules and the E2E-testing step, but its per-component implementation logic
-    moves into `implement-direct` / `implement-tdd`
+  - `implement-task` — rewritten as a dispatcher that invokes `implement-direct` or
+    `implement-tdd` per declared component, then triages any remaining exit-criteria work
+    (component-shaped but uncaptured, or genuinely not component-shaped) before a final
+    commit; `test-driven-development` is retired — its E2E-testing wrapper moves to the new
+    `behavior-driven-development` skill and its TDD practice rules move to the new
+    `tdd-practices` skill; its old per-component "write tests then implement" procedure is
+    removed outright, not carried into either
   - `code-change-expectations` — coverage checklist gains logging as a testable concern
   - `missing-test-harness` — a Testable component with no fitting verification mechanism
     becomes its own Component Breakdown line item (build the harness), rather than an
@@ -62,8 +65,11 @@ to the Developer's "implementing" step.
   - `agents/developer.md` — role updated to describe the orchestrator responsibility
   - `agents/researcher.md` — role updated to describe component-aware task planning
   - `commit-changes` — invoked once per component (not once per task) during implementation
-  - Five new files: `agents/tdd-tester.md`, `agents/tdd-implementer.md`,
-    `agents/tdd-refactorer.md`, `skills/implement-direct/SKILL.md`, `skills/implement-tdd/SKILL.md`
+  - Eight new files: `agents/tdd-tester.md`, `agents/tdd-implementer.md`,
+    `agents/tdd-refactorer.md`, `skills/implement-direct/SKILL.md`, `skills/implement-tdd/SKILL.md`,
+    `skills/component-taxonomy/SKILL.md`, `skills/behavior-driven-development/SKILL.md`,
+    `skills/tdd-practices/SKILL.md` — the latter two replacing the retired
+    `skills/test-driven-development/SKILL.md`
 
 ## Key Design Decisions
 
@@ -112,6 +118,10 @@ captured at spec time, not implementation time. Component Breakdown authoring as
 separable questions per component: does it carry logic risk at all (Wrapper vs. not), and
 — if so — what verification mechanism actually fits it (see below for what happens when
 none exists yet).
+
+These definitions live in a new shared `component-taxonomy` skill rather than only in this
+spec's prose — see "Work outside classified components" below for why (Developer's ad hoc
+triage needs the identical definitions a spec author uses, not a second copy).
 
 ---
 
@@ -211,11 +221,11 @@ flat, topologically-sorted list — a component always appears after everything 
 **Components in scope can legitimately be empty.** Not every task touches a classified
 component at all — e.g. scaffolding a new project from a template and tailoring it isn't
 Wrapper, Testable, or Orchestrator work, it's project setup. This is different from the
-no-Component-Breakdown fallback below: the spec's taxonomy still applies fine, this
-particular task simply has zero components in scope. `implement-task`'s dispatcher (see the
-next decision) has nothing to iterate in that case, and Developer implements the task
-directly — no TDD ping-pong, one commit for the task as a whole — the same way it always
-has for work that isn't about component-level logic.
+no-Component-Breakdown fallback below in cause (a spec with a full taxonomy where this one
+task just doesn't touch any of it, vs. a spec with no taxonomy at all) but not in effect:
+either way, `implement-task` falls through to the triage described in "Work outside
+classified components" below, rather than skipping TDD outright — an empty list doesn't mean
+the task has no logic worth testing, only that none of it was pre-classified.
 
 _Consequences:_ `plan-task` no longer needs a separate ordering step — the sort is computed
 once, during brief writing, from data already captured in the spec.
@@ -315,9 +325,9 @@ Developer gets that list via `git diff --name-only` (or the target project's VCS
 immediately after each turn.
 
 `tdd-tester`, `tdd-implementer`, and `tdd-refactorer` build and run tests using the same
-tool and command syntax already documented in `test-driven-development` /
-`code-change-expectations` for the target project (e.g. `dotnet build` / `dotnet test
---filter`) — no new build/test convention is introduced. Every red/green turn keeps this as
+tool and command syntax already documented in `code-change-expectations` for the target
+project (e.g. `dotnet build` / `dotnet test --filter`) — no new build/test convention is
+introduced. Every red/green turn keeps this as
 cheap as possible: an incremental build (never a full clean rebuild) and a test run scoped to
 just the component under test (a single test, or that component's suite — see "The loop"
 below), never the full project suite. The full project suite is reserved for whatever point
@@ -483,15 +493,16 @@ change) or deferred entirely to the refactor pass.
 
 ---
 
-### TDD practice rules standardized in `test-driven-development`
+### TDD practice rules standardized in `tdd-practices`
 
 _Context:_ The epic specifies concrete practices that must govern every test the
 tdd-tester/tdd-implementer pair writes, not just the ping-pong structure itself.
 
-_Decision:_ Fold these rules directly into `test-driven-development` (superseding its current
-generic "write unit tests, confirm they fail" language) as non-negotiable dev-team
-conventions, per [[project-dev-team-agents]] style guidance already established for this
-plugin:
+_Decision:_ Fold these rules into the new `tdd-practices` skill (see "`test-driven-development`
+retired; splits into `behavior-driven-development` and `tdd-practices`" below), superseding
+`test-driven-development`'s old generic "write unit tests, confirm they fail" language, as
+non-negotiable dev-team conventions, per [[project-dev-team-agents]] style guidance already
+established for this plugin:
 
 - **AAA structure** — every test is Arrange, Act, Assert, in that order.
 - **Red must fail for the intended reason.** Enforced mechanically by the ping-pong
@@ -529,14 +540,169 @@ meaningful component structure — e.g. a documentation-only change) won't have 
 Breakdown section.
 
 _Decision:_ `write-task-brief` omits "Components in scope" when the spec has no Component
-Breakdown section covering the task. `implement-task` detects the absence of that section in
-the brief and falls back to the pre-existing single-agent flow (E2E tests first, then one
-component at a time with unit-tests-before-implementation, no pairing) — i.e., today's
-`test-driven-development` behavior, preserved as the no-taxonomy fallback path.
+Breakdown section covering the task — unchanged from the original design. What changes is
+what `implement-task` does when it finds no section (or an empty one): see "Work outside
+classified components" below — it no longer falls back to a separate single-agent procedure;
+the no-Component-Breakdown case and the "some exit-criteria work isn't component-shaped"
+case are now the same mechanism.
 
 _Consequences:_ No spec needs to be retrofitted before this feature can ship. Adoption is
-incremental — new specs get the full taxonomy and paired TDD; old specs and non-code specs
-are unaffected.
+incremental — new specs get a written Component Breakdown to classify against; old specs and
+non-code specs still get the full taxonomy and the full `implement-tdd` loop for anything
+that turns out to carry logic risk, just classified by Developer on the spot instead of
+read from a table.
+
+---
+
+### Work outside classified components: ad hoc triage, non-component work, and the final commit
+
+_Context:_ Two related gaps surfaced during ADR-303's implementation and its human review.
+First, a spec with no Component Breakdown at all gives `implement-task` nothing to dispatch —
+the original design fell back to `test-driven-development`'s old "write unit tests, then
+implement, one component at a time" procedure for this case, which is exactly the procedure
+the ping-pong protocol (ADR-301/302) was built to replace, so reusing it here would leave two
+competing TDD procedures for agents to choose between. Second, even a task with a full
+Components in scope list can have real, in-scope work that isn't itself "a component" —
+wiring/glue code, one-off scripts, moving files, writing documentation, running a dry run and
+recording its output — work required to satisfy the exit criteria that was never going to
+appear as a row in a Component Breakdown table, classified or not. Neither case had a defined
+implementation procedure or commit path.
+
+_Decision:_ `implement-task` never treats "no components to dispatch" (whether the list is
+empty, or the spec has no Component Breakdown section at all) as "skip TDD, implement
+free-form." Instead, after dispatching every classified component (unchanged from the
+existing design), Developer triages whatever remains against the task's exit criteria into
+two kinds:
+
+- **Work that carries component-shaped logic risk, just not pre-classified** — something
+  that would have earned a Wrapper/Testable/Orchestrator row had it been called out in a
+  Component Breakdown, but wasn't (an uncaptured piece of a task that does have components,
+  or *anything* in a task/spec with no Component Breakdown at all — the no-taxonomy fallback
+  collapses into this same bucket). Developer classifies it itself, on the spot, invoking the
+  new `component-taxonomy` skill (see below) for the same Wrapper/Testable/Orchestrator
+  definitions a spec author uses, then routes it through `implement-direct` or `implement-tdd`
+  exactly like a declared component. This is what actually retires the old batch procedure
+  everywhere: there is no longer a code path in `implement-task` that reaches "write all the
+  unit tests, then make them pass."
+- **Work that was never component-shaped at all** — glue/wiring trivial enough to not need
+  its own classification, one-off scripts, moving or renaming files, writing documentation,
+  executing a dry run, and anything else unanticipated that doesn't fit the Wrapper/Testable/
+  Orchestrator taxonomy — this list is illustrative, not exhaustive; Developer isn't expected
+  to match against it, only to recognize when something isn't component-shaped. Developer just
+  does this work directly, the same way it always has — no taxonomy, no TDD loop, no dedicated
+  per-item commit. This generalizes the treatment the spec already gives whole tasks with no
+  components (e.g. template scaffolding, see "Components in scope can legitimately be empty"
+  above) from "the whole task" to "whatever part of the task isn't component-shaped."
+
+Once every classified component is dispatched and both triage buckets are handled,
+`implement-task` re-runs the E2E scenario suite (unchanged), then self-reviews (see the next
+decision for its new position relative to the commit), then makes **one final commit**
+covering: any non-component-shaped work from the second bucket, plus any fix the self-review
+step required. Component-shaped work (classified or ad hoc) keeps its own existing
+per-component commit from `implement-direct`/`implement-tdd` — the final commit never
+re-touches those. If there's nothing left to commit (every exit criterion was satisfied by
+classified components, and self-review found nothing), this step is skipped.
+
+This means a "no Component Breakdown at all" task can now produce *multiple* commits (one
+per ad hoc component Developer identifies, plus the final commit) instead of today's single
+whole-task commit — a deliberate, desirable change in granularity, not an incidental one: it
+matches the per-component audit trail every other task already gets, rather than preserving
+"one commit" as a special case for these specs.
+
+_Consequences:_ `test-driven-development`'s old per-component procedure (step 2: write unit
+tests, then implement, one component at a time) is no longer reachable from any path in
+`implement-task` and is removed outright — see "`test-driven-development` retired; splits into
+`behavior-driven-development` and `tdd-practices`" below. Whether a spec "has a Component
+Breakdown" stops
+being a fork in *procedure* — it only changes whether Developer classifies work against a
+written table or does the same classification from scratch. `plan-task`/`write-task-brief`'s
+existing behavior (omit "Components in scope" when there's no Component Breakdown; list it as
+explicitly empty when the task doesn't touch components) is unaffected — this decision only
+changes how `implement-task` interprets those outcomes, not how they're produced.
+
+The Wrapper/Testable/Orchestrator definitions themselves move out of this spec's prose and
+into a new `plugins/dev-team/skills/component-taxonomy/SKILL.md`, since both spec authoring
+and Developer's ad hoc triage now need the identical definitions and letting them diverge in
+two places would be worse than the extra file. `spec-first-draft` invokes it while authoring
+the Component Breakdown; `implement-task` invokes it only from the triage branch above — a
+task brief with every component already classified never loads it, so the common case (spec
+already fully classified) pays no extra cost.
+
+---
+
+### Self-review runs before the commit it can still affect
+
+_Context:_ `implement-task`'s steps were originally ordered commit-then-review (Commit, then
+Self-review) on the no-component fallback path, and per-component commits already happen
+before the task-level self-review even on the dispatch path. If self-review finds something
+that needs fixing, there was no defined step that commits the fix — it was only implied.
+
+_Decision:_ `implement-task`'s ordering becomes: dispatch/triage (implement everything) → E2E
+scenarios re-run → self-review → fix anything self-review requires → the one final commit
+described in the previous decision. Self-review always runs against the full cumulative diff
+(every per-component commit made so far, plus whatever non-component work is staged but not
+yet committed) before that last commit closes the task out, so a review-driven fix is never
+left implicitly uncommitted.
+
+_Consequences:_ Per-component commits (Wrapper/Orchestrator/Testable) still land as soon as
+each component goes green, unchanged — only the task-level wrap-up (leftover work plus
+self-review) moves to the end, after review, instead of before it.
+
+---
+
+### `test-driven-development` retired; splits into `behavior-driven-development` and `tdd-practices`
+
+_Context:_ With the two decisions above, no code path in `implement-task` reaches
+`test-driven-development`'s old step 2 (write unit tests, then implement, one component at a
+time) anymore — every unit-test-worthy piece of work, classified or ad hoc, now goes through
+`implement-tdd`'s ping-pong loop instead. Leaving step 2 in place as dead prose invites an
+agent to rediscover and use it, exactly the "two competing procedures" risk this
+reconciliation closes. Beyond that, `test-driven-development` was already doing two unrelated
+jobs under one name: the E2E-first/E2E-confirm wrapper around the whole task, and a set of
+practice rules every TDD participant follows. Inspection of every other file that already
+references this skill (`tdd-tester.md`, `tdd-implementer.md`, `tdd-refactorer.md`,
+`tdd-red-turn`, `tdd-green-turn`, `tdd-refactor-turn`) confirms the split is already latent in
+how the skill is used today — every one of those cites it only for "the Practice rules," never
+for the E2E wrapper; only `implement-task`, `implement-direct`, and `implement-tdd` cite the
+E2E-wrapper half.
+
+_Decision:_ Retire `test-driven-development` entirely and replace it with two new skills, each
+taking one of its former jobs:
+
+- **`behavior-driven-development`** — the task-level E2E wrapper: write Gherkin E2E/API
+  scenarios first (former step 1), confirm they all pass once everything is implemented
+  (former step 3). `implement-task`'s dispatcher calls this by name before dispatch and again
+  after everything is implemented. The name reflects what this step already is — writing
+  Given/When/Then scenarios before any implementation exists — not a rebrand of the whole
+  feature.
+- **`tdd-practices`** — the Practice rules section (AAA structure,
+  red-must-fail-for-the-right-reason, frozen-Arrange/Act after first green, naming
+  convention, logging-as-a-testable-concern), unchanged in content. `tdd-tester`,
+  `tdd-implementer`, `tdd-refactorer`, and their turn-skills (`tdd-red-turn`, `tdd-green-turn`,
+  `tdd-refactor-turn`) all reference this by name instead of `test-driven-development`, which
+  matches what they were actually citing it for all along.
+
+Old step 2 (write unit tests, then implement, one component at a time) is dropped outright —
+it isn't carried into either new skill. Every reference site enumerated above is updated to
+point at whichever of the two new skills matches what it was actually using;
+`implement-direct` and `implement-tdd` are the only files that need to cite both.
+`code-change-expectations`'s generic pointer ("Use the `test-driven-development` skill when
+implementing new code...") is updated to point at `implement-task`'s dispatcher instead, since
+that instruction described exactly the retired step-2 procedure, not either new skill.
+
+_Consequences:_ No file in the plugin references `test-driven-development` once both this
+retirement task and ADR-303's rework ship — a clean retirement, not a deprecated alias kept
+around for transition, but split across two tasks because not everything referencing
+`test-driven-development` is merged yet. This task's own sweep is scoped to the eight
+already-merged files enumerated above (`tdd-tester.md`, `tdd-implementer.md`,
+`tdd-refactorer.md`, `tdd-red-turn`, `tdd-green-turn`, `tdd-refactor-turn`,
+`code-change-expectations`, `implement-tdd`), plus updating `spec-first-draft` to invoke
+`component-taxonomy` instead of restating its definitions inline. `implement-task` and
+`implement-direct` are deliberately excluded from this sweep — both belong to ADR-303's still-
+open PR #54, not yet merged, so ADR-303's own rework writes the correct
+`component-taxonomy`/`behavior-driven-development`/`tdd-practices` references directly instead
+of this task sweeping them in afterward (see the new task's description in `## Tasks` and
+ADR-303's updated "Depends on" line).
 
 ## Planned Implementation
 
@@ -575,7 +741,15 @@ re-summarize context already given on the first turn.
 
 - [`plugins/dev-team/skills/spec-first-draft/SKILL.md`](plugins/dev-team/skills/spec-first-draft/SKILL.md)
   — add a Component Breakdown authoring step and template section (step 2, alongside
-  Planned Implementation)
+  Planned Implementation), invoking the new `component-taxonomy` skill for the tier
+  definitions instead of restating them
+- `plugins/dev-team/skills/component-taxonomy/SKILL.md` (new) — the Wrapper/Testable/
+  Orchestrator definitions and property-level Wrapper carve-out, extracted from this spec's
+  "Component taxonomy" decision into their own skill so `spec-first-draft` and
+  `implement-task`'s ad hoc triage step (see below) invoke the identical text instead of two
+  copies drifting apart. No agent invokes it unconditionally — `implement-task` only reaches
+  it on the triage branch, so a task brief with every component already classified never
+  loads it
 - [`plugins/dev-team/skills/spec-readiness-review`](plugins/dev-team/skills/spec-readiness-review/SKILL.md)
   / [`researcher-spec-review`](plugins/dev-team/skills/researcher-spec-review/SKILL.md) —
   treat a missing/insufficient Component Breakdown as a blocking gap (per the concrete
@@ -583,24 +757,41 @@ re-summarize context already given on the first turn.
 - [`plugins/dev-team/skills/plan-task/SKILL.md`](plugins/dev-team/skills/plan-task/SKILL.md)
   and [`write-task-brief/SKILL.md`](plugins/dev-team/skills/write-task-brief/SKILL.md) — add
   the "Components in scope" section and its dependency-order computation
-- [`plugins/dev-team/skills/test-driven-development/SKILL.md`](plugins/dev-team/skills/test-driven-development/SKILL.md)
-  — per-component branching logic (Wrapper/Orchestrator/Testable) moves out to
-  `implement-task`/`implement-direct`/`implement-tdd`; this skill keeps the E2E-testing step
-  and now embeds the AAA / red-for-the-right-reason / frozen-Arrange-Act / naming rules, and
-  remains the no-taxonomy fallback path (see below)
+- `plugins/dev-team/skills/test-driven-development/SKILL.md` — deleted outright. Its E2E-first /
+  E2E-confirm steps move to the new `skills/behavior-driven-development/SKILL.md` (renumbered
+  1–2); its Practice rules section (AAA / red-for-the-right-reason / frozen-Arrange-Act /
+  naming) moves to the new `skills/tdd-practices/SKILL.md`; its old step 2 (write unit tests,
+  then implement, one component at a time) is dropped outright, carried into neither — per
+  "`test-driven-development` retired; splits into `behavior-driven-development` and
+  `tdd-practices`" above. No longer a fallback implementation path in its own right — see the
+  next bullet
 - [`plugins/dev-team/skills/code-change-expectations/SKILL.md`](plugins/dev-team/skills/code-change-expectations/SKILL.md)
-  — add logging to the coverage checklist
+  — add logging to the coverage checklist; its generic "use `test-driven-development`" pointer
+  is updated to point at `implement-task`'s dispatcher instead, per the retirement decision
+  above
 - [`plugins/dev-team/skills/implement-task/SKILL.md`](plugins/dev-team/skills/implement-task/SKILL.md)
   — rewritten as the dispatcher: no interface change (still one `spawn_agent` step from the
-  pipeline's perspective); for each component in the task brief's Components in scope list,
-  in order, invokes `implement-direct` or `implement-tdd` per its tier
+  pipeline's perspective). For each component in the task brief's Components in scope list, in
+  order, invokes `implement-direct` or `implement-tdd` per its tier. Then triages whatever
+  exit-criteria work remains: anything component-shaped but uncaptured (or everything, when
+  the spec has no Component Breakdown at all) is classified on the spot — invoking
+  `component-taxonomy` for the tier definitions — and routed through
+  `implement-direct`/`implement-tdd` the same as a declared component; anything
+  non-component-shaped (glue code, scripts, file moves, docs, dry runs) is just implemented
+  directly. Re-runs E2E scenarios, self-reviews, fixes anything the review surfaces, then makes
+  one final commit for the non-component work plus review fixups (skipped if there's nothing
+  left to commit) — see "Work outside classified components" and "Self-review runs before the
+  commit" above
 - `plugins/dev-team/skills/implement-direct/SKILL.md` (new) — single-shot direct
   implementation for one Wrapper or Orchestrator component (no test for Wrapper, one
-  integration test for Orchestrator), plus `commit-changes`. Also invoked by `implement-tdd`
-  for a `resolve_directly` Tier 2 escalation. For a Wrapper component, self-review treats "no
-  test for this component" as expected, per its Component Breakdown tier — not a gap to flag,
-  the way `code-change-expectations`' generic "missing test coverage" check would otherwise
-  read it.
+  integration test for Orchestrator), plus `commit-changes`. Its build/test step states
+  explicitly to fix any build errors or test failures before proceeding to commit, matching
+  `code-change-expectations`'s existing explicitness. Also invoked by `implement-tdd` for a
+  `resolve_directly` Tier 2 escalation, and by `implement-task`'s own triage for an ad hoc
+  Wrapper/Orchestrator-tier piece of leftover work. For a Wrapper component, self-review treats
+  "no test for this component" as expected, per its Component Breakdown tier (or ad hoc
+  classification) — not a gap to flag, the way `code-change-expectations`' generic "missing
+  test coverage" check would otherwise read it.
 - `plugins/dev-team/skills/implement-tdd/SKILL.md` (new) — drives the full ping-pong +
   refactor choreography for one Testable component: spawns `tdd-tester`/`tdd-implementer`/
   `tdd-refactorer` together up front, runs the structural-then-behavioral red/green loop,
@@ -674,7 +865,7 @@ plan-task → write-task-brief
   ▼
 implement-task (Developer agent, dispatcher)
   │
-  │  for each component, in dependency order:
+  │  for each declared component, in dependency order:
   │      Wrapper / Orchestrator → implement-direct:
   │        Developer implements directly (no test for Wrapper, one
   │        integration test for Orchestrator), commit-changes
@@ -684,10 +875,24 @@ implement-task (Developer agent, dispatcher)
   │        giving tdd-refactorer one turn after every real green, until
   │        tdd-tester reports "done", then a single commit-changes
   │
+  │  triage whatever exit-criteria work remains (declared components' list
+  │  was empty, spec had no Component Breakdown, or some work just wasn't
+  │  component-shaped):
+  │      component-shaped but uncaptured → classify on the spot (Wrapper /
+  │        Testable / Orchestrator) → same implement-direct / implement-tdd
+  │        path as above, own commit
+  │      not component-shaped (glue, scripts, file moves, docs, dry runs)
+  │        → Developer implements directly, no TDD loop, no dedicated commit
+  │        yet — staged for the final commit below
+  │
   ▼
-E2E scenarios re-run (existing test-driven-development step 3, unchanged)
+E2E scenarios re-run (behavior-driven-development's E2E wrapper step, unchanged)
   ▼
-self-review → work summary (including any Tier 3 known ambiguities)
+self-review → fix anything self-review requires
+  ▼
+final commit (non-component work + review fixups; skipped if nothing remains)
+  ▼
+work summary (including any Tier 3 known ambiguities)
 ```
 
 ## Related Features
@@ -838,20 +1043,108 @@ pass at the end. Depends on [ADR-301](https://jodasoft.atlassian.net/browse/ADR-
 - [ ] Dry run: running the refactor pass against a component with no cleanup opportunity
       produces `no-refactor-needed` with no file changes
 
+### [ADR-306](https://jodasoft.atlassian.net/browse/ADR-306) — Extract `component-taxonomy` skill; retire `test-driven-development` into `behavior-driven-development` and `tdd-practices`
+
+Pull the Wrapper/Testable/Orchestrator definitions out into their own skill so
+`spec-first-draft` and `implement-task`'s ad hoc triage share one copy instead of two; retire
+`test-driven-development` entirely, splitting its E2E-first/E2E-confirm wrapper into
+`behavior-driven-development` and its practice rules into `tdd-practices`; sweep every existing
+reference to point at the right successor. Depends on
+[ADR-297](https://jodasoft.atlassian.net/browse/ADR-297),
+[ADR-300](https://jodasoft.atlassian.net/browse/ADR-300),
+[ADR-301](https://jodasoft.atlassian.net/browse/ADR-301), and
+[ADR-302](https://jodasoft.atlassian.net/browse/ADR-302) — all four are already merged and are
+exactly the files this task edits. [ADR-303](https://jodasoft.atlassian.net/browse/ADR-303)
+depends on this task in turn: it isn't merged yet, so its rework should reference
+`component-taxonomy`/`behavior-driven-development`/`tdd-practices` directly rather than
+`test-driven-development`, with no interim reference-sweep needed there.
+
+- [ ] `plugins/dev-team/skills/component-taxonomy/SKILL.md` exists with the
+      Wrapper/Testable/Orchestrator definitions and the property-level Wrapper carve-out,
+      moved verbatim from this spec's "Component taxonomy" decision
+- [ ] `plugins/dev-team/skills/behavior-driven-development/SKILL.md` exists with
+      `test-driven-development`'s former step 1 (write E2E/API tests first) and step 3 (confirm
+      E2E tests pass), renumbered 1–2
+- [ ] `plugins/dev-team/skills/tdd-practices/SKILL.md` exists with
+      `test-driven-development`'s former Practice rules section (AAA structure,
+      red-must-fail-for-the-right-reason, frozen-Arrange/Act, naming convention, logging as a
+      testable concern), unchanged in content
+- [ ] `plugins/dev-team/skills/test-driven-development/SKILL.md` is deleted; every file this
+      task touches (enumerated in this checklist) no longer references it by name.
+      `implement-task/SKILL.md` and `implement-direct/SKILL.md` are the only remaining
+      references in the plugin after this task ships — out of scope here since both belong to
+      ADR-303's still-open PR #54; ADR-303's own rework resolves them
+- [ ] `plugins/dev-team/skills/spec-first-draft/SKILL.md` invokes `component-taxonomy` for the
+      tier definitions instead of restating them inline
+- [ ] `agents/tdd-tester.md`, `agents/tdd-implementer.md`, `agents/tdd-refactorer.md`
+      reference `tdd-practices` by name instead of `test-driven-development` (their only
+      citation of it is the Practice rules one)
+- [ ] `skills/tdd-red-turn/SKILL.md` and `skills/tdd-refactor-turn/SKILL.md` each have two
+      distinct `test-driven-development` citations: their Practice rules citation is renamed to
+      `tdd-practices`, and their separate "run build/test commands the same way
+      `test-driven-development` / `code-change-expectations` document..." sentence drops the
+      `test-driven-development` half entirely, citing `code-change-expectations` alone —
+      consistent with the ping-pong protocol decision above, which already documents build/test
+      command syntax as living solely in `code-change-expectations`
+- [ ] `skills/tdd-green-turn/SKILL.md` has three `test-driven-development` citations, not two:
+      the same build/test-command-syntax sentence as above (drop the `test-driven-development`
+      half, `code-change-expectations` only), plus *two separate* Practice rules citations — an
+      inline `## Practice rules` section reference and a distinct Skills-list entry — both
+      renamed to `tdd-practices`
+- [ ] `implement-tdd/SKILL.md` — already merged (ADR-301), not part of PR #54 — has four
+      `test-driven-development` references: its "same build/test command syntax..." sentence
+      drops the `test-driven-development` half, citing `code-change-expectations` alone (same
+      treatment as the turn-skills above); its separate "that's reserved for the E2E re-run
+      later in `test-driven-development`" mention is renamed to `behavior-driven-development`;
+      its stale "Do NOT use this skill when the task brief
+      has no Components in scope at all — fall back to `test-driven-development`'s single-agent
+      flow" bullet is removed outright (not renamed) — that fallback path no longer exists under
+      "Work outside classified components" above, since `implement-task`'s triage now handles
+      the no-components case before `implement-tdd` is ever invoked; and its remaining single
+      Skills-list bullet — which bundles both the practice-rules citation and the E2E-re-run-step
+      citation into one line ("`test-driven-development` — practice rules the trio follows, and
+      the E2E re-run step that...") — is split into two separate Skills-list entries, one citing
+      `tdd-practices` and one citing `behavior-driven-development`
+- [ ] `code-change-expectations/SKILL.md`'s pointer ("Use the `test-driven-development` skill
+      when implementing new code...") is updated to point at `implement-task`'s dispatcher
+      instead, since that instruction described the retired step-2 procedure
+- [ ] Dry run: a spec author using `spec-first-draft` on a synthetic feature produces a
+      Component Breakdown table using tier definitions read from `component-taxonomy`, not
+      restated in `spec-first-draft` itself
+
 ### [ADR-303](https://jodasoft.atlassian.net/browse/ADR-303) — `implement-task` dispatcher and `implement-direct` skill
 
 Rewrite `implement-task` as the per-component dispatcher, and add `implement-direct` for
 Wrapper/Orchestrator components (and Tier 2 `resolve_directly` reuse). Depends on
 [ADR-299](https://jodasoft.atlassian.net/browse/ADR-299),
-[ADR-301](https://jodasoft.atlassian.net/browse/ADR-301), and
-[ADR-302](https://jodasoft.atlassian.net/browse/ADR-302).
+[ADR-301](https://jodasoft.atlassian.net/browse/ADR-301),
+[ADR-302](https://jodasoft.atlassian.net/browse/ADR-302), and
+[ADR-306](https://jodasoft.atlassian.net/browse/ADR-306) (the `component-taxonomy` /
+`behavior-driven-development` / `tdd-practices` extraction task above).
+
+> **Review:** Revised below per PR #54's human review (changes requested) — the previous
+> version of this task's exit criteria described the two-branch "no components / has
+> components" fork now retired by "Work outside classified components" and "Self-review runs
+> before the commit" above. PR #54 is still open (not merged), so this rework replaces its
+> existing diff rather than tracking a separate delta.
 
 - [ ] `implement-task/SKILL.md` iterates the task brief's Components in scope in order,
       invoking `implement-direct` for Wrapper/Orchestrator components and `implement-tdd` for
-      Testable components, with no change to the skill's single-`spawn_agent` interface with the
-      pipeline
+      Testable components, with no change to the skill's single-`spawn_agent` interface with
+      the pipeline
+- [ ] `implement-task/SKILL.md` triages any exit-criteria work left over after declared
+      components are dispatched (including the entire task, when there's no Components in
+      scope list at all) into: component-shaped-but-uncaptured, classified on the spot by
+      invoking the `component-taxonomy` skill and routed through
+      `implement-direct`/`implement-tdd`; and non-component-shaped work
+      (glue/scripts/file moves/docs/dry runs), implemented directly with no TDD loop
+- [ ] `implement-task/SKILL.md` re-runs E2E scenarios, then self-reviews, then fixes anything
+      the review surfaces, then makes one final commit covering non-component work plus review
+      fixups — skipped when there's nothing left to commit. Per-component commits are
+      unaffected by this ordering change
 - [ ] `implement-direct/SKILL.md` implements one component directly (no test for Wrapper, one
-      integration test against real direct dependencies for Orchestrator) plus `commit-changes`
+      integration test against real direct dependencies for Orchestrator), explicitly states
+      to fix any build/test failures before proceeding, plus `commit-changes`
 - [ ] Dry run: a synthetic task brief with one Wrapper, one Orchestrator, and one Testable
       component (in that dependency order) is fully implemented via the dispatcher, producing
       one commit per component and routing each to the correct skill — for the Testable
@@ -859,8 +1152,15 @@ Wrapper/Orchestrator components (and Tier 2 `resolve_directly` reuse). Depends o
       `tdd-refactorer` trio through their actual red/green/refactor loop (ADR-301/ADR-302's
       deliverables), not a stubbed pass-through, since this is the first end-to-end proof that
       the dispatcher and the ping-pong protocol actually compose
-- [ ] Dry run: a synthetic task brief with zero components in scope is implemented directly by
-      Developer with a single commit for the task, no dispatcher iteration
+- [ ] Dry run: a synthetic task brief with zero components in scope, but exit criteria that
+      require real logic, results in Developer classifying that work ad hoc and driving it
+      through the same `implement-tdd`/`implement-direct` paths as a declared component — not
+      through `test-driven-development`'s old procedure
+- [ ] Dry run: a synthetic task brief with one declared component plus some
+      non-component-shaped leftover work (e.g. a script and a doc update) produces the
+      component's own commit, then one further final commit covering the leftover work
+- [ ] Dry run: forcing a self-review finding on a synthetic task confirms the fix lands in the
+      final commit, not left uncommitted
 
 ### [ADR-304](https://jodasoft.atlassian.net/browse/ADR-304) — Developer and Researcher agent role updates, plugin version bump
 
@@ -869,9 +1169,11 @@ grant, stale skill-name cleanup) and `agents/researcher.md` (component-aware tas
 role, stale skill-name cleanup); bump `plugin.json`. Depends on
 [ADR-303](https://jodasoft.atlassian.net/browse/ADR-303).
 
-- [ ] `agents/developer.md` describes orchestrating the tdd-agent trio for Testable components
-      and implementing Wrapper/Orchestrator components directly; its tool list includes
-      `SendMessage` and renames `Task` to `Agent`; stale skill-name references are fixed
+- [ ] `agents/developer.md` describes orchestrating the tdd-agent trio for Testable components,
+      implementing Wrapper/Orchestrator components directly, and triaging any exit-criteria
+      work left over after declared components are dispatched (per "Work outside classified
+      components" above); its tool list includes `SendMessage` and renames `Task` to `Agent`;
+      stale skill-name references are fixed
 - [ ] `agents/researcher.md` describes component-aware task planning (tiers and dependency
       order) in `plan-task`/`write-task-brief`; stale skill-name references are fixed
 - [ ] `plugins/dev-team/.claude-plugin/plugin.json` version is bumped
