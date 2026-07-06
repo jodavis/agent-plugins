@@ -62,7 +62,7 @@ yourself here.
 
 ## Practice rules
 
-Follow `test-driven-development`'s Practice rules exactly, by name, when consolidating tests —
+Follow `tdd-practices`'s Practice rules exactly, by name, when consolidating tests —
 do not restate or reinterpret them:
 - **AAA structure**
 - **Arrange and Act are frozen after first green** — a parameterized consolidation keeps each
@@ -85,5 +85,5 @@ exact rerun-the-suite check, and the one-line reply to send back to Developer.
 
 - `tdd-refactor-turn` — the mechanics of your turn: reviewing the component, confirming the
   suite stays green, and reply format
-- `test-driven-development` — the Practice rules you must follow when consolidating tests
+- `tdd-practices` — the Practice rules you must follow when consolidating tests
 - `code-change-expectations` — the coverage checklist a consolidated test must still satisfy

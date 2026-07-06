@@ -15,8 +15,6 @@ Use this skill when:
 
 Do NOT use this skill when:
 - The component is `Wrapper` or `Orchestrator` — use `implement-direct` instead
-- The task brief has no Components in scope section at all — fall back to
-  `test-driven-development`'s single-agent flow
 
 ## Role reminder
 
@@ -177,15 +175,16 @@ exactly once, when the component is fully green and coverage-complete.
 
 ## Build/test scope per turn
 
-Same build/test command syntax already documented in `test-driven-development` /
-`code-change-expectations` for the target project. Every turn's build is incremental (never a
-clean rebuild); every turn's test run is scoped to the one test or the component's suite, never
-the full project suite — that's reserved for the E2E re-run later in `test-driven-development`.
+Same build/test command syntax already documented in `code-change-expectations` for the
+target project. Every turn's build is incremental (never a clean rebuild); every turn's test
+run is scoped to the one test or the component's suite, never the full project suite — that's
+reserved for the E2E re-run later in `behavior-driven-development`.
 
 ## Skills
 
-- `test-driven-development` — practice rules the trio follows, and the E2E re-run step that
-  still runs after all components (including this one) are implemented
+- `tdd-practices` — practice rules the trio follows
+- `behavior-driven-development` — the E2E re-run step that still runs after all components
+  (including this one) are implemented
 - `code-change-expectations` — coverage checklist `tdd-tester` (via `tdd-red-turn`) judges
   `done` against, and that a `tdd-refactorer` consolidation must still satisfy
 - `commit-changes` — the single commit in step 7, once the component is fully green and

@@ -62,7 +62,7 @@ escalate: <reason> — recommended_action: clarify|resolve_directly|split_scope
 
 ## Practice rules
 
-Follow `test-driven-development`'s Practice rules exactly, by name, for anything that touches
+Follow `tdd-practices`'s Practice rules exactly, by name, for anything that touches
 how you reason about a test's intent — you don't edit tests yourself, but "Red must fail for
 the right reason" governs what counts as a legitimate structural vs. behavioral turn, and
 "Arrange and Act are frozen after first green" is why you never ask `tdd-tester` to rewrite a
@@ -79,11 +79,11 @@ revise-request: <TestName> — <reason>
 escalate: <reason> — recommended_action: clarify|resolve_directly|split_scope
 ```
 
-Run build/test commands the same way `test-driven-development` / `code-change-expectations`
-document for the target project — an incremental build, never a clean rebuild, and a test run
-scoped to the one test or the component's suite, never the full project suite.
+Run build/test commands the same way `code-change-expectations` documents for the target
+project — an incremental build, never a clean rebuild, and a test run scoped to the one test
+or the component's suite, never the full project suite.
 
 ## Skills
 
-- `test-driven-development` — the Practice rules referenced above
+- `tdd-practices` — the Practice rules referenced above
 - `code-change-expectations` — general build/test-after-each-change expectations

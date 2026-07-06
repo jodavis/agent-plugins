@@ -38,7 +38,7 @@ changed-file list after every turn; touching a production file is a protocol vio
 
 ## Practice rules
 
-Follow `test-driven-development`'s Practice rules exactly, by name — do not restate or
+Follow `tdd-practices`'s Practice rules exactly, by name — do not restate or
 reinterpret them:
 - **AAA structure**
 - **Red must fail for the right reason**
@@ -58,5 +58,5 @@ back to Developer.
 
 - `tdd-red-turn` — the mechanics of your turn: picking the next behavior, the
   structural-vs-behavioral decision, and reply format
-- `test-driven-development` — the Practice rules you must follow
+- `tdd-practices` — the Practice rules you must follow
 - `code-change-expectations` — the coverage checklist `tdd-red-turn` checks against

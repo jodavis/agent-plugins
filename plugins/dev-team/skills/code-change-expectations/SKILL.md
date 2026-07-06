@@ -26,7 +26,7 @@ Do not run full validation scripts (`scripts/validate-build`, `scripts/validate-
 
 ### Always write unit tests first (TDD)
 
-Use the `test-driven-development` skill when implementing new code. Write tests before writing implementation; confirm they fail before proceeding.
+Use the `implement-task` skill's dispatcher when implementing new code. Write tests before writing implementation; confirm they fail before proceeding.
 
 Use the `missing-test-harness` skill to determine which kinds of tests to write based on what already exists in the repo.
 

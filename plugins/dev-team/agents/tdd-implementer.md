@@ -63,7 +63,7 @@ reply to send back to Developer.
 
 ## Practice rules
 
-Follow `test-driven-development`'s Practice rules exactly, by name, for anything that touches
+Follow `tdd-practices`'s Practice rules exactly, by name, for anything that touches
 how you reason about a test's intent — you don't edit tests yourself, but "Red must fail for
 the right reason" governs what counts as a legitimate structural vs. behavioral turn, and
 "Arrange and Act are frozen after first green" is why you never ask `tdd-tester` to rewrite a
@@ -73,5 +73,5 @@ passing test's setup instead of writing a new one.
 
 - `tdd-green-turn` — the mechanics of your turn: resolving structural vs. behavioral turns,
   escalation, and reply format
-- `test-driven-development` — the Practice rules referenced above
+- `tdd-practices` — the Practice rules referenced above
 - `code-change-expectations` — general build/test-after-each-change expectations

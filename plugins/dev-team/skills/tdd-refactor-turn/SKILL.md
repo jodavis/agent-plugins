@@ -61,11 +61,11 @@ unlike `tdd-red-turn`/`tdd-green-turn`. Either the behavior-preserving mandate c
 found this turn, or you report `no-refactor-needed`; nothing routes back to Developer for a
 judgment call.
 
-Run build/test commands the same way `test-driven-development` / `code-change-expectations`
-document for the target project — an incremental build, never a clean rebuild, and a test run
-scoped to the component's suite, never the full project suite.
+Run build/test commands the same way `code-change-expectations` documents for the target
+project — an incremental build, never a clean rebuild, and a test run scoped to the
+component's suite, never the full project suite.
 
 ## Skills
 
-- `test-driven-development` — the Practice rules referenced by the `tdd-refactorer` agent
+- `tdd-practices` — the Practice rules referenced by the `tdd-refactorer` agent
 - `code-change-expectations` — the coverage checklist step 2 checks against
