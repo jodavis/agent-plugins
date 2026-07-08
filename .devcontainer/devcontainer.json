@@ -8,6 +8,8 @@
     "source=dev-team-agents-claude-config,target=/home/vscode/.claude,type=volume",
     "source=agent-plugins-home,target=/workspaces/agent-plugins,type=volume"
   ],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/dev-team-agents,type=bind",
+  "workspaceFolder": "/workspaces/dev-team-agents",
   "postCreateCommand": "bash .devcontainer/post-create.sh",
   "remoteUser": "vscode",
   "containerEnv": {
