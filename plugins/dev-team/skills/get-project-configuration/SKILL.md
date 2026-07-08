@@ -106,6 +106,23 @@ work-item-id into it before running.
 A project that doesn't distinguish specs from docs can point both categories at the same
 `location`/`search`.
 
+### `validation` — map with a `script` field, or `null`
+
+`script` is a repo-root-relative path to the project's build/test validation script,
+run by the `validating` step of the `implement` pipeline. **If `validation` is `null`, or
+`validation.script` is `null` or absent, this project has no validation script — the
+`implement` pipeline skips the validation step outright** (treated as an immediate pass,
+same as the `work-tracking: null` convention above). This is the expected configuration
+for a repo you don't own and that has no `scripts/validate.sh` of its own: set
+
+```yaml
+validation:
+  script: null
+```
+
+in that repo's `.dev-team/config.yaml` (or `.dev-team/config.local.yaml` if you don't want
+to commit the override).
+
 ### `git-repo`
 
 `user-alias` — substituted for `<user-alias>` in the `working-branches.*` templates below.

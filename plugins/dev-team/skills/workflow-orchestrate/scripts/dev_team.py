@@ -408,6 +408,41 @@ def _commit_and_push(work_item_id: str) -> None:
         print(f"Warning: git commit/push failed (continuing): {e.stderr}", flush=True)
 
 
+_MERGE_CONFIG_SCRIPT = (
+    Path(__file__).resolve().parent.parent.parent
+    / "get-project-configuration" / "scripts" / "merge_config.py"
+)
+
+
+def _load_project_config(repo_root: Path) -> dict:
+    """Return the merged project configuration (see get-project-configuration skill)."""
+    result = subprocess.run(
+        [sys.executable, str(_MERGE_CONFIG_SCRIPT), "--repo-root", str(repo_root)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to load project configuration: {result.stderr.strip()}")
+    return json.loads(result.stdout)
+
+
+def _resolve_validation_script(config: dict, repo_root: Path) -> str | None:
+    """Return the validation script command for this project, or None if unconfigured.
+
+    A project without a validation script (e.g. a repo the user doesn't own) opts out
+    by setting `validation: null` or `validation.script: null` in its .dev-team/config.yaml
+    — see get-project-configuration's null-value convention.
+    """
+    validation = config.get("validation")
+    if not validation:
+        return None
+    script = validation.get("script") if isinstance(validation, dict) else None
+    if not script:
+        return None
+    if script.startswith("~"):
+        return str(Path(script).expanduser())
+    return str(repo_root / script)
+
+
 def parse_json_output(text: str) -> dict:
     """Extract the last parseable JSON object from agent output text."""
     for line in reversed(text.strip().splitlines()):
@@ -668,16 +703,18 @@ class ValidateStep(Step):
         ctx = self._ctx
         if ctx.validate_result:
             return []
+        validate_command = _resolve_validation_script(_load_project_config(REPO_ROOT), REPO_ROOT)
+        if validate_command is None:
+            ctx.validate_result = "Succeeded (no validation script configured for this project)"
+            return []
         self._log_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         log_path = self._log_dir / f"{ctx.work_item_id}-validate-{timestamp}.log"
         ctx.build_log = str(log_path)
-        validate_script = REPO_ROOT / "scripts" / f"validate.sh"
-        command = str(validate_script)
         return [{
             "action": "run_script",
             "message": "Running build and test validation.",
-            "command": command,
+            "command": validate_command,
             "log_file": str(log_path),
             "write_section": "Validate Result",
             "result_format": "success | failed",
