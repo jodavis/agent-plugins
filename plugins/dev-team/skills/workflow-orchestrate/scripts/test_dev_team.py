@@ -916,6 +916,80 @@ class TestInlineStepDispatch:
 
 
 # ---------------------------------------------------------------------------
+# _resolve_validation_script / ValidateStep configurability
+# ---------------------------------------------------------------------------
+
+class TestResolveValidationScript:
+    def test_default_config_resolves_to_repo_relative_path(self, tmp_path):
+        from dev_team import _resolve_validation_script
+        config = {"validation": {"script": "scripts/validate.sh"}}
+        result = _resolve_validation_script(config, tmp_path)
+        assert result == str(tmp_path / "scripts/validate.sh")
+
+    def test_validation_null_returns_none(self, tmp_path):
+        from dev_team import _resolve_validation_script
+        config = {"validation": None}
+        assert _resolve_validation_script(config, tmp_path) is None
+
+    def test_validation_script_null_returns_none(self, tmp_path):
+        from dev_team import _resolve_validation_script
+        config = {"validation": {"script": None}}
+        assert _resolve_validation_script(config, tmp_path) is None
+
+    def test_validation_key_absent_returns_none(self, tmp_path):
+        from dev_team import _resolve_validation_script
+        assert _resolve_validation_script({}, tmp_path) is None
+
+    def test_home_relative_script_is_expanded(self, tmp_path, monkeypatch):
+        from dev_team import _resolve_validation_script
+        monkeypatch.setenv("HOME", str(tmp_path))
+        config = {"validation": {"script": "~/bin/validate.sh"}}
+        result = _resolve_validation_script(config, tmp_path / "repo")
+        assert result == str(tmp_path / "bin" / "validate.sh")
+
+
+class TestValidateStepGetActions:
+    def _make_ctx(self, tmp_path, **kwargs):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-TEST", **kwargs)
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+        return ctx, context_path
+
+    def test_skips_run_script_when_no_validation_script_configured(self, tmp_path, monkeypatch):
+        """A repo that opts out of validation (validation: null) should not spawn a script run."""
+        import dev_team
+        from dev_team import ValidateStep
+
+        monkeypatch.setattr(dev_team, "_load_project_config", lambda repo_root: {"validation": None})
+        ctx, context_path = self._make_ctx(tmp_path)
+        step = ValidateStep(ctx, context_path, tmp_path / "logs")
+
+        actions = step.get_actions()
+
+        assert actions == []
+        assert ctx.validate_result.startswith("Succeeded")
+
+    def test_returns_run_script_action_when_configured(self, tmp_path, monkeypatch):
+        import dev_team
+        from dev_team import ValidateStep
+
+        monkeypatch.setattr(
+            dev_team, "_load_project_config",
+            lambda repo_root: {"validation": {"script": "scripts/validate.sh"}},
+        )
+        monkeypatch.setattr(dev_team, "REPO_ROOT", tmp_path)
+        ctx, context_path = self._make_ctx(tmp_path)
+        step = ValidateStep(ctx, context_path, tmp_path / "logs")
+
+        actions = step.get_actions()
+
+        assert len(actions) == 1
+        assert actions[0]["action"] == "run_script"
+        assert actions[0]["command"] == str(tmp_path / "scripts/validate.sh")
+
+
+# ---------------------------------------------------------------------------
 # CreatePrStep
 # ---------------------------------------------------------------------------
 

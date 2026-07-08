@@ -1,21 +1,23 @@
 {
   "name": "dev-team-agents",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "image": "ghcr.io/jodavis/devcontainer-template/base:latest",
   "features": {
-    "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.12"
-    },
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "lts"
-    }
+    "ghcr.io/jodavis/devcontainer-template/git-askpass:1": {}
   },
   "mounts": [
-    "source=dev-team-agents-claude-config,target=/home/vscode/.claude,type=volume"
+    "source=dev-team-agents-claude-config,target=/home/vscode/.claude,type=volume",
+    "source=agent-plugins-home,target=/workspaces/agent-plugins,type=volume"
   ],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/dev-team-agents,type=bind",
+  "workspaceFolder": "/workspaces/dev-team-agents",
   "postCreateCommand": "bash .devcontainer/post-create.sh",
   "remoteUser": "vscode",
+  "containerEnv": {
+    "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}",
+    "GH_TOKEN": "${localEnv:GH_TOKEN}",
+    "GIT_ASKPASS": "/usr/local/bin/git-askpass"
+  },
+  "runArgs": ["--name", "vscode-devteamagents"],
   "customizations": {
     "vscode": {
       "extensions": [

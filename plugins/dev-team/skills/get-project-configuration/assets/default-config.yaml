@@ -25,6 +25,9 @@ documentation:
     name-format: <slug>_Spec.md
     search: grep -l "<work-item-id>" specs/*.md
 
+validation:
+  script: scripts/validate.sh
+
 git-repo:
   user-alias: claude
   working-branches:
@@ -34,7 +37,7 @@ git-repo:
     when: A task implementation is complete, or on each individual bug or code review comment addressed
   push:
     enabled: true
-    when: Only after a full successful run of scripts/validate.sh
+    when: Only after the validation step passes (or is skipped, if the project has no validation.script configured)
   create-pr:
     enabled: true
     draft: true

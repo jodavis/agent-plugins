@@ -80,6 +80,10 @@ gaps to raise — do not treat a missing table as also failing checks 2 or 3.
 
 **If gaps exist**, return:
 - A numbered list of concrete questions. Each must be specific enough to resolve the gap, reference the section or concept it pertains to, and be a genuine blocker — not a suggestion or style preference. Only include questions where a reasonable implementer would be forced to guess at intended behavior.
+- For each question, rate how confidently you could answer it yourself if forced to guess, on a 1–5 scale:
+  - 1 — you could answer this easily with high confidence (an obvious, low-risk inference)
+  - 5 — you cannot continue without this answered (no reasonable inference exists; it requires a human decision)
+  Format each question as `N. [Rating: X/5] <question text>`.
 - Under a `## Useful resources` heading: any external resources from step 4 that would inform implementation.
 
 Do not include summaries, recommendations, or file quotes.
