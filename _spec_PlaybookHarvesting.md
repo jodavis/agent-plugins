@@ -339,7 +339,10 @@ outcomes.
   vendor-neutrality holds — mechanically checkable by grepping the core files for forbidden
   vocabulary (dev-team skill names, "spawn", "invoke skill"). Judgment-shaped criteria
   ("steps are executable knowledge, not delegation") are graded by the validating agent
-  against the checklist.
+  against the checklist. The interview step is exercised via a scripted answer key in the
+  fixture set: the validating subagent role-plays the user strictly from the key, answering
+  unscripted questions with "no answer — proceed with your recommendation," so runs stay
+  reproducible.
 - `spec-first-draft` instance mode — given a fixture playbook: the draft uses
   `spec-template.md`'s sections in place of the default template and stamps the
   `> **Playbook:**` header reference.
@@ -490,13 +493,23 @@ Create the normative knowledge skill defining the playbook contract, following t
 #### 2. [Build the skill dry-run harness](https://jodasoft.atlassian.net/browse/ADR-318)
 
 Create the fixtures and run procedure that verify the Testable prose components, per
-`missing-test-harness`.
+`missing-test-harness`. Requires Task 1 ([ADR-317](https://jodasoft.atlassian.net/browse/ADR-317))
+— fixtures conform to the contract and marker format it defines.
 
 - [ ] Fixture mini-spec exists with Method markers (new callout format) and a small
       Planned Implementation section
 - [ ] Two tiny fixture exemplar repos exist with scripted git history (template stamp,
-      strip/replace commits, divergent choices between the two exemplars)
+      strip/replace commits, divergent choices between the two exemplars), persisted as
+      checked-in content plus a setup script that materializes the throwaway git repos on
+      demand each run — no nested `.git` directories are committed
 - [ ] A fixture pristine-template-output directory exists for strip/replace derivation
+- [ ] A hand-authored fixture playbook directory (conforming to `playbook-contract`) exists
+      for Task 5's instance-mode dry run
+- [ ] A hand-authored fixture instance spec with a `> **Playbook:**` header exists for
+      Task 6's seeding dry run
+- [ ] A scripted interview answer key is part of the fixture set: the validating subagent
+      role-plays the user strictly from the key, answering unscripted questions with "no
+      answer — proceed with your recommendation," keeping dry runs reproducible
 - [ ] The run procedure is documented: a validating subagent, blind to authoring context,
       runs a target skill against the fixtures and grades output against that component's
       checklist; mechanical assertions (file existence, forbidden-vocabulary grep) are
@@ -508,24 +521,36 @@ Create the fixtures and run procedure that verify the Testable prose components,
 
 #### 3. [Implement `harvest-playbook` skill and `/harvest` command](https://jodasoft.atlassian.net/browse/ADR-319)
 
-The core harvest procedure and its thin command dispatcher.
+The core harvest procedure and its thin command dispatcher. Requires Tasks 1–2
+([ADR-317](https://jodasoft.atlassian.net/browse/ADR-317),
+[ADR-318](https://jodasoft.atlassian.net/browse/ADR-318)).
 
 - [ ] Checklist for the dry run is authored before the skill prose (red), covering: output
       conforms to the playbook contract; Method markers in the source spec replaced with
       provenance links; TODO markers carry manual fallbacks; vendor-neutrality grep passes;
-      steps are executable knowledge (agent-graded)
+      steps are executable knowledge (agent-graded); a strip/replace step is correctly
+      derived from the template-output diff; a plan-vs-history divergence mined from the
+      exemplars surfaces in the playbook or interview
 - [ ] `harvest-playbook` implements the six-step procedure (gather from paths → candidate
       method content via markers/litmus test/exemplar diffing → interview → author playbook →
       replace markers → present TODO list and replay-and-diff procedure)
 - [ ] Argument contract enforced: at least one durable-artifact source required; existing
       playbook directory at the output path triggers update mode, never blind overwrite
 - [ ] `commands/harvest.md` dispatches to the skill with documented argument hints
-- [ ] Given the fixture spec and exemplar repos, When `harvest-playbook` runs against them in
-      a clean session, Then the dry-run checklist passes
+- [ ] Given the fixture spec, exemplar repos, and pristine template output, When
+      `harvest-playbook` runs against them in a clean session (interview via the fixture
+      answer key), Then the dry-run checklist passes — including the derived strip/replace
+      step and the surfaced divergence
+
+Deliberately one task despite its size: it is one skill file and one Testable component. If a
+session runs long, the checklist-first structure provides a natural intermediate commit point
+(checklist and fixtures wiring first, procedure prose second).
 
 #### 4. [Adopt Method marker and header conventions across spec-pipeline skills](https://jodasoft.atlassian.net/browse/ADR-320)
 
-The small Wrapper edits that teach the pipeline the new conventions.
+The small Wrapper edits that teach the pipeline the new conventions. Requires Task 1
+([ADR-317](https://jodasoft.atlassian.net/browse/ADR-317)) — the conventions these edits
+reference are defined there.
 
 - [ ] `spec-discussion` gains the guard rule: Method markers are not review comments; never
       resolve or remove them
@@ -540,7 +565,9 @@ The small Wrapper edits that teach the pipeline the new conventions.
 
 #### 5. [Implement instance mode in `spec-first-draft` and `/spec` forwarding](https://jodasoft.atlassian.net/browse/ADR-321)
 
-Consumption at drafting time.
+Consumption at drafting time. Requires Tasks 1–2
+([ADR-317](https://jodasoft.atlassian.net/browse/ADR-317),
+[ADR-318](https://jodasoft.atlassian.net/browse/ADR-318)).
 
 - [ ] Checklist for the dry run is authored before the skill prose (red)
 - [ ] `commands/spec.md` documents the `using <playbook>` argument form and forwards a
@@ -554,7 +581,9 @@ Consumption at drafting time.
 #### 6. [Implement playbook seeding and the documentation task in `spec-task-breakdown`](https://jodasoft.atlassian.net/browse/ADR-322)
 
 Consumption at breakdown time, plus the spec-lifecycle change (both edits live in this one
-skill file).
+skill file). Requires Tasks 1–2
+([ADR-317](https://jodasoft.atlassian.net/browse/ADR-317),
+[ADR-318](https://jodasoft.atlassian.net/browse/ADR-318)).
 
 - [ ] Checklist for the seeding dry run is authored before the skill prose (red)
 - [ ] When the spec header carries `> **Playbook:**`: tasks seed from the playbook's step
@@ -573,13 +602,16 @@ skill file).
 
 Validate the no-markers path by harvesting an existing spec from this repo (candidate:
 `_spec_TddForImplementation.md`), with the user in the interview loop. Output pointed at a
-local scratch directory — this playbook is a test artifact, not a deliverable.
+local scratch directory — this playbook is a test artifact, not a deliverable. Requires
+Task 3 ([ADR-319](https://jodasoft.atlassian.net/browse/ADR-319)).
 
 - [ ] Given a completed spec with no Method markers, When `/harvest` runs with the user
       answering interview questions, Then a playbook directory is produced that conforms to
       the contract and passes the vendor-neutrality grep
-- [ ] Findings (gaps in the harvest procedure, awkward interview turns) are fed back as
-      revisions to `harvest-playbook` before the real harvest (Human task 2)
+- [ ] `harvest-playbook` is revised per the findings (gaps in the harvest procedure, awkward
+      interview turns) within this task — the revisions land in this task's PR, not as
+      unscoped follow-up; anything unaddressable without team input is recorded in
+      [ADR-327](https://jodasoft.atlassian.net/browse/ADR-327)
 
 #### 8. [Add a `playbooks` plugin to this marketplace](https://jodasoft.atlassian.net/browse/ADR-324)
 
@@ -593,13 +625,17 @@ team's shared skill repository instead).
 
 #### 9. [Author design documentation (final task)](https://jodasoft.atlassian.net/browse/ADR-325)
 
-Per this spec's own lifecycle rule — unconditional, last.
+Per this spec's own lifecycle rule — unconditional, last among the agent tasks. Requires
+Tasks 1–8. The feature's acceptance test (H2/H3) may still be outstanding when this task
+runs, so the status flip here is to an acceptance-pending form; H3 performs the final flip.
 
 - [ ] `_doc_PlaybookHarvesting.md` authored from this spec (Overview, Responsibilities &
       Boundaries, Key Design Decisions carry over; tasks, markers, and planned-vs-actual
       deltas do not)
 - [ ] `_doc_Projects.md`'s "specs become `_doc_*.md`" sentence corrected to the new lifecycle
-- [ ] This spec's status line flipped to `> **Status:** Implemented — retained for harvesting`
+- [ ] This spec's status line flipped to `> **Status:** Implemented — acceptance pending
+      ([ADR-327](https://jodasoft.atlassian.net/browse/ADR-327),
+      [ADR-328](https://jodasoft.atlassian.net/browse/ADR-328))`
 
 ### Human-required tasks
 
@@ -635,6 +671,8 @@ The feature's acceptance test. Requires H2.
       blind spot (feeds an update pass) or acceptable instance variation
 - [ ] The playbook passes the cold-reader bar: the session completed the strip/replace and
       construction steps without information the playbook failed to provide
+- [ ] This spec's status line flipped to `> **Status:** Implemented — retained for
+      harvesting` (the feature's acceptance is now met)
 
 ### Related feature placeholders
 
