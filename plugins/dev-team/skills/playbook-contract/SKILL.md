@@ -63,12 +63,12 @@ commands, file operations, and references to team artifacts (ADRs, scripts) — 
 - **Compliant:** "Run `az group create --name <resource-group> --location <region>` to create
   the resource group before deploying. Validate: `az group show --name <resource-group>` returns
   `provisioningState: Succeeded`."
-- **Violating:** "This step references your pipeline — what does it mean in plain terms?" is
-  the litmus question a harvest interview asks when a candidate step leans on team-internal
-  shorthand instead of spelling out what actually happens. A step that fails this question (e.g.
-  "run the usual deploy skill against the pipeline") must be rewritten into the concrete
-  commands and criteria that skill or pipeline stage actually performs, with no dev-team
-  vocabulary left in the prose.
+- **Violating:** "Run the usual deploy skill against the pipeline to bring the service up." This
+  leans on team-internal shorthand ("the usual deploy skill," "the pipeline") that a reader
+  without dev-team context wouldn't understand. The litmus question a harvest interview asks to
+  catch this: "this step references your pipeline — what does it mean in plain terms?" A step
+  that fails it must be rewritten into the concrete commands and criteria that skill or pipeline
+  stage actually performs, with no dev-team vocabulary left in the prose.
 
 ### TODO marker semantics
 
