@@ -1,6 +1,7 @@
 # Concurrent Development
 
 > **Status:** Draft
+> **Epic:** [ADR-296](https://jodasoft.atlassian.net/browse/ADR-296)
 > **Will become:** `_doc_ConcurrentDevelopment.md` once implementation is complete
 
 ## Overview
@@ -80,11 +81,22 @@ no dependency is evident. No new pause is needed for this — the existing step-
 pause is exactly where the user already reviews and corrects titles, descriptions, and exit
 criteria, and `Depends on:` is corrected the same way, at the same point.
 
+Step 5's rewrite is also the first point where the graph is guaranteed complete (every reference
+now a real key), so it's where `parse_task_dependencies` is run once as a validation pass, not
+just for later scheduling use: it rejects immediately, with a clear error naming the offending
+task and reference, if any `Depends on:` entry names a local task number with no matching task
+heading (or, post-rewrite, a key that isn't itself a task in this spec), or if the resulting graph
+contains a cycle. This is the same "reject upfront rather than fail silently or loop forever"
+posture the Concurrent scheduler decision below takes for an out-of-scope dependency in an
+explicit task list.
+
 _Consequences:_ No separate graph file to keep in sync with the task list; the dependency graph
 is derived by parsing this one field across all tasks. Cross-spec dependencies remain unsupported
 until a future pass. `spec-task-breakdown` carries one additional responsibility (rewriting
 `Depends on:` references alongside titles) but no additional pause or user interaction — it
-happens as part of the existing step 5.
+happens as part of the existing step 5; that same step now also catches a dangling reference or a
+dependency cycle before the spec ever leaves task breakdown, rather than surfacing much later as
+a task that never becomes eligible or a scheduler run that polls forever.
 
 ### A dependent task may start once its dependency's PR is open — or, with multiple dependencies, once all but one have merged
 
@@ -161,6 +173,42 @@ fresh before doing anything else: `git stash list` must be empty and `git status
 show no unexpected pre-existing modifications. If either check fails, treat it as a hard failure
 (stop and report) rather than silently proceeding on a potentially contaminated worktree.
 
+### `PipelineContext` must round-trip every context-file field, not just its own named ones
+
+_Context:_ Confirmed by reading `dev_team.py`: `PipelineContext.save()` rewrites the context
+file's entire YAML frontmatter block from a fixed list of named dataclass fields, and `load()`
+reconstructs a `PipelineContext` from that same fixed list — neither round-trips a frontmatter key
+it doesn't itself declare. This is already true today for `working_branch`, `base_branch`, and
+`parent_work_item` (all written directly via `Edit`, per `use-context-file`, never through
+`PipelineContext`) — currently harmless only because `ensure-working-branch` recomputes any of
+them that comes back empty. `workflow-orchestrate`'s orchestration loop invokes `dev_team.py` (and
+so calls `ctx.save()`) on every iteration of a task's pipeline, on the very same context file these
+skill-level fields live in.
+
+This feature is the first thing that makes the gap actually harmful. `concurrent-orchestrate` (see
+below) pre-populates `base_branch` before a task's `workflow-orchestrate` run even starts — but
+`dev_team.py`'s first `ctx.save()` call happens at pipeline boot, before `ensure-working-branch`
+ever runs, so it would silently wipe that pre-populated value, and the task would fall back to the
+ordinary feature branch instead of its dependency's branch with no error at all. The same problem
+hits `worktree_path`/`worktree_branch` (recorded right after spawn, needed by `dev-team:watch-pr`
+at hand-off) and every field the PR monitor decision introduces (`base_branch_sha`,
+`last_seen_review_comment_id`, `last_seen_ci_conclusion`, `watch_worktree_path`,
+`watch_worktree_branch`) — none of these are `PipelineContext` dataclass fields either.
+
+_Decision:_ Rework `PipelineContext.save()`/`load()` to round-trip any frontmatter key it doesn't
+itself declare as a named field, alongside the ones it does — reading the full frontmatter block
+into a dict first, overwriting only the keys it knows how to interpret as typed fields, and
+writing back every other key unchanged in `save()`. This fixes the pre-existing silent-drop for
+`working_branch`/`base_branch`/`parent_work_item` at the same time it makes every new field this
+spec introduces durable, without requiring a matching named dataclass field for each one going
+forward.
+
+_Consequences:_ One shared fix covers every current and future skill-managed frontmatter field, so
+neither this spec nor a later one needs to keep extending `PipelineContext`'s own field list just
+to avoid data loss. Tracked as its own task (see Task 0 below), since it's a `dev_team.py` change
+that every other task in this breakdown touching `base_branch`, `worktree_path`/`worktree_branch`,
+or the PR-monitor fields depends on being fixed first.
+
 ### A new scheduler spawns one pipeline run per eligible task
 
 _Context:_ The user chose full scope for this spec: not just the branch/rebase mechanics, but
@@ -196,6 +244,14 @@ out-of-scope one. `concurrent_schedule.py` validates this upfront, before spawni
 dependency of every listed task must itself be in the list or already `done`, or the whole request
 is rejected immediately with a clear error naming the offending task and missing dependency,
 rather than silently polling forever.
+
+The concurrency cap counts only active task-pipeline spawns tracked in `concurrent_schedule.py`'s
+own data files; a `dev-team:watch-pr` monitor (started separately at hand-off, per the PR monitor
+decision below) is never counted against it. A monitor spends nearly all its time blocked inside
+`watch_pr_poll.py`, not consuming compute, and it's gated on hand-off having already happened, not
+on a scheduler decision — counting it the same as an active implement/validate/review pipeline
+would let a backlog of PRs simply awaiting human review permanently starve the cap even though
+those monitors are comparatively idle.
 
 _Consequences:_ Multiple task pipelines genuinely run in parallel, each independently
 progressing through the existing implement/validate/review/signoff/handoff states, but a run
@@ -362,7 +418,8 @@ by this removal.
 | Component | Type | Responsibility | Depends on |
 |---|---|---|---|
 | `Depends on:` task field | Wrapper | Declares a task's dependencies inline in the spec's `## Tasks` section — local task-number references until `spec-task-breakdown` step 5 rewrites them to real task-work-item keys | — |
-| Task dependency graph parser | Testable | Parses a spec's `## Tasks` section into a `{task_id: [dependency_ids]}` graph | — |
+| `PipelineContext` frontmatter round-trip (extends `dev_team.py`) | Testable | Preserves every context-file frontmatter field across `save()`/`load()`, not just the fields `PipelineContext` itself declares — fixes a pre-existing silent-drop this feature would otherwise make harmful | — |
+| Task dependency graph parser | Testable | Parses a spec's `## Tasks` section into a `{task_id: [dependency_ids]}` graph; rejects a dangling reference or a dependency cycle with a clear error rather than accepting either silently | — |
 | Task readiness checker | Testable | Given a task-work-item id and its full list of declared dependencies, reports per-dependency PR/merge status and whether the task as a whole is eligible to start (single ready dependency, or all-but-one of several already merged) | `use-context-file` (existing) |
 | `/implement` argument parser | Wrapper | Recognizes a single task key, an inclusive "up to" phrase, or an explicit comma/"and"-separated list in the command argument, and dispatches to `workflow-orchestrate` (existing) or `concurrent-orchestrate` accordingly | `workflow-orchestrate` (existing), `concurrent-orchestrate` |
 | Concurrent scheduler (`concurrent_schedule.py`) | Testable | Owns the dependency closure, each task's cached status, and the concurrency cap; exits with a status (including `"blocked"` when a failed dependency permanently stalls a task) and a spawn list; spawns nothing itself | Task dependency graph parser, Task readiness checker |
@@ -382,9 +439,19 @@ by this removal.
 - **Spec convention:** `**Depends on:** <ref>[, <ref>...]` (or `— none —`) — a local task-number
   reference (e.g. `Task 3`) until `spec-task-breakdown` step 5 rewrites it to a real task-key,
   one line per task in `## Tasks`, immediately under the task's title.
+- **`PipelineContext` frontmatter round-trip:** `save()`/`load()` reworked to read the full
+  frontmatter block as a dict, apply only the keys they interpret as typed fields, and write back
+  every other key unchanged — so `working_branch`, `base_branch`, `parent_work_item`, and this
+  spec's new fields (`base_branch_sha`, `worktree_path`, `worktree_branch`, `watch_worktree_path`,
+  `watch_worktree_branch`, `last_seen_review_comment_id`, `last_seen_ci_conclusion`) all survive
+  every `dev_team.py` invocation without needing a named dataclass field of their own.
 - **Task dependency graph parser:** `parse_task_dependencies(spec_text: str) -> dict[str, list[str]]`
   — maps each task-key to its list of dependency task-keys (real keys only; called after
-  `spec-task-breakdown` step 5 has already rewritten local references).
+  `spec-task-breakdown` step 5 has already rewritten local references). Raises a clear error
+  (naming the offending task and reference) if any dependency names a task that isn't itself a
+  task in the same spec, or if the graph contains a cycle — `spec-task-breakdown` step 5 calls this
+  once as a validation pass immediately after rewriting, so either failure is caught at task
+  breakdown time, never later.
 - **Task readiness checker:** `dependency_status(task_work_item_id: str) -> Literal["ready", "in_progress", "done", "failed", "not_started"]`
   (per-dependency status; `"ready"` once `pr_url` is set, `"done"`/`"failed"` mirror
   `dev_team.py`'s two terminal states) plus
@@ -450,9 +517,12 @@ by this removal.
   calls about resolving conflicting hunks, not a pure function — per `component-taxonomy`,
   Testable-tier components like this are verified by "whatever mechanism actually fits," and
   neither existing pattern in this repo fits cleanly (`pytest` suits the plugin's Python scripts;
-  there's no Gherkin/E2E harness for a mid-git-operation skill like this). Likely a small set of
-  scripted rebase-conflict fixture scenarios (set up a repo with a deliberate conflict, run the
-  skill, assert the final git state) — left for whoever implements it to size correctly.
+  there's no Gherkin/E2E harness for a mid-git-operation skill like this). A scripted
+  rebase-conflict fixture harness (set up a repo with a deliberate conflict, run the skill, assert
+  the final git state) covering at minimum: a single-file, single-hunk conflict resolvable from
+  task context; a multi-file conflict, still resolvable from task context; and a conflict
+  genuinely requiring information the skill doesn't have, correctly returning `"unresolved"`
+  without guessing — implementers may add more scenarios, but these three are the objective bar.
 - **PR event detector:** `detect_pr_events(task_work_item_id: str) -> list[Literal["review_comment", "ci_failure", "base_updated", "dependency_merged", "task_merged"]]`
   — compares the PR's actual current state on GitHub (never the context-file `state` field, which
   only reflects hand-off) and in git (base branch tip) against what's recorded in the context file
@@ -465,7 +535,9 @@ by this removal.
 - **`watch_pr_poll.py`:** `poll(task_work_item_id: str, max_seconds: int = 480) -> list[Literal["review_comment", "ci_failure", "base_updated", "dependency_merged", "task_merged"]] | Literal["no_change"]`
   — loops the PR event detector on a fixed interval (e.g. every 30s) until it reports at least one
   fired event or `max_seconds` elapses, whichever comes first; `max_seconds` defaults comfortably
-  under the `Bash` tool's 10-minute timeout cap. Returns the *whole* list `detect_pr_events` fired
+  under the `Bash` tool's 10-minute timeout cap. Both the sleep function and the elapsed-time check
+  are injectable (defaulting to real `time.sleep`/`time.monotonic`), so tests can drive many
+  simulated iterations without any real wall-clock delay. Returns the *whole* list `detect_pr_events` fired
   in that check — never just one arbitrarily chosen event — so `dev-team:watch-pr` can react to
   everything that happened in this window; `last_seen_*` fields are only updated for events
   actually included in the returned list, so nothing gets silently marked "seen" without being
@@ -486,6 +558,10 @@ by this removal.
 
 - **`/implement` (extended)** — gains the argument parser described in Interfaces; a single key's
   behavior is unchanged, either multi-item form now dispatches to `concurrent-orchestrate`.
+- **`PipelineContext` (extended, in `dev_team.py`)** — `save()`/`load()` preserve any frontmatter
+  key they don't declare as a named field, fixing the pre-existing silent-drop of skill-managed
+  fields (`working_branch`, `base_branch`, `parent_work_item`) and making this spec's new fields
+  durable across pipeline invocations.
 - **`concurrent_schedule.py`** (new script, sibling to `dev_team.py`) — deterministic computation
   only, no spawning and no worktree provisioning (that's the `Agent` tool's job at spawn time, see
   above). Owns the dependency graph, the closure/list computation, each task's cached status, and
@@ -648,6 +724,30 @@ None outstanding.
 
 ---
 
+### [ADR-335: `PipelineContext` frontmatter round-trip](https://jodasoft.atlassian.net/browse/ADR-335) 🤖
+
+Fixes a pre-existing bug in `dev_team.py`'s `PipelineContext.save()`/`load()` that this feature's
+mechanism depends on being fixed: neither round-trips a frontmatter field it doesn't itself
+declare, silently dropping `working_branch`/`base_branch`/`parent_work_item` today and every new
+field this spec adds. No dependencies — everything else that persists a new context-file field
+builds on this.
+
+- [ ] `PipelineContext.save()`/`load()` reworked to read/write the full frontmatter block as a
+  dict, applying only the keys they interpret as typed fields and preserving every other key
+  unchanged
+- [ ] `working_branch`, `base_branch`, and `parent_work_item` (already written via `Edit` per
+  `use-context-file`, never through `PipelineContext`) survive a `dev_team.py` invocation unchanged
+- [ ] Given a context file with a frontmatter field `PipelineContext` doesn't declare as a named
+  field, when `dev_team.py` runs and calls `ctx.save()`, then that field's value is preserved
+  unchanged in the rewritten file
+- [ ] Given `base_branch` is pre-populated before a task's `workflow-orchestrate` run starts, when
+  the pipeline reaches `ensure-working-branch`, then `base_branch` still has its pre-populated
+  value
+- [ ] Unit tests: an unknown frontmatter key survives a load/save cycle unchanged; every existing
+  known dataclass field still round-trips exactly as before
+
+---
+
 ### [ADR-307: Dependency declaration and graph parsing](https://jodasoft.atlassian.net/browse/ADR-307) 🤖
 
 Extends `spec-task-breakdown` with the `Depends on:` field convention (local task-number
@@ -663,14 +763,17 @@ into a dependency graph. No other task in this breakdown can be tested end-to-en
   real task-key to its list of dependency task-keys
 - [ ] Given a spec with tasks declaring `Depends on:` entries via local task numbers, when
   `spec-task-breakdown` completes, then every `Depends on:` line contains real task-work-item keys
+- [ ] Rejects, with a clear error naming the offending task and reference, a `Depends on:` entry
+  that names a task not present in the spec (dangling reference) or a dependency graph containing
+  a cycle
 - [ ] Unit tests for `parse_task_dependencies`: no dependencies, single dependency, multiple
-  dependencies, and a task with `— none —`
+  dependencies, a task with `— none —`, a dangling reference, and a two/three-task cycle
 
 ---
 
 ### [ADR-308: Task readiness checker and base-branch resolver](https://jodasoft.atlassian.net/browse/ADR-308) 🤖
 
-_Depends on [ADR-307](https://jodasoft.atlassian.net/browse/ADR-307)._ Adds the single- and multi-dependency eligibility rule, and extends
+_Depends on [ADR-307](https://jodasoft.atlassian.net/browse/ADR-307), [ADR-335](https://jodasoft.atlassian.net/browse/ADR-335)._ Adds the single- and multi-dependency eligibility rule, and extends
 `ensure-working-branch` to apply it (or use a pre-populated `base_branch`) plus the
 worktree-freshness safety check.
 
@@ -714,7 +817,7 @@ first component every later task in this breakdown that touches rebasing builds 
 
 ### [ADR-310: Concurrent scheduler, `/implement` argument parser, and `concurrent-orchestrate`](https://jodasoft.atlassian.net/browse/ADR-310) 🤖
 
-_Depends on [ADR-307](https://jodasoft.atlassian.net/browse/ADR-307), [ADR-308](https://jodasoft.atlassian.net/browse/ADR-308)._ These three ship together — the script computes everything
+_Depends on [ADR-307](https://jodasoft.atlassian.net/browse/ADR-307), [ADR-308](https://jodasoft.atlassian.net/browse/ADR-308), [ADR-335](https://jodasoft.atlassian.net/browse/ADR-335)._ These three ship together — the script computes everything
 deterministically and exits with a descriptor; the orchestrator only spawns what it's told;
 `/implement`'s parser is what makes either reachable. None is independently useful without the
 others.
@@ -750,7 +853,7 @@ others.
 
 ### [ADR-311: PR event detector and `watch_pr_poll.py`](https://jodasoft.atlassian.net/browse/ADR-311) 🤖
 
-_Depends on [ADR-308](https://jodasoft.atlassian.net/browse/ADR-308)._ The detection half of the post-hand-off monitor — determines what changed on
+_Depends on [ADR-308](https://jodasoft.atlassian.net/browse/ADR-308), [ADR-335](https://jodasoft.atlassian.net/browse/ADR-335)._ The detection half of the post-hand-off monitor — determines what changed on
 a task's PR, independent of how the monitor reacts to it.
 
 - [ ] `detect_pr_events(task_work_item_id) -> list[Literal["review_comment", "ci_failure", "base_updated", "dependency_merged", "task_merged"]]`
@@ -765,6 +868,10 @@ a task's PR, independent of how the monitor reacts to it.
   a hardcoded feature branch
 - [ ] Given two conditions firing in the same window (e.g. a review comment and a base update),
   when `poll` returns, then both are included in the returned list
+- [ ] `poll`'s own loop/timeout mechanics are unit-tested with an injectable sleep/clock (no real
+  wall-clock sleeps): returns as soon as the first event fires without waiting out the rest of the
+  window, and returns `"no_change"` once the injected clock reports `max_seconds` elapsed with
+  nothing fired
 - [ ] Unit tests for `detect_pr_events` covering each of the five event types firing individually,
   multiple at once, and none (no false re-fires on an already-seen item)
 
@@ -783,14 +890,18 @@ context and drives the rebase to completion — never pushes.
   returns `"resolved"` and `git status` shows no rebase in progress
 - [ ] Given a conflict genuinely requiring information the skill doesn't have, when the skill
   runs, then it returns `"unresolved"` without guessing
-- [ ] A small scripted fixture-scenario harness (per the taxonomy's "whatever mechanism fits" for
-  agent-skill-prose Testable components) covering both outcomes — sized by whoever implements it
+- [ ] A scripted fixture-scenario harness (per the taxonomy's "whatever mechanism fits" for
+  agent-skill-prose Testable components) covering at minimum: (1) a single-file, single-hunk
+  conflict resolvable from task context alone; (2) a multi-file conflict, still resolvable from
+  task context; (3) a conflict genuinely requiring information the skill doesn't have, correctly
+  returning `"unresolved"` without guessing — implementers may add more scenarios, but these three
+  are the objective bar for this criterion
 
 ---
 
 ### [ADR-313: `dev-team:watch-pr` and `/watch-pr`](https://jodasoft.atlassian.net/browse/ADR-313) 🤖
 
-_Depends on [ADR-309](https://jodasoft.atlassian.net/browse/ADR-309), [ADR-311](https://jodasoft.atlassian.net/browse/ADR-311), [ADR-312](https://jodasoft.atlassian.net/browse/ADR-312)._ The full post-hand-off PR monitor: owns the entire
+_Depends on [ADR-309](https://jodasoft.atlassian.net/browse/ADR-309), [ADR-311](https://jodasoft.atlassian.net/browse/ADR-311), [ADR-312](https://jodasoft.atlassian.net/browse/ADR-312), [ADR-335](https://jodasoft.atlassian.net/browse/ADR-335)._ The full post-hand-off PR monitor: owns the entire
 lifecycle from hand-off to merge, and the manual entry point that gives it the same isolation
 guarantee as the auto-started path.
 
@@ -827,9 +938,11 @@ guarantee as the auto-started path.
 Unrelated to the dependency/rebase mechanics above; can run independently of every other task in
 this breakdown.
 
-- [ ] Todo-log-tailing and `TodoWrite`-mirroring mechanism removed from `workflow-orchestrate` and
-  `workflow-worker`
-- [ ] Per-agent "maintain a to-do list" instruction removed
+- [ ] Todo-log-tailing and `TodoWrite`-mirroring mechanism removed from `workflow-orchestrate`
+  (its `SKILL.md` todo-log-tailing steps and `scripts/get_todo_log_path.py`) and `workflow-worker`
+  (its `SKILL.md` log-redirection step and `scripts/append_todo_log.py`)
+- [ ] Per-agent "maintain a to-do list" instruction removed from `agents/developer.md`,
+  `agents/researcher.md`, and `agents/reviewer.md`
 - [ ] Given a `workflow-orchestrate` run today mirrors sub-agent todo updates into the visible
   task list, when this task is complete, then no such mirroring occurs and no todo-log file is
   created
