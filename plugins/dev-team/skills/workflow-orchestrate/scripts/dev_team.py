@@ -182,6 +182,16 @@ class StateMachine:
 # Pipeline context (serializable state)
 # ---------------------------------------------------------------------------
 
+# Frontmatter keys with a dedicated PipelineContext field, populated explicitly
+# in load(). Anything else found in frontmatter is preserved via extra_frontmatter.
+KNOWN_FRONTMATTER_KEYS = {
+    "work_item_id", "spec_path", "state", "fix_iteration",
+    "review_fix_iteration", "pr_url", "build_log", "test_log",
+    "signoff_cycle_count", "consecutive_failures", "review_cycle_count",
+    "troubleshooter_input", "pending_agent", "started", "last_updated",
+}
+
+
 @dataclass
 class PipelineContext:
     """All mutable state for a dev-team pipeline run, persisted across invocations."""
@@ -214,6 +224,8 @@ class PipelineContext:
     pending_agent: str = ""
     started: datetime.datetime = field(default_factory=datetime.datetime.now)
     last_updated: datetime.datetime = field(default_factory=datetime.datetime.now)
+    # Unrecognized frontmatter keys preserved verbatim across load/save roundtrips.
+    extra_frontmatter: dict = field(default_factory=dict)
 
     def save(self, path: Path) -> None:
         """Write context to a markdown file with YAML frontmatter and named sections."""
@@ -236,6 +248,15 @@ class PipelineContext:
             f"pending_agent: {self.pending_agent}",
             f"started: {self.started.isoformat()}",
             f"last_updated: {self.last_updated.isoformat()}",
+        ]
+        for key, value in self.extra_frontmatter.items():
+            if isinstance(value, list):
+                lines.append(f"{key}:")
+                for item in value:
+                    lines.append(f"- {item}")
+            else:
+                lines.append(f"{key}: {value}")
+        lines += [
             "---",
             "",
             f"# {self.work_item_id} Dev Team Context",
@@ -308,6 +329,10 @@ class PipelineContext:
             troubleshooter_input=meta.get("troubleshooter_input", ""),
             pending_agent=meta.get("pending_agent", ""),
         )
+
+        ctx.extra_frontmatter = {
+            k: v for k, v in meta.items() if k not in KNOWN_FRONTMATTER_KEYS
+        }
 
         try:
             ctx.started = datetime.datetime.fromisoformat(meta["started"])

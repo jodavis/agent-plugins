@@ -1062,3 +1062,58 @@ class TestCreatePrStep:
         assert actions[0]["action"] == "spawn_agent"
         assert actions[0]["write_section"] == "PR URL"
         assert "context_file" in actions[0]
+
+
+# ---------------------------------------------------------------------------
+# PipelineContext frontmatter round-trip — extra_frontmatter preservation
+# ---------------------------------------------------------------------------
+
+class TestExtraFrontmatterRoundTrip:
+    def make_sut(self, **kwargs):
+        from dev_team import PipelineContext
+        return PipelineContext(work_item_id="ADR-TEST", **kwargs)
+
+    def _inject_frontmatter_line(self, path: Path, line: str) -> None:
+        """Insert a raw line into the frontmatter block, just before the closing '---'."""
+        lines = path.read_text(encoding="utf-8").split("\n")
+        closing_idx = lines.index("---", 1)
+        lines.insert(closing_idx, line)
+        path.write_text("\n".join(lines), encoding="utf-8")
+
+    @pytest.mark.parametrize("raw_line", [
+        # Unknown scalar field, written directly (e.g. via Edit) rather than through save().
+        "working_branch: feature/ADR-335-foo",
+        # Unknown field with a multi-line YAML list value (the '- item' bullet form),
+        # which _parse_frontmatter already parses into a list[str] for unrecognized keys.
+        "extra_list:\n- alpha\n- beta",
+    ])
+    def test_unknown_field_survives_load_save_roundtrip(self, tmp_path, raw_line):
+        # Arrange: simulate a frontmatter key PipelineContext doesn't declare as a
+        # named field.
+        from dev_team import PipelineContext
+        ctx = self.make_sut()
+        path = tmp_path / "ctx.md"
+        ctx.save(path)
+        self._inject_frontmatter_line(path, raw_line)
+
+        # Act
+        loaded = PipelineContext.load(path)
+        loaded.save(path)
+
+        # Assert
+        resaved_text = path.read_text(encoding="utf-8")
+        assert raw_line in resaved_text
+
+    def test_prepopulated_extra_frontmatter_field_survives_save_load_roundtrip(self, tmp_path):
+        # Arrange: extra_frontmatter set directly at construction time (e.g. a
+        # pre-populated base_branch), rather than injected into an already-saved file.
+        from dev_team import PipelineContext
+        ctx = self.make_sut(extra_frontmatter={"base_branch": "main"})
+        path = tmp_path / "ctx.md"
+
+        # Act
+        ctx.save(path)
+        loaded = PipelineContext.load(path)
+
+        # Assert
+        assert loaded.extra_frontmatter["base_branch"] == "main"
