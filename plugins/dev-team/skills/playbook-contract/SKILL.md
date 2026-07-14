@@ -3,7 +3,7 @@ name: playbook-contract
 user-invocable: false
 description: >
   Reference skill defining the normative, vendor-neutral playbook directory contract: the
-  two-layer directory shape, TODO marker semantics, vendor-neutrality rules, the Method marker
+  directory shape, TODO marker semantics, vendor-neutrality rules, the Method marker
   convention, and bare-name playbook resolution. Cited by `harvest-playbook`, `spec-first-draft`
   instance mode, and `spec-task-breakdown` playbook seeding so all three agree on one shared
   definition instead of drifting apart.
@@ -19,13 +19,14 @@ Use this skill when:
   `spec-first-draft` instance mode (consumes a playbook's `spec-template.md`), or
   `spec-task-breakdown` playbook seeding (consumes a playbook's steps and validation gates)
 
-## Playbooks are skills with a vendor-neutral two-layer contract
+## Playbooks are skills with a vendor-neutral directory contract
 
 The dependency direction is fixed: **a playbook never knows dev-team exists; dev-team knows how
 to read playbooks.** A playbook must be usable by the full dev-team pipeline, by a teammate with
-vanilla Claude Code who has not adopted dev-team, and by a human with no agent at all — so its
-required core is vendor-neutral, and only an optional overlay carries dev-team-specific
-intelligence.
+vanilla Claude Code who has not adopted dev-team, and by a human with no agent at all — so
+everything in the contract is vendor-neutral. There is no dev-team-specific overlay file; if a
+real need for dev-team-specific annotations proves itself through use, add it then rather than
+guessing ahead of evidence.
 
 **Directory contract** (normative shape — copy this verbatim; this skill is the single source of
 truth for it):
@@ -34,7 +35,6 @@ truth for it):
 <name>/
   SKILL.md           required — neutral ordered steps + validation gates + TODO markers
   spec-template.md   required — instance-spec template
-  dev-team.md        optional — dev-team overlay (tiers, stage mapping, TDD hints)
   <scripts, assets>  optional — anything steps reference by relative path
 ```
 
@@ -44,13 +44,6 @@ truth for it):
 - **`spec-template.md` (required)** — the instance-spec shape: sections and blanks (domain,
   endpoints, applicable-ADR checklist, deltas from playbook assumptions) that any team member
   could fill in a plain text editor, with no dev-team tooling.
-- **`dev-team.md` (optional overlay)** — dev-team-specific annotations: component tier
-  classifications for the family, step-to-pipeline-stage mapping, TDD hints. Read by dev-team
-  consumption when present; ignored by everyone else; everything degrades gracefully when
-  absent. Free-form Markdown — this skill *recommends* headings that group tier
-  classifications, stage mapping, and TDD hints separately, but does not mandate a fixed
-  schema; real usage across harvested playbooks should harden this shape later, not this skill
-  guessing ahead of evidence.
 - **Scripts and other supporting assets (optional)** — anything a step references by relative
   path (e.g. `post-scaffold.ps1`). Steps that reference these must still describe what the
   asset does in plain terms, per the vendor-neutrality rules below — a script is a convenience,
