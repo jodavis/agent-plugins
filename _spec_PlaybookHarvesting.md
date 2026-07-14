@@ -30,8 +30,7 @@ them by a standard final breakdown task.
     to `_doc_*.md`; design documentation is authored from the spec by an unconditional final
     breakdown task (see Key Design Decisions)
   - The playbook contract: required vendor-neutral core (`SKILL.md` steps, `spec-template.md`,
-    scripts) plus optional dev-team overlay file (`dev-team.md`), documented in a new
-    `playbook-contract` knowledge skill
+    scripts), documented in a new `playbook-contract` knowledge skill
   - The `harvest-playbook` skill and its `/harvest` command: path-agnostic inputs (spec path,
     exemplar repo paths, output directory), classification via the copy-paste litmus test,
     user interview, vendor-neutral authoring rules, TODO markers for pending shared-artifact
@@ -169,7 +168,7 @@ harvest input indefinitely. Documentation becomes one coherent authoring pass wi
 hindsight rather than a mechanical rename; the cost is a standing final task the user
 occasionally deletes as unwarranted.
 
-### Playbooks are skills with a vendor-neutral two-layer contract
+### Playbooks are skills with a vendor-neutral contract
 
 _Context:_ A playbook must serve three consumers: the full dev-team pipeline, a teammate with
 vanilla Claude Code who has not adopted dev-team, and a human with no agent at all. Team
@@ -187,19 +186,17 @@ dev-team knows how to read playbooks.** A playbook is a skill directory with:
     applicable-ADR checklist, deltas from playbook assumptions) that any team member could
     fill in a text editor.
   - Scripts and other supporting files as needed (e.g. `post-scaffold.ps1`).
-- **Optional overlay:** `dev-team.md` — dev-team-specific annotations (component tier
-  classifications for the family, step-to-pipeline-stage mapping, TDD hints). Read by
-  dev-team consumption when present; ignored by everyone else; everything degrades
-  gracefully when absent. Free-form Markdown with recommended headings, defined in
-  `playbook-contract`.
+
+There is no dev-team-specific overlay file: if a real need for dev-team-specific annotations
+proves itself through use, it is added then rather than guessed ahead of evidence.
 
 The contract lives in a new `playbook-contract` knowledge skill (the `component-taxonomy`
 pattern) that both `harvest-playbook` and the `spec-first-draft` hook cite, so the two sides
 cannot drift apart.
 
 _Consequences:_ Prose forbidden from delegating to skills must spell out what those skills
-know — which makes playbooks more concrete and more durable. Dev-team-specific intelligence is
-confined to one optional file. A playbook repo needs no dependency on the dev-team plugin.
+know — which makes playbooks more concrete and more durable. A playbook repo needs no
+dependency on the dev-team plugin.
 
 ### Harvest is path-agnostic; multi-repo is an argument list, not an architecture
 
@@ -262,9 +259,8 @@ instance spec's header as `> **Playbook:** <name or path>`. Downstream consumers
 reference from the spec header rather than requiring the user to re-name it:
 `spec-task-breakdown` seeds tasks from the playbook's step groupings, folds validation gates
 into exit criteria (they are already commands plus observable criteria — the form exit
-criteria take), surfaces TODO manual fallbacks in the affected tasks, and reads the
-`dev-team.md` overlay for tier annotations when present. The header stamp is also the natural
-hook for the deferred staleness checks. If no playbook is named, nothing changes about
+criteria take), and surfaces TODO manual fallbacks in the affected tasks. The header stamp is
+also the natural hook for the deferred staleness checks. If no playbook is named, nothing changes about
 today's flow.
 
 _Consequences:_ Zero configuration surface in v1. Config-based discovery
@@ -308,7 +304,7 @@ from the three existing services, validated by replay-and-diff.
 
 | Component | Type | Responsibility | Depends on |
 |---|---|---|---|
-| `playbook-contract` (new skill) | Wrapper | Defines the two-layer playbook contract, TODO marker semantics, and Method marker convention — definitional prose, no procedure | — |
+| `playbook-contract` (new skill) | Wrapper | Defines the playbook contract, TODO marker semantics, and Method marker convention — definitional prose, no procedure | — |
 | `harvest-playbook` (new skill) | Testable | The harvest procedure: gather inputs from paths, classify via litmus test, interview, author vendor-neutral playbook, replace Method markers with links, document replay-and-diff validation | `playbook-contract`, skill dry-run harness |
 | `commands/harvest.md` (new) | Wrapper | Thin dispatcher: argument hints, invokes `harvest-playbook` | `harvest-playbook` |
 | `commands/spec.md` playbook argument (edit) | Wrapper | Argument-hint documents `using <playbook>`; forwards a detected playbook reference to `spec-first-draft` instance mode | — |
@@ -316,8 +312,8 @@ from the three existing services, validated by replay-and-diff.
 | `spec-first-draft` marker authoring note (edit) | Wrapper | Review-pass message teaches the Method marker callout alongside `> **Review:**` | `playbook-contract` |
 | `spec-first-draft` header wording (edit) | Wrapper | Spec header template declares the derived "Design doc" instead of "Will become" conversion | — |
 | `spec-task-breakdown` documentation task (edit) | Wrapper | Appends the unconditional final "Author design documentation" task; adds doc-update exit criteria to tasks touching existing docs | — |
-| `spec-first-draft` instance mode (edit) | Testable | When a playbook is explicitly named: read its `spec-template.md` and step list, draft the thin instance spec, stamp the `> **Playbook:**` header reference, apply `dev-team.md` overlay when present | `playbook-contract`, skill dry-run harness |
-| `spec-task-breakdown` playbook seeding (edit) | Testable | When the spec header carries a `> **Playbook:**` reference: seed tasks from step groupings, fold validation gates into exit criteria, surface TODO manual fallbacks, apply overlay tier annotations | `playbook-contract`, skill dry-run harness |
+| `spec-first-draft` instance mode (edit) | Testable | When a playbook is explicitly named: read its `spec-template.md` and step list, draft the thin instance spec, stamp the `> **Playbook:**` header reference | `playbook-contract`, skill dry-run harness |
+| `spec-task-breakdown` playbook seeding (edit) | Testable | When the spec header carries a `> **Playbook:**` reference: seed tasks from step groupings, fold validation gates into exit criteria, surface TODO manual fallbacks | `playbook-contract`, skill dry-run harness |
 | `final-sign-off` harvest note (edit) | Wrapper | If the spec contains Method markers, mention `/harvest` availability | — |
 | Skill dry-run harness (new, `missing-test-harness` line item) | Testable | Fixtures (synthetic mini-spec with Method markers; tiny fake exemplar repos with scripted git history) plus per-component observable-outcome checklists and a run procedure | — |
 
@@ -404,7 +400,6 @@ guessing.
 <name>/
   SKILL.md           required — neutral ordered steps + validation gates + TODO markers
   spec-template.md   required — instance-spec template
-  dev-team.md        optional — dev-team overlay (tiers, stage mapping, TDD hints)
   <scripts, assets>  optional — anything steps reference by relative path
 ```
 
@@ -434,7 +429,7 @@ guessing.
    → markers in the source spec replaced with links → user commits/PRs the playbook wherever
    it lives.
 3. **Consume:** user runs `/spec ... using <playbook>` → instance mode drafts a thin spec from
-   `spec-template.md` (overlay applied if present) and stamps `> **Playbook:**` into its
+   `spec-template.md` and stamps `> **Playbook:**` into its
    header → normal refinement and readiness review follow → `spec-task-breakdown` reads the
    header reference and seeds tasks and exit criteria from the playbook's steps and validation
    gates → deviations discovered during the build become input to a harvest update pass
@@ -454,9 +449,7 @@ guessing.
 
 ## Open Questions
 
-- [ ] None — all key decisions were resolved in pre-spec discussion; `dev-team.md` overlay
-      headings are deliberately left to implementation (free-form Markdown per
-      `playbook-contract`'s recommendations, hardened later by real use).
+- [ ] None — all key decisions were resolved in pre-spec discussion.
 
 ## Related Docs
 
@@ -480,9 +473,9 @@ guessing.
 Create the normative knowledge skill defining the playbook contract, following the
 `component-taxonomy` pattern.
 
-- [ ] `plugins/dev-team/skills/playbook-contract/SKILL.md` defines: the two-layer directory
-      contract (required `SKILL.md` + `spec-template.md`; optional `dev-team.md` overlay and
-      supporting scripts), TODO marker semantics with mandatory manual fallbacks, and the
+- [ ] `plugins/dev-team/skills/playbook-contract/SKILL.md` defines: the directory
+      contract (required `SKILL.md` + `spec-template.md`; optional supporting scripts),
+      TODO marker semantics with mandatory manual fallbacks, and the
       vendor-neutrality rules with compliant vs. violating step-prose examples
 - [ ] The Method marker convention is specified: `> [!NOTE]` / `**Method:**` format, lifecycle
       (persistent until harvest, then body replaced with a provenance link), and the
@@ -574,7 +567,7 @@ Consumption at drafting time. Requires Tasks 1–2
       detected playbook reference to `spec-first-draft`
 - [ ] Instance mode: resolve the playbook reference (per `playbook-contract`), read
       `spec-template.md` in place of the default template, stamp `> **Playbook:**` into the
-      instance spec header, apply the `dev-team.md` overlay when present
+      instance spec header
 - [ ] Given a fixture playbook, When `/spec` runs in instance mode in a clean session, Then
       the draft uses the template's sections and carries the header stamp
 
@@ -588,7 +581,7 @@ skill file). Requires Tasks 1–2
 - [ ] Checklist for the seeding dry run is authored before the skill prose (red)
 - [ ] When the spec header carries `> **Playbook:**`: tasks seed from the playbook's step
       groupings, validation gates fold into exit criteria, TODO manual fallbacks surface in
-      affected tasks, overlay tier annotations apply when present
+      affected tasks
 - [ ] Every breakdown appends the unconditional final "Author design documentation" task
       (exit criteria per the "Specs persist" design decision, including flipping the spec
       status line); the task is never omitted silently
