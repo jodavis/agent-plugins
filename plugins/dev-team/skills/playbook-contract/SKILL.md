@@ -11,7 +11,9 @@ description: >
 
 Use this skill when:
 - You are authoring, reading, or consuming a playbook — a standalone skill directory that
-  captures how to build a family of similar components — and need the normative shape of its
+  captures any reusable process discovered while implementing a spec (how to build a family of
+  similar components, a testing strategy, a documentation format, or any other repeatable
+  process worth reusing, not only component-building) — and need the normative shape of its
   directory, its markers, or its resolution rules
 - You are writing `harvest-playbook` (produces playbooks against this contract),
   `spec-first-draft` instance mode (consumes a playbook's `spec-template.md`), or
