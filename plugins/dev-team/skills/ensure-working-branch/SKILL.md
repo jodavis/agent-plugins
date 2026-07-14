@@ -23,14 +23,15 @@ section for the definitions used throughout this skill.
 
 ## Configured behavior
 
-Invoke `get-project-configuration` and read `git-repo` and `documentation`.
-
 ### 1 — Check the context file for already-known values
 
 Use the `use-context-file` skill with the `work-item-id` to locate and read the context file.
 Note any of these frontmatter fields that are already set: `working_branch`, `base_branch`,
 `spec_path`, `parent_work_item`. Skip the corresponding step below for each one found, and use
 the recorded value instead of recomputing it.
+
+Also read `git-repo` and `documentation` from the same context file's
+`<!-- section:Project Configuration -->` section.
 
 If `working_branch` is already known, skip straight to step 4.
 

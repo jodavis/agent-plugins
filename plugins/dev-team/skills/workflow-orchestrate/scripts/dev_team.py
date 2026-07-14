@@ -189,6 +189,7 @@ class PipelineContext:
     work_item_id: str
     spec_path: str = ""
     state: str = "init"
+    project_configuration: str = ""
     brief: str = ""
     work_summaries: list[str] = field(default_factory=list)
     fix_iteration: int = 0
@@ -240,6 +241,9 @@ class PipelineContext:
             "",
             f"# {self.work_item_id} Dev Team Context",
         ]
+
+        if self.project_configuration:
+            lines += ["", "<!-- section:Project Configuration -->", "", self.project_configuration.strip()]
 
         if self.workspace_setup:
             lines += ["", "<!-- section:Workspace Setup -->", "", self.workspace_setup.strip()]
@@ -316,6 +320,7 @@ class PipelineContext:
             pass
 
         sections = _parse_sections(body)
+        ctx.project_configuration = sections.get("Project Configuration", "")
         ctx.workspace_setup = sections.get("Workspace Setup", "")
         ctx.debug_report = sections.get("Debug Report", "")
         ctx.brief = sections.get("Researcher Brief", "")
@@ -423,6 +428,15 @@ def _load_project_config(repo_root: Path) -> dict:
     if result.returncode != 0:
         raise RuntimeError(f"Failed to load project configuration: {result.stderr.strip()}")
     return json.loads(result.stdout)
+
+
+def _project_configuration(ctx: "PipelineContext") -> dict:
+    """Return the project configuration cached on `ctx.project_configuration` at
+    context-file creation time, computing it fresh only for a context file that
+    predates this cache (an older file with no Project Configuration section)."""
+    if ctx.project_configuration:
+        return json.loads(ctx.project_configuration)
+    return _load_project_config(REPO_ROOT)
 
 
 def _resolve_validation_script(config: dict, repo_root: Path) -> str | None:
@@ -703,7 +717,7 @@ class ValidateStep(Step):
         ctx = self._ctx
         if ctx.validate_result:
             return []
-        validate_command = _resolve_validation_script(_load_project_config(REPO_ROOT), REPO_ROOT)
+        validate_command = _resolve_validation_script(_project_configuration(ctx), REPO_ROOT)
         if validate_command is None:
             ctx.validate_result = "Succeeded (no validation script configured for this project)"
             return []
@@ -1475,6 +1489,7 @@ def main() -> None:
         print(f"Resuming {work_item_id} from state '{ctx.state}'...", flush=True)
     else:
         ctx = PipelineContext(work_item_id=work_item_id, state=workflow.initial_state)
+        ctx.project_configuration = json.dumps(_load_project_config(REPO_ROOT), indent=2)
         ctx.save(context_path)
 
     DevTeamPipeline(

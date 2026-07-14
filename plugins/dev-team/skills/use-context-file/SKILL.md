@@ -18,7 +18,10 @@ The context file for a work item lives at:
 
 If the argument ends in `.md` or points to an existing file, it is already the `<context-file>` path. Derive the `<work-item-id>` from the filename stem (e.g. `PROJ-228.md` → `PROJ-228`).
 
-Otherwise, treat the argument as a `<work-item-id>` and compute the context file path.
+Otherwise, if a `<work-item-id>` argument was given, treat it as the `<work-item-id>` and compute the context file path.
+
+If no argument was given at all, use the `identify-project-work-items` skill to determine the `<work-item-id>` from the user's input or conversation context, then compute the context file path from it.
+
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for
 this skill" path shown when this skill was invoked. Resolve it to that literal path; it
 is not an environment variable.
@@ -53,6 +56,14 @@ Read `<context-file>` and extract these YAML frontmatter fields:
 
 Fields marked "may be empty" are not guaranteed to be set — a caller that needs one and finds it
 empty must compute it itself (see e.g. `ensure-working-branch`) rather than assuming a default.
+
+The context file also carries a `<!-- section:Project Configuration -->` body section,
+written by `init-context-file.py` when it first creates the file: the full merged project
+configuration (the same JSON `get-project-configuration` returns), computed once so that
+callers with an already-resolved context file can read it directly instead of invoking
+`get-project-configuration` again. A context file created before this section existed simply
+won't have it — a caller that needs the config and finds the section missing falls back to
+invoking `get-project-configuration` directly.
 
 ## Writing to the context file
 

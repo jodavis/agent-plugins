@@ -20,9 +20,11 @@ isn't captured by a declared component, and committing changes locally to the re
 
 ## Steps
 
-### 1 — Identify the work item
+### 1 — Get information about the current task
 
-Use the `identify-work-item` skill to determine the `work-item-id` from the user's input or conversation context.
+Use the `use-context-file` skill with the argument this skill received (a `work-item-id` or a
+context-file path) to resolve, initialize, and read the context file. This determines
+`work-item-id` directly.
 
 ### 2 — Get the task brief
 

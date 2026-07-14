@@ -41,13 +41,9 @@ document, not a per-field lookup.
 
 ### `developer-standards` — filename → description map
 
-The **description text itself** signals whether a file is expected to exist:
-
-- A description starting with **"If this file exists, read it — ..."**
-  is soft: read the file if present, skip silently if absent. Never search elsewhere for it.
-- Any other description is expected to exist: if it's
-  missing, don't block on it, but note it — the project's own config is pointing at something
-  that isn't there.
+Any entry in this list is expected to exist: if it's missing,
+don't block on it, but note it — the project's own config is pointing at something that isn't
+there.
 
 ### `work-tracking` — map keyed by provider name, or `null`
 
