@@ -215,3 +215,78 @@ class TestMaterializeErrorHandling:
 
         assert result.returncode != 0
         assert "Usage" in result.stderr
+
+    def test_materialize_manifest_entry_not_a_dict_exits_nonzero_with_friendly_error(self, tmp_path):
+        exemplar_dir = tmp_path / "exemplar"
+        exemplar_dir.mkdir()
+        (exemplar_dir / "commits.json").write_text(
+            json.dumps(["not-a-dict"]), encoding="utf-8",
+        )
+        output_dir = tmp_path / "out"
+
+        result = _run_materialize(exemplar_dir, output_dir)
+
+        assert result.returncode != 0
+        assert result.stderr.startswith("Error:")
+        assert "Traceback" not in result.stderr
+
+    def test_materialize_manifest_entry_missing_dir_key_exits_nonzero_with_friendly_error(self, tmp_path):
+        exemplar_dir = tmp_path / "exemplar"
+        exemplar_dir.mkdir()
+        (exemplar_dir / "commits.json").write_text(
+            json.dumps([{"message": "missing dir key"}]), encoding="utf-8",
+        )
+        output_dir = tmp_path / "out"
+
+        result = _run_materialize(exemplar_dir, output_dir)
+
+        assert result.returncode != 0
+        assert result.stderr.startswith("Error:")
+        assert "Traceback" not in result.stderr
+        assert "dir" in result.stderr
+
+    def test_materialize_manifest_entry_missing_message_key_exits_nonzero_with_friendly_error(self, tmp_path):
+        exemplar_dir = tmp_path / "exemplar"
+        exemplar_dir.mkdir()
+        (exemplar_dir / "commits.json").write_text(
+            json.dumps([{"dir": "01-first"}]), encoding="utf-8",
+        )
+        output_dir = tmp_path / "out"
+
+        result = _run_materialize(exemplar_dir, output_dir)
+
+        assert result.returncode != 0
+        assert result.stderr.startswith("Error:")
+        assert "Traceback" not in result.stderr
+        assert "message" in result.stderr
+
+    def test_materialize_manifest_entry_dir_not_a_string_exits_nonzero_with_friendly_error(self, tmp_path):
+        exemplar_dir = tmp_path / "exemplar"
+        exemplar_dir.mkdir()
+        (exemplar_dir / "commits.json").write_text(
+            json.dumps([{"dir": 1, "message": "non-string dir"}]), encoding="utf-8",
+        )
+        output_dir = tmp_path / "out"
+
+        result = _run_materialize(exemplar_dir, output_dir)
+
+        assert result.returncode != 0
+        assert result.stderr.startswith("Error:")
+        assert "Traceback" not in result.stderr
+
+    def test_materialize_manifest_entry_message_not_a_string_exits_nonzero_with_friendly_error(self, tmp_path):
+        exemplar_dir = tmp_path / "exemplar"
+        exemplar_dir.mkdir()
+        snapshot_dir = exemplar_dir / "01-first"
+        snapshot_dir.mkdir()
+        (snapshot_dir / "marker.txt").write_text("01-first", encoding="utf-8")
+        (exemplar_dir / "commits.json").write_text(
+            json.dumps([{"dir": "01-first", "message": 1}]), encoding="utf-8",
+        )
+        output_dir = tmp_path / "out"
+
+        result = _run_materialize(exemplar_dir, output_dir)
+
+        assert result.returncode != 0
+        assert result.stderr.startswith("Error:")
+        assert "Traceback" not in result.stderr

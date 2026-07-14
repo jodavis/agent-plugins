@@ -46,7 +46,25 @@ def load_manifest(exemplar_dir: Path) -> list[dict]:
     if not manifest:
         raise MaterializeError(f"{manifest_path} is empty; at least one commit entry is required")
 
+    for entry in manifest:
+        _validate_entry_shape(manifest_path, entry)
+
     return manifest
+
+
+def _validate_entry_shape(manifest_path: Path, entry: object) -> None:
+    """Raise MaterializeError unless `entry` is a dict with string `dir` and `message` keys."""
+    if not isinstance(entry, dict):
+        raise MaterializeError(
+            f"{manifest_path} entry {entry!r} must be a JSON object with 'dir' and 'message' keys"
+        )
+    for key in ("dir", "message"):
+        if key not in entry:
+            raise MaterializeError(f"{manifest_path} entry {entry!r} is missing required key {key!r}")
+        if not isinstance(entry[key], str):
+            raise MaterializeError(
+                f"{manifest_path} entry {entry!r} has non-string value for key {key!r}"
+            )
 
 
 def validate_snapshots_exist(exemplar_dir: Path, manifest: list[dict]) -> None:
