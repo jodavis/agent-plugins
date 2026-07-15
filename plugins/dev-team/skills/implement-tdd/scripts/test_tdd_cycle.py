@@ -7,17 +7,23 @@ Covers:
 - git helpers (changed_files/stage/discard_unstaged/commit) against real tmp_path repos
 - run_cycle() — the full state machine, driven with a scripted fake `send_turn` so no
   real `claude` CLI invocation is needed
-
-NOTE: nothing here exercises the real `run_claude_turn()` subprocess call — that's the
-one unverified boundary (see tdd_cycle.py's module docstring); it needs a live `claude`
-invocation to confirm, which wasn't available while writing this.
+- ClaudeSessionPool/_LiveProcess — the real `claude` CLI boundary, exercised against a
+  fake `claude` script on PATH (see `_fake_claude`) rather than the real binary
 """
 
+import json
+import os
+import stat
+import sys
 from pathlib import Path
 
 import pytest
 
 from tdd_cycle import (
+    DEFAULT_TEST_FILE_PATTERNS,
+    ClaudeCliError,
+    ClaudeSessionPool,
+    ConfigError,
     DoneResult,
     EscalationResult,
     TddProtocolError,
@@ -27,6 +33,7 @@ from tdd_cycle import (
     commit,
     discard_unstaged,
     is_test_file,
+    load_test_file_patterns,
     run_cycle,
     stage,
 )
@@ -44,6 +51,152 @@ def _repo_root(tmp_path: Path) -> Path:
     subprocess.run(["git", "add", "-A"], cwd=root, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "initial"], cwd=root, check=True)
     return root
+
+
+# ---------------------------------------------------------------------------
+# ClaudeSessionPool / _LiveProcess — the real claude CLI subprocess boundary,
+# exercised against a fake `claude` script on PATH rather than the real binary.
+# ---------------------------------------------------------------------------
+
+_FAKE_CLAUDE_SCRIPT = f"""\
+#!{sys.executable}
+import json, os, sys, uuid
+
+args = sys.argv[1:]
+session_id = args[args.index("--resume") + 1] if "--resume" in args else str(uuid.uuid4())
+
+marker = os.environ.get("FAKE_CLAUDE_MARKER")
+if marker:
+    with open(marker, "a", encoding="utf-8") as f:
+        f.write(json.dumps({{"session_id": session_id, "args": args}}) + "\\n")
+
+print(json.dumps({{"type": "system", "subtype": "init", "session_id": session_id}}), flush=True)
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    payload = json.loads(line)
+    content = payload["message"]["content"]
+    if content == "TRIGGER_ERROR":
+        print(json.dumps({{"type": "result", "session_id": session_id, "is_error": True, "result": "boom"}}), flush=True)
+        continue
+    if content == "TRIGGER_CRASH":
+        sys.exit(1)
+    reply = "ECHO:" + content
+    print(json.dumps({{"type": "result", "session_id": session_id, "is_error": False, "result": reply}}), flush=True)
+"""
+
+
+@pytest.fixture
+def fake_claude(tmp_path, monkeypatch):
+    """Puts a fake `claude` script on PATH that echoes turn content back and records
+    one line per process start to the returned marker file — enough to exercise
+    ClaudeSessionPool/_LiveProcess's real subprocess plumbing without the real CLI."""
+    bin_dir = tmp_path / "fakebin"
+    bin_dir.mkdir()
+    script = bin_dir / "claude"
+    script.write_text(_FAKE_CLAUDE_SCRIPT, encoding="utf-8")
+    script.chmod(script.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+    marker = tmp_path / "marker.log"
+    monkeypatch.setenv("FAKE_CLAUDE_MARKER", str(marker))
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    return marker
+
+
+def _process_start_records(marker: Path) -> list[dict]:
+    if not marker.exists():
+        return []
+    return [json.loads(line) for line in marker.read_text(encoding="utf-8").splitlines()]
+
+
+def _process_starts(marker: Path) -> list[str]:
+    return [record["session_id"] for record in _process_start_records(marker)]
+
+
+class TestClaudeSessionPool:
+    def test_first_turn_spawns_a_process_and_returns_its_reply(self, tmp_path, fake_claude):
+        root = _repo_root(tmp_path)
+        pool = ClaudeSessionPool()
+
+        _session_id, text = pool(
+            message="hello", agent="dev-team:tdd-tester", session_id=None, repo_root=root,
+        )
+
+        assert text == "ECHO:hello"
+        assert len(_process_starts(fake_claude)) == 1
+        pool.close()
+
+    def test_spawns_with_the_streaming_flags_the_cli_requires(self, tmp_path, fake_claude):
+        """`--print --output-format=stream-json` is rejected by the real CLI without
+        `--verbose` alongside it — a real gap the fake-CLI tests above can't catch
+        since they don't assert on the invoked command, only its output. Confirmed
+        against the real `claude` binary via a live smoke test."""
+        root = _repo_root(tmp_path)
+        pool = ClaudeSessionPool()
+
+        pool(message="hello", agent="dev-team:tdd-tester", session_id=None, repo_root=root)
+
+        args = _process_start_records(fake_claude)[0]["args"]
+        assert "--verbose" in args
+        assert "--input-format" in args and "stream-json" in args
+        assert "--output-format" in args and "stream-json" in args
+        pool.close()
+
+    def test_second_turn_same_session_reuses_the_live_process(self, tmp_path, fake_claude):
+        root = _repo_root(tmp_path)
+        pool = ClaudeSessionPool()
+
+        session_id, _text = pool(
+            message="hello", agent="dev-team:tdd-tester", session_id=None, repo_root=root,
+        )
+        _, text = pool(message="again", agent=None, session_id=session_id, repo_root=root)
+
+        assert text == "ECHO:again"
+        assert len(_process_starts(fake_claude)) == 1
+        pool.close()
+
+    def test_unknown_session_id_spawns_a_resumed_process(self, tmp_path, fake_claude):
+        root = _repo_root(tmp_path)
+        pool = ClaudeSessionPool()
+
+        session_id, text = pool(
+            message="hello", agent=None, session_id="prior-session", repo_root=root,
+        )
+
+        assert session_id == "prior-session"
+        assert text == "ECHO:hello"
+        assert _process_starts(fake_claude) == ["prior-session"]
+        pool.close()
+
+    def test_close_terminates_live_processes_without_raising(self, tmp_path, fake_claude):
+        root = _repo_root(tmp_path)
+        pool = ClaudeSessionPool()
+        pool(message="hello", agent="dev-team:tdd-tester", session_id=None, repo_root=root)
+
+        pool.close()
+
+    def test_raises_claude_cli_error_when_turn_reports_is_error(self, tmp_path, fake_claude):
+        root = _repo_root(tmp_path)
+        pool = ClaudeSessionPool()
+
+        with pytest.raises(ClaudeCliError):
+            pool(
+                message="TRIGGER_ERROR", agent="dev-team:tdd-tester", session_id=None,
+                repo_root=root,
+            )
+        pool.close()
+
+    def test_raises_claude_cli_error_when_process_exits_without_a_result(self, tmp_path, fake_claude):
+        root = _repo_root(tmp_path)
+        pool = ClaudeSessionPool()
+
+        with pytest.raises(ClaudeCliError):
+            pool(
+                message="TRIGGER_CRASH", agent="dev-team:tdd-tester", session_id=None,
+                repo_root=root,
+            )
+        pool.close()
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +301,38 @@ class TestIsTestFile:
 
     def test_file_containing_but_not_starting_with_test_not_recognized(self):
         assert is_test_file("plugins/dev-team/scripts/latest_context.py") is False
+
+    def test_custom_patterns_override_default(self):
+        patterns = ("*.test.ts", "*.spec.ts")
+        assert is_test_file("src/widget.spec.ts", patterns) is True
+        assert is_test_file("src/widget.test.ts", patterns) is True
+        assert is_test_file("src/test_widget.py", patterns) is False
+
+
+# ---------------------------------------------------------------------------
+# load_test_file_patterns
+# ---------------------------------------------------------------------------
+
+class TestLoadTestFilePatterns:
+    def test_returns_shipped_default_when_project_has_no_override(self, tmp_path):
+        root = _repo_root(tmp_path)
+        assert load_test_file_patterns(root) == DEFAULT_TEST_FILE_PATTERNS
+
+    def test_returns_project_override(self, tmp_path):
+        root = _repo_root(tmp_path)
+        (root / ".dev-team").mkdir()
+        (root / ".dev-team" / "config.yaml").write_text(
+            "testing:\n  test-file-patterns:\n    - \"*.spec.ts\"\n", encoding="utf-8",
+        )
+        assert load_test_file_patterns(root) == ("*.spec.ts",)
+
+    def test_raises_config_error_on_malformed_project_config(self, tmp_path):
+        root = _repo_root(tmp_path)
+        (root / ".dev-team").mkdir()
+        # A literal tab in the indentation is rejected outright by merge_config's parser.
+        (root / ".dev-team" / "config.yaml").write_text("testing:\n\t- bad\n", encoding="utf-8")
+        with pytest.raises(ConfigError):
+            load_test_file_patterns(root)
 
 
 # ---------------------------------------------------------------------------

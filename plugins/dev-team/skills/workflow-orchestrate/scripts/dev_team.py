@@ -432,11 +432,8 @@ def _load_project_config(repo_root: Path) -> dict:
 
 def _project_configuration(ctx: "PipelineContext") -> dict:
     """Return the project configuration cached on `ctx.project_configuration` at
-    context-file creation time, computing it fresh only for a context file that
-    predates this cache (an older file with no Project Configuration section)."""
-    if ctx.project_configuration:
-        return json.loads(ctx.project_configuration)
-    return _load_project_config(REPO_ROOT)
+    context-file creation time."""
+    return json.loads(ctx.project_configuration)
 
 
 def _resolve_validation_script(config: dict, repo_root: Path) -> str | None:

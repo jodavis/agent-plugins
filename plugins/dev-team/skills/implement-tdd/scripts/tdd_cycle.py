@@ -4,10 +4,10 @@ component as isolated `claude` CLI subprocesses that never see each other's or t
 caller's conversation — communication is limited to the turn messages this script
 relays between them.
 
-Usage:
-  tdd_cycle.py --component-prompt <path> --component-name <name> --repo-root <path>
+Usage (component prompt text goes on this script's own stdin, not a file):
+  tdd_cycle.py --component-name <name> --repo-root <path>
                --work-item-id <id> --state-file <path>
-               [--answer "<clarify answer>"] [--resolved-directly]
+               [--answer "<clarify answer>"] [--resolved-directly] < component-prompt.txt
 
 Exit 0 with `{"status": "done", ...}` on stdout once the component is fully covered
 and committed. Exit 1 with `{"status": "escalation", "recommended_action": ...}` when
@@ -17,24 +17,35 @@ re-invokes this script with the same --state-file to continue.
 
 Confirmed by live smoke test (see PR/session notes) before this landed:
   1. `--agent dev-team:tdd-tester` (a plugin-scoped agent name) resolves correctly.
-  2. `claude -p --output-format json` produces a JSON object with `session_id` and
-     `result` keys, and `--resume <session_id>` reuses the same id and hits the prompt
-     cache for prior turns — the "keep it warm" design this replaces the SendMessage
-     approach for.
+  2. `claude -p --input-format stream-json --output-format stream-json` keeps a single
+     process alive across turns: writing successive `{"type":"user","message":
+     {"role":"user","content":...}}` NDJSON lines to its stdin, with each turn's reply
+     read off stdout as a stream of JSON lines up to a `"type":"result"` line (which
+     carries `session_id` and `result`), reused the *same* session_id turn over turn
+     and showed sharply reduced `cache_creation_input_tokens` on the second turn versus
+     the first — i.e. this hits the prompt cache same as a `--resume` restart would,
+     without paying the restart cost. `ClaudeSessionPool`/`_LiveProcess` implement this;
+     `--resume <session_id>` is still used, but only once per session per script
+     invocation (a fresh session, or one inherited from a prior invocation via the
+     state file), not once per turn.
   3. `--permission-mode acceptEdits` alone auto-approves Edit/Write but silently denies
      Bash — Bash needs an explicit `--allowedTools "Bash(pytest*) Bash(git*) ..."`
      scoped allowlist (not `--permission-mode bypassPermissions`, which disables all
      per-action checks and is a real escalation, not something to reach for by
-     default). `--allowedTools` is variadic and will swallow a positional prompt
-     argument that follows it, so the prompt is passed on stdin instead, never as a
-     trailing CLI argument.
+     default). This combination auto-approves tool calls transparently even under
+     `--input-format stream-json` — no `control_request`/`control_response` handshake
+     needed from this script, despite that bidirectional protocol existing for callers
+     that want per-call control over individual tool invocations.
 """
 
 import argparse
+import fnmatch
 import json
+import queue
 import re
 import subprocess
 import sys
+import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -50,6 +61,10 @@ DEFAULT_PERMISSION_MODE = "acceptEdits"
 # covers Edit/Write, for a single explicit list rather than relying on default
 # behavior for some tools and an allowlist for others.
 ALLOWED_TOOLS = "Bash(pytest*) Bash(python3*) Bash(git*) Edit Write Read Glob Grep"
+
+# Python default, overridable per-project via the `testing.test-file-patterns` config
+# key (see get-project-configuration) for repos using a different language/convention.
+DEFAULT_TEST_FILE_PATTERNS = ("test_*.py", "*_test.py")
 
 GENERIC_TESTER_TURN = "take your next turn for {component}."
 IMPLEMENTER_TURN_TEMPLATE = "tdd-tester reported: {reply}."
@@ -73,6 +88,10 @@ class ClaudeCliError(RuntimeError):
 
 class TddProtocolError(RuntimeError):
     """Raised when the loop exceeds MAX_TURNS — something is stuck."""
+
+
+class ConfigError(RuntimeError):
+    """Raised when project configuration can't be loaded."""
 
 
 @dataclass
@@ -113,47 +132,146 @@ class EscalationResult:
 # claude CLI invocation (the one impure boundary — see module docstring)
 # ---------------------------------------------------------------------------
 
+TURN_TIMEOUT_SECONDS = 600
 
-def run_claude_turn(
-    *,
-    message: str,
-    agent: str | None,
-    session_id: str | None,
-    repo_root: Path,
-    permission_mode: str = DEFAULT_PERMISSION_MODE,
-) -> tuple[str, str]:
-    """Run one `claude -p` turn — a fresh session if `session_id` is None (requires
-    `agent`), otherwise a resume of that session. Returns (session_id, result_text).
-    Raises ClaudeCliError on a non-zero exit or unparseable output.
 
-    The prompt is passed on stdin, not as a trailing CLI argument — `--allowedTools`
-    is variadic and greedily consumes a positional prompt argument that follows it."""
-    cmd = [
-        "claude", "-p", "--output-format", "json", "--permission-mode", permission_mode,
-        "--allowedTools", ALLOWED_TOOLS,
-    ]
-    if session_id:
-        cmd += ["--resume", session_id]
-    else:
-        if not agent:
-            raise ValueError("agent is required when starting a fresh session")
-        cmd += ["--agent", agent]
+class _LiveProcess:
+    """One live `claude -p --input-format stream-json --output-format stream-json`
+    subprocess for a single trio member's session, kept open across turns instead of
+    restarting per turn — confirmed by live smoke test (see module docstring) to
+    preserve session continuity and reuse the prompt cache without a `--resume`
+    process restart. Background threads continuously drain both stdout (into a queue
+    `send` blocks on for the next `result` line) and stderr (into a buffer for error
+    messages) — draining only on-demand after the process has already gone quiet would
+    risk it blocking on a full pipe mid-turn."""
 
-    result = subprocess.run(cmd, cwd=repo_root, input=message, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise ClaudeCliError(f"claude CLI exited {result.returncode}: {result.stderr.strip()}")
+    def __init__(
+        self, popen: subprocess.Popen, lines: "queue.Queue[str | None]", stderr: list[str],
+    ) -> None:
+        self._popen = popen
+        self._lines = lines
+        self._stderr = stderr
 
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as e:
-        raise ClaudeCliError(
-            f"could not parse claude CLI JSON output: {e}\n{result.stdout[:500]}"
-        ) from e
+    @classmethod
+    def start(
+        cls, *, agent: str | None, session_id: str | None, repo_root: Path, permission_mode: str,
+    ) -> "_LiveProcess":
+        cmd = [
+            "claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
+            # --verbose is mandatory here: the CLI rejects --print with
+            # --output-format=stream-json without it (confirmed by live smoke test).
+            "--verbose",
+            "--permission-mode", permission_mode, "--allowedTools", ALLOWED_TOOLS,
+        ]
+        if session_id:
+            cmd += ["--resume", session_id]
+        else:
+            if not agent:
+                raise ValueError("agent is required when starting a fresh session")
+            cmd += ["--agent", agent]
 
-    new_session_id = payload.get("session_id") or session_id
-    if not new_session_id:
-        raise ClaudeCliError(f"claude CLI output had no session_id: {payload}")
-    return new_session_id, payload.get("result", "")
+        popen = subprocess.Popen(
+            cmd, cwd=repo_root, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, bufsize=1,
+        )
+        lines: "queue.Queue[str | None]" = queue.Queue()
+        stderr: list[str] = []
+
+        def _drain_stdout() -> None:
+            for line in popen.stdout:
+                lines.put(line)
+            lines.put(None)
+
+        def _drain_stderr() -> None:
+            for line in popen.stderr:
+                stderr.append(line)
+
+        threading.Thread(target=_drain_stdout, daemon=True).start()
+        threading.Thread(target=_drain_stderr, daemon=True).start()
+        return cls(popen, lines, stderr)
+
+    def send(self, message: str) -> tuple[str, str]:
+        """Write one NDJSON user-turn envelope to the live process's stdin and block
+        for its `result` line. Returns (session_id, result_text). Raises
+        ClaudeCliError if the process is dead, times out, or the turn itself errored."""
+        envelope = json.dumps({"type": "user", "message": {"role": "user", "content": message}})
+        try:
+            self._popen.stdin.write(envelope + "\n")
+            self._popen.stdin.flush()
+        except (BrokenPipeError, OSError) as e:
+            raise ClaudeCliError(f"claude CLI process is no longer accepting input: {e}") from e
+
+        session_id: str | None = None
+        while True:
+            try:
+                line = self._lines.get(timeout=TURN_TIMEOUT_SECONDS)
+            except queue.Empty as e:
+                raise ClaudeCliError(
+                    f"claude CLI turn timed out after {TURN_TIMEOUT_SECONDS}s"
+                ) from e
+            if line is None:
+                raise ClaudeCliError(
+                    f"claude CLI process exited unexpectedly: {''.join(self._stderr).strip()}"
+                )
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            session_id = payload.get("session_id") or session_id
+            if payload.get("type") != "result":
+                continue
+            if payload.get("is_error"):
+                raise ClaudeCliError(f"claude CLI turn errored: {payload}")
+            if not session_id:
+                raise ClaudeCliError(f"claude CLI output had no session_id: {payload}")
+            return session_id, payload.get("result", "")
+
+    def close(self) -> None:
+        try:
+            if self._popen.stdin:
+                self._popen.stdin.close()
+        except OSError:
+            pass
+        try:
+            self._popen.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self._popen.kill()
+
+
+class ClaudeSessionPool:
+    """`send_turn`-shaped callable (see `_send`) that keeps one live `_LiveProcess` per
+    session_id for the life of the pool, instead of spawning a fresh `claude` process
+    per turn. The very first turn for a role (no session_id yet) and the first turn of
+    a session resumed from a prior script invocation (a session_id with no process
+    live in *this* pool) both spawn lazily on first use; every later turn for that
+    session reuses the same open process."""
+
+    def __init__(self) -> None:
+        self._processes: dict[str, _LiveProcess] = {}
+
+    def __call__(
+        self,
+        *,
+        message: str,
+        agent: str | None,
+        session_id: str | None,
+        repo_root: Path,
+        permission_mode: str = DEFAULT_PERMISSION_MODE,
+    ) -> tuple[str, str]:
+        process = self._processes.get(session_id) if session_id else None
+        if process is None:
+            process = _LiveProcess.start(
+                agent=agent, session_id=session_id, repo_root=repo_root,
+                permission_mode=permission_mode,
+            )
+        new_session_id, text = process.send(message)
+        self._processes[new_session_id] = process
+        return new_session_id, text
+
+    def close(self) -> None:
+        for process in self._processes.values():
+            process.close()
+        self._processes.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -216,9 +334,9 @@ def changed_files(repo_root: Path) -> list[str]:
     return [p for p in (*tracked, *untracked) if p.strip()]
 
 
-def is_test_file(path: str) -> bool:
+def is_test_file(path: str, patterns: tuple[str, ...] = DEFAULT_TEST_FILE_PATTERNS) -> bool:
     name = Path(path).name
-    return name.startswith("test_") or name.endswith("_test.py")
+    return any(fnmatch.fnmatch(name, pattern) for pattern in patterns)
 
 
 def stage(repo_root: Path, paths: list[str]) -> None:
@@ -271,7 +389,7 @@ def _send(
     session_field: str,
     component_prompt: str,
     repo_root: Path,
-    send_turn=run_claude_turn,
+    send_turn,
 ) -> str:
     session_id = getattr(state, session_field)
     if session_id is None:
@@ -322,8 +440,41 @@ def run_cycle(
     state_path: Path,
     injected_answer: str | None = None,
     resolved_directly: bool = False,
-    send_turn=run_claude_turn,
+    send_turn=None,
     max_turns: int = MAX_TURNS,
+    test_file_patterns: tuple[str, ...] = DEFAULT_TEST_FILE_PATTERNS,
+) -> DoneResult | EscalationResult:
+    """Run the trio's turn-by-turn loop. When `send_turn` isn't supplied (the
+    production path, via `main`), opens a `ClaudeSessionPool` for the duration of the
+    call and closes it — including its live `claude` subprocesses — once the loop
+    returns or raises. A caller that injects its own `send_turn` (tests) owns that
+    callable's lifecycle instead; nothing is opened or closed here for it."""
+    pool = ClaudeSessionPool() if send_turn is None else None
+    try:
+        return _run_cycle(
+            component=component, component_prompt=component_prompt, repo_root=repo_root,
+            work_item_id=work_item_id, state=state, state_path=state_path,
+            injected_answer=injected_answer, resolved_directly=resolved_directly,
+            send_turn=send_turn or pool, max_turns=max_turns, test_file_patterns=test_file_patterns,
+        )
+    finally:
+        if pool is not None:
+            pool.close()
+
+
+def _run_cycle(
+    *,
+    component: str,
+    component_prompt: str,
+    repo_root: Path,
+    work_item_id: str,
+    state: TrioState,
+    state_path: Path,
+    injected_answer: str | None,
+    resolved_directly: bool,
+    send_turn,
+    max_turns: int,
+    test_file_patterns: tuple[str, ...],
 ) -> DoneResult | EscalationResult:
     pending_implementer_reply: str | None = None
 
@@ -361,7 +512,7 @@ def run_cycle(
                 )
 
             changed = changed_files(repo_root)
-            non_test = [p for p in changed if not is_test_file(p)]
+            non_test = [p for p in changed if not is_test_file(p, test_file_patterns)]
             if non_test:
                 discard_unstaged(repo_root, non_test)
                 return _protocol_violation(
@@ -415,7 +566,7 @@ def run_cycle(
             )
 
         changed = changed_files(repo_root)
-        non_production = [p for p in changed if is_test_file(p)]
+        non_production = [p for p in changed if is_test_file(p, test_file_patterns)]
         if non_production:
             discard_unstaged(repo_root, non_production)
             return _protocol_violation(
@@ -434,13 +585,38 @@ def run_cycle(
 
 
 # ---------------------------------------------------------------------------
+# project configuration
+# ---------------------------------------------------------------------------
+
+_MERGE_CONFIG_SCRIPT = (
+    Path(__file__).resolve().parent.parent.parent
+    / "get-project-configuration" / "scripts" / "merge_config.py"
+)
+
+
+def load_test_file_patterns(repo_root: Path) -> tuple[str, ...]:
+    """Return `testing.test-file-patterns` from the merged project configuration (see
+    get-project-configuration skill). Falls back to `DEFAULT_TEST_FILE_PATTERNS` only
+    if a project has no `testing.test-file-patterns` key at all — the shipped default
+    config always defines one, so this covers a project deliberately overriding it away
+    (`testing: null`) rather than the ordinary case."""
+    result = subprocess.run(
+        [sys.executable, str(_MERGE_CONFIG_SCRIPT), "--repo-root", str(repo_root)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise ConfigError(f"Failed to load project configuration: {result.stderr.strip()}")
+    patterns = json.loads(result.stdout).get("testing", {}).get("test-file-patterns")
+    return tuple(patterns) if patterns else DEFAULT_TEST_FILE_PATTERNS
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--component-prompt", required=True)
     parser.add_argument("--component-name", required=True)
     parser.add_argument("--repo-root", required=True)
     parser.add_argument("--work-item-id", required=True)
@@ -452,7 +628,7 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = Path(args.repo_root).resolve()
     state_path = Path(args.state_file)
     state = TrioState.load(state_path)
-    component_prompt = Path(args.component_prompt).read_text(encoding="utf-8")
+    component_prompt = sys.stdin.read()
 
     try:
         result = run_cycle(
@@ -464,8 +640,9 @@ def main(argv: list[str] | None = None) -> int:
             state_path=state_path,
             injected_answer=args.answer,
             resolved_directly=args.resolved_directly,
+            test_file_patterns=load_test_file_patterns(repo_root),
         )
-    except (ClaudeCliError, TddProtocolError) as e:
+    except (ClaudeCliError, TddProtocolError, ConfigError) as e:
         print(json.dumps({"status": "error", "reason": str(e)}, indent=2))
         return 1
 

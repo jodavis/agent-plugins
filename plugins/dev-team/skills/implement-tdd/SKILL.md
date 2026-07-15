@@ -30,32 +30,35 @@ own, or a finished/committed component.
 
 ### 1 — Write the component prompt
 
-Write a prompt file describing this component only — a focused subset of the task brief, not the
+Compose a prompt describing this component only — a focused subset of the task brief, not the
 whole thing:
 - the task brief path and spec path (so the trio can read the full brief/spec themselves if they
   need more context)
 - this component's own Component Breakdown row (name, tier, responsibility, dependencies)
 - the work item id
 
-Save it to a scratch path.
-
 ### 2 — Run the driver script
 
 `<skill-dir>` refers to this skill's own base directory — the "Base directory for this skill"
 path shown when this skill was invoked. Resolve it to that literal path.
 
+Pass the component prompt on the script's stdin (e.g. a heredoc), not as a file:
+
 ```bash
 python "<skill-dir>/scripts/tdd_cycle.py" \
-  --component-prompt <prompt-path> \
   --component-name "<Component>" \
   --repo-root <repo-root> \
   --work-item-id <work-item-id> \
-  --state-file <state-path>
+  --state-file <state-path> <<'EOF'
+<component prompt text>
+EOF
 ```
 
-Use a `<state-path>` unique to this component (e.g. under the same scratch directory as the
-prompt file) — it's how the script resumes a specific component's in-progress loop after you
-resolve an escalation.
+Use a `<state-path>` unique to this component (e.g. under a scratch directory) — it's how the
+script resumes a specific component's in-progress loop after you resolve an escalation. Every
+re-run of the script (including to resolve an escalation) needs the same component prompt piped
+in again on stdin — it's only used to start a trio member's first turn, but the script always
+reads it.
 
 The script spawns (or resumes, via `--state-file`) three `claude -p` sessions running as the
 `tdd-tester`, `tdd-implementer`, and `tdd-refactorer` agents, relays turns between them, stages

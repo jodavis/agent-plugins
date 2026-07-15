@@ -119,6 +119,20 @@ validation:
 in that repo's `.dev-team/config.yaml` (or `.dev-team/config.local.yaml` if you don't want
 to commit the override).
 
+### `testing.test-file-patterns` — list of glob patterns
+
+Glob patterns (matched against a file's basename) that identify a test file, used by the TDD
+trio driver to keep `tdd-tester` scoped to test files and `tdd-implementer` scoped to production
+files. Defaults to Python's `test_*.py` / `*_test.py` convention; override for a project using a
+different language or naming convention, e.g.:
+
+```yaml
+testing:
+  test-file-patterns:
+    - "*.test.ts"
+    - "*.spec.ts"
+```
+
 ### `git-repo`
 
 `user-alias` — substituted for `<user-alias>` in the `working-branches.*` templates below.

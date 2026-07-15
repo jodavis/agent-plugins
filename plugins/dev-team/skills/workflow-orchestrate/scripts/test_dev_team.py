@@ -232,15 +232,6 @@ class TestProjectConfigurationHelper:
 
         assert _project_configuration(ctx) == {"a": 1}
 
-    def test_falls_back_to_load_project_config_when_uncached(self, monkeypatch):
-        import dev_team
-        from dev_team import PipelineContext, _project_configuration
-
-        monkeypatch.setattr(dev_team, "_load_project_config", lambda repo_root: {"b": 2})
-        ctx = PipelineContext(work_item_id="ADR-TEST")
-
-        assert _project_configuration(ctx) == {"b": 2}
-
 
 # ---------------------------------------------------------------------------
 # review_cycle_count counter
@@ -1021,11 +1012,11 @@ class TestValidateStepGetActions:
 
     def test_skips_run_script_when_no_validation_script_configured(self, tmp_path, monkeypatch):
         """A repo that opts out of validation (validation: null) should not spawn a script run."""
-        import dev_team
         from dev_team import ValidateStep
 
-        monkeypatch.setattr(dev_team, "_load_project_config", lambda repo_root: {"validation": None})
-        ctx, context_path = self._make_ctx(tmp_path)
+        ctx, context_path = self._make_ctx(
+            tmp_path, project_configuration=json.dumps({"validation": None}),
+        )
         step = ValidateStep(ctx, context_path, tmp_path / "logs")
 
         actions = step.get_actions()
@@ -1037,12 +1028,11 @@ class TestValidateStepGetActions:
         import dev_team
         from dev_team import ValidateStep
 
-        monkeypatch.setattr(
-            dev_team, "_load_project_config",
-            lambda repo_root: {"validation": {"script": "scripts/validate.sh"}},
-        )
         monkeypatch.setattr(dev_team, "REPO_ROOT", tmp_path)
-        ctx, context_path = self._make_ctx(tmp_path)
+        ctx, context_path = self._make_ctx(
+            tmp_path,
+            project_configuration=json.dumps({"validation": {"script": "scripts/validate.sh"}}),
+        )
         step = ValidateStep(ctx, context_path, tmp_path / "logs")
 
         actions = step.get_actions()
