@@ -13,15 +13,13 @@ Use this skill when:
 
 ## Steps
 
-### 1 — Resolve the context file
+### 1 — Resolve the context file and confirm the working branch
 
-Use the `use-context-file` skill with the `work-item-id` to locate and read the context file. Extract `spec_path` from the frontmatter.
+Use the `use-context-file` skill with the `work-item-id` to locate and read the context file,
+including its "Confirming the working branch" step — this skill is about to read/write repository
+files in the next steps. Extract `spec_path` from the frontmatter.
 
-### 2 — Ensure the working branch
-
-Use the `ensure-working-branch` skill with the `work-item-id` and the resolved context file path.
-
-### 3 — Find the spec file
+### 2 — Find the spec file
 
 If `spec_path` is empty or missing from the context file:
 
@@ -44,7 +42,7 @@ If no spec file is found, stop and report:
 
 > No spec file containing `<work-item-id>` was found. Create or locate the spec file before proceeding.
 
-### 4 — Extract the spec section
+### 3 — Extract the spec section
 
 Read the spec file. Locate the section that references the `work-item-id` — typically a heading or checkbox item that includes the key. Extract all content from that heading until the next heading at the same level or end of file.
 

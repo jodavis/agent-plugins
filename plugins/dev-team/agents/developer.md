@@ -13,7 +13,6 @@ tools:
   - Write
   - Bash
   - Task
-  - SendMessage
   - TodoWrite
   - Skill
   - WebSearch

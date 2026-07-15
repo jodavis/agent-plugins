@@ -18,179 +18,111 @@ Do NOT use this skill when:
 
 ## Role reminder
 
-This skill is driven by Developer, the orchestrator. `tdd-tester`, `tdd-implementer`, and
-`tdd-refactorer` never invoke this skill themselves and never spawn sub-agents of their own —
-each turn, they invoke their own turn skill (`tdd-red-turn` / `tdd-green-turn` /
-`tdd-refactor-turn`) to decide what to do, then reply with one line. Developer's job is to route
-turns, check the changed-file list after each one, stage verified turns, and act on the one-line
-replies — not to predict which kind of turn is coming next, and not to read the diffs itself
-unless a protocol violation or escalation forces it to look closer.
+The trio (`tdd-tester`, `tdd-implementer`, `tdd-refactorer`) run as isolated `claude` CLI
+subprocesses, not as sub-agents of your own session — they never see your conversation and you
+never see theirs directly. A driver script owns the mechanical turn-by-turn relay (routing turns,
+checking each turn's changed-file scope, staging verified changes, driving the ping-pong loop) so
+none of that traffic enters your context. Your job is to write the component's prompt, run the
+script, and handle whatever it hands back to you: a Tier 2 escalation it can't resolve on its
+own, or a finished/committed component.
 
 ## Steps
 
-### 1 — Spawn the trio
+### 1 — Write the component prompt
 
-Use `Agent` to spawn one `tdd-tester`, one `tdd-implementer`, and one `tdd-refactorer` sub-agent
-for this component. Track the `agentId` each spawn returns for as long as this component is
-being implemented — use `SendMessage` addressed to that id to continue that specific sub-agent's
-turn. A fresh trio is spawned per Testable component; ids from a finished component are never
-reused.
+Write a prompt file describing this component only — a focused subset of the task brief, not the
+whole thing:
+- the task brief path and spec path (so the trio can read the full brief/spec themselves if they
+  need more context)
+- this component's own Component Breakdown row (name, tier, responsibility, dependencies)
+- the work item id
 
-The first turn to each newly spawned sub-agent includes:
-- the task brief path and spec path,
-- this component's own Component Breakdown row (name, tier, responsibility, dependencies),
-  inline.
+Save it to a scratch path.
 
-Later turns stay one line each — don't re-summarize context already given on the first turn.
-`tdd-refactorer`'s first turn happens the first time step 6 is reached, not necessarily
-immediately after spawning — it's spawned up front alongside the pair so its `agentId` is ready
-whenever the loop needs it.
+### 2 — Run the driver script
 
-### 2 — tdd-tester's turn
+`<skill-dir>` refers to this skill's own base directory — the "Base directory for this skill"
+path shown when this skill was invoked. Resolve it to that literal path.
 
-Send `tdd-tester` a generic turn message: `"take your next turn for <Component>."` Send this
-same message every time you come back to this step — on the very first turn, right after
-`tdd-implementer` replies `structural-green`, and after any later behavior (including after a
-step 6 refactor turn). `tdd-tester` invokes `tdd-red-turn` itself to decide what that means; you
-never predict or name the turn type.
+```bash
+python "<skill-dir>/scripts/tdd_cycle.py" \
+  --component-prompt <prompt-path> \
+  --component-name "<Component>" \
+  --repo-root <repo-root> \
+  --work-item-id <work-item-id> \
+  --state-file <state-path>
+```
 
-`tdd-tester` replies one of:
-- `structural-red: <TestName> — <reason>` — go to step 3.
-- `red: <TestName> — <reason>` — go to step 3.
-- `done: <coverage summary>` — go to step 7 (commit).
+Use a `<state-path>` unique to this component (e.g. under the same scratch directory as the
+prompt file) — it's how the script resumes a specific component's in-progress loop after you
+resolve an escalation.
 
-After the reply, check `git diff --name-only` (or the target project's VCS equivalent) — it
-must show only test files. A mismatch is a protocol violation: see step 5. Once it checks out,
-stage the change (see "Staging between turns" below) before continuing.
+The script spawns (or resumes, via `--state-file`) three `claude -p` sessions running as the
+`tdd-tester`, `tdd-implementer`, and `tdd-refactorer` agents, relays turns between them, stages
+verified changes, and prints one of two JSON results to stdout:
 
-### 3 — tdd-implementer's turn
+- **`{"status": "done", "commit_message": ..., "coverage_summary": ...}`**, exit 0 — the
+  component is fully covered and already committed. Nothing further for you to do for this
+  component.
+- **`{"status": "escalation", "recommended_action": ..., "reason": ..., "state_file": ...}`**,
+  exit 1 — the loop hit something it can't resolve on its own. `recommended_action` is one of
+  `clarify`, `resolve_directly`, `split_scope` (from `tdd-implementer`'s own Tier 2 escalation),
+  or `protocol_violation` (the script's own detection of a trio member touching the wrong file
+  class, an unrecognized reply, or a second `revise-request` after its one allowed retry).
 
-Send `tdd-implementer` a generic turn message that relays `tdd-tester`'s reply verbatim:
-`"tdd-tester reported: <reply>."` `tdd-implementer` invokes `tdd-green-turn` itself to decide
-how to resolve it — you never tell it whether the turn is structural or behavioral.
+### 3 — Resolve an escalation, if one comes back
 
-`tdd-implementer` replies one of:
-- `structural-green: <TestName>` — go back to step 2 for the same `<TestName>` (`tdd-tester`
-  will add the `Assert` this time and report `red`). No refactor turn here — a structural turn
-  only gets Arrange/Act compiling with a stub; there's no real behavior yet to clean up.
-- `green: <TestName>` — go to step 6 (refactor turn) before returning to step 2 for the next
-  behavior.
-- `revise-request: <TestName> — <reason>` — this is `tdd-implementer`'s own Tier 1,
-  pair-internal retry (its own behavior, not something you resolve). Relay the note verbatim to
-  `tdd-tester`, relay `tdd-tester`'s one-line response back to `tdd-implementer` verbatim, and
-  let it attempt the turn once more. This is a mechanical pass-through — you make no judgment
-  call here. If `tdd-implementer` then replies `green` or `structural-green`, continue as
-  normal (`green` still routes to step 6); if it replies `escalate` instead, go to step 4.
-- `escalate: <reason> — recommended_action: clarify|resolve_directly|split_scope` — go to
-  step 4.
-
-After the reply, check `git diff --name-only` as in step 2 — it must show only production
-files. Once it checks out, stage the change.
-
-### 4 — Tier 2 escalation (you resolve)
-
-- **`clarify`** — answer directly from the spec/task-brief context you already hold. Resend
-  `tdd-implementer` the same generic turn message from step 3 with the answer folded in:
-  `"tdd-tester reported: <original reply>. <answer>."` `tdd-green-turn` re-derives whether it's
-  resolving a structural or behavioral turn from that same input — you don't track or
-  distinguish where the escalation originated. The reply is handled exactly as in step 3
-  (`green` routes to step 6; `structural-green` returns directly to step 2).
+- **`clarify`** — answer directly from the spec/task-brief context you already hold, then re-run
+  step 2 with `--state-file <same-path> --answer "<answer>"` to inject it and continue the loop.
 - **`resolve_directly`** — follow the `implement-direct` skill to implement the disputed piece
-  yourself. Run the disputed test yourself to confirm it now passes before handing control
-  back. The test is retained toward `tdd-tester`'s coverage exactly as if `tdd-implementer` had
-  turned it green — do not discard or rewrite it. Stage the change, then go to step 6 (refactor
-  turn) before returning to step 2 for the next behavior — this counts as a real green for
-  refactor-turn purposes, the same as one `tdd-implementer` resolved itself.
-- **`split_scope`** — the behavior needs something outside this component's declared boundary
-  (an unbuilt dependency, or a Component Breakdown gap). Stop driving this component's loop and
-  record the scope adjustment for the task as a whole (reordering remaining components, or
-  adjusting scope) — this skill only implements one component and does not itself reorder
-  others. No refactor turn — no green was produced.
+  yourself, in the same working tree the script has been staging into. Run the disputed test
+  yourself to confirm it now passes. Then re-run step 2 with `--state-file <same-path>
+  --resolved-directly` — the script stages your change, treats it as a real green (routing to a
+  refactor turn), and continues the loop.
+- **`split_scope`** — the behavior needs something outside this component's declared boundary (an
+  unbuilt dependency, or a Component Breakdown gap). Stop here — do not re-run the script. Record
+  the scope adjustment for the task as a whole in your own work summary; the script leaves
+  whatever was staged as-is (nothing is committed for an incomplete component).
+- **`protocol_violation`** — read the `reason` field; the offending file has already been
+  reverted (or, for a double `revise-request`, nothing needs reverting). This should be rare.
+  Re-run step 2 with the same `--state-file` and no extra flags to retry the same turn; if it
+  recurs, treat it as an unresolved Tier 3 case per below.
 
-If you cannot confidently resolve an escalation through any of the above (Tier 3): make your
-best defensible call, implement accordingly, and record the ambiguity in your work summary as
-a known ambiguity (same pattern as `write-task-brief`'s Known ambiguities section), for human
-review after the fact. Only treat this as an outright task failure if continuing would mean
-knowingly producing wrong code.
+If you cannot confidently resolve an escalation through any of the above (Tier 3): make your best
+defensible call, implement accordingly (via the `resolve_directly` re-run path), and record the
+ambiguity in your work summary, for human review after the fact. Only treat this as an outright
+task failure if continuing would mean knowingly producing wrong code.
 
-### 5 — Protocol violations
+## What the script does for you
 
-If a changed-file check (steps 2 or 3) ever shows `tdd-tester` touching a production file, or
-`tdd-implementer` touching a test file, stop the loop immediately. Nothing from the current
-turn has been staged yet at this point (see "Staging between turns" below), so the
-out-of-scope file is still a plain unstaged change — discard it (`git checkout -- <file>`, or
-the target project's VCS equivalent) and re-send the same turn's message. This should never
-happen; treat it the same as an unresolved Tier 3 case and record it as a known ambiguity if
-you can't cleanly recover.
-
-### 6 — Refactor turn (after every real green)
-
-This is the "refactor" third of the red-green-refactor cycle — it runs after every real green
-(step 3's `green: <TestName>`, or step 4's `resolve_directly` resolution), not only once at the
-end of the component's loop. `tdd-refactorer` doesn't have to make a change every time it's
-given a turn, but it gets the opportunity after every green to steer the component toward
-well-designed code as it's being built, rather than deferring all cleanup to a single pass after
-`tdd-tester` reports `done`.
-
-Send `tdd-refactorer` this exact turn message: `"review <Component> for duplication, brittle
-setup, or naive implementations left over from green turns. No behavior changes."` Send the same
-message every time you come back to this step. `tdd-refactorer` invokes `tdd-refactor-turn`
-itself to decide what to do — you never tell it whether there's anything to clean up.
-
-`tdd-refactorer` replies one of:
-- `refactored: <summary>` — it already reran the full component suite itself as part of its
-  turn and confirmed no behavior changed.
-- `no-refactor-needed` — nothing to do this turn.
-
-Either way, check `git diff --name-only` and stage whatever changed (see "Staging between
-turns" below — unlike the pair's single-file-class turns, `tdd-refactorer` may touch both test
-and production files in the same turn, since a cleanup can legitimately span both). Then return
-to step 2 for the next behavior. There is no escalation tier or retry here, unlike steps 2–4's
-ping-pong — `tdd-refactorer` either refactors within its behavior-preserving mandate or reports
-`no-refactor-needed` for that turn.
-
-### 7 — Commit
-
-Once `tdd-tester` reports `done`, use `commit-changes` with message format
-`<work-item-id>: <short description>` (no push). This is the single real commit for the
-component — everything staged throughout the loop (every tester/implementer turn, plus every
-interleaved refactor turn from step 6) lands in this one commit, so no commit ever captures a
-broken (red, half-resolved structural, or mid-refactor) intermediate state.
-
-## Staging between turns
-
-Never commit mid-loop — a commit while a test is red, while a structural stub is only
-half-resolved, or mid-refactor, would be a broken checkpoint. Instead, once a turn's
-changed-file check (steps 2, 3, or 6) confirms only the expected file class changed (or, for
-step 6, confirms the change is behavior-preserving per `tdd-refactorer`'s own report), stage
-those files with `git add` before sending the next turn. This has two effects:
-- The working tree/index accumulate the component's progress without ever creating a commit of
-  a broken state.
-- Each subsequent turn's unstaged `git diff --name-only` reflects only that turn's own change,
-  since every prior turn is already staged — giving an exact file-scope check per turn instead
-  of one that accumulates across the whole loop.
-
-The single commit in step 7 picks up everything staged so far plus any final unstaged bits,
-exactly once, when the component is fully green and coverage-complete.
+- Sends the same generic turn messages the protocol always used (`"take your next turn for
+  <Component>."`, `"tdd-tester reported: <reply>."`, the refactor-turn review message) — it never
+  tells a trio member whether its turn is structural or behavioral; each trio member's own turn
+  skill (`tdd-red-turn` / `tdd-green-turn` / `tdd-refactor-turn`) still decides that itself.
+- Checks each turn's changed-file list (test-only for `tdd-tester`, production-only for
+  `tdd-implementer`) and surfaces a mismatch as a `protocol_violation` escalation after reverting
+  the out-of-scope file.
+- Handles `tdd-implementer`'s Tier 1 `revise-request` — a pure mechanical pass-through to
+  `tdd-tester` and back for one retry — without involving you at all.
+- Stages each verified turn (`git add`) but never commits mid-loop; the one real commit happens
+  only once `tdd-tester` reports `done`, with message format `<work-item-id>: implement
+  <Component> via TDD (<coverage summary>)`.
+- Routes every real green (`tdd-implementer`'s `green`, or your `resolve_directly` resolution) to
+  a `tdd-refactorer` turn before returning to `tdd-tester` for the next behavior.
 
 ## Build/test scope per turn
 
-Same build/test command syntax already documented in `code-change-expectations` for the
-target project. Every turn's build is incremental (never a clean rebuild); every turn's test
-run is scoped to the one test or the component's suite, never the full project suite — that's
-reserved for the E2E re-run later in `behavior-driven-development`.
+Same build/test command syntax already documented in `code-change-expectations` for the target
+project — each trio member runs this itself as part of its own turn; the script does not run
+builds/tests on their behalf.
 
 ## Skills
 
-- `tdd-practices` — practice rules the trio follows
+- `tdd-practices` — practice rules the trio follows (unchanged; still referenced by each trio
+  member's own turn skill)
 - `behavior-driven-development` — the E2E re-run step that still runs after all components
   (including this one) are implemented
-- `code-change-expectations` — coverage checklist `tdd-tester` (via `tdd-red-turn`) judges
-  `done` against, and that a `tdd-refactorer` consolidation must still satisfy
-- `commit-changes` — the single commit in step 7, once the component is fully green and
-  coverage-complete
-- `implement-direct` — used for a `resolve_directly` Tier 2 escalation
-- `tdd-red-turn` / `tdd-green-turn` — the turn-mechanics skills `tdd-tester` and
-  `tdd-implementer` invoke themselves each turn; Developer's messages to them stay generic
-- `tdd-refactor-turn` — the turn-mechanics skill `tdd-refactorer` invokes for every refactor
-  turn (step 6), not just a final one
+- `code-change-expectations` — coverage checklist `tdd-tester` (via `tdd-red-turn`) judges `done`
+  against
+- `implement-direct` — used for a `resolve_directly` Tier 2 escalation, before re-running the
+  script

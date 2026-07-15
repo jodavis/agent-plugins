@@ -57,6 +57,23 @@ Read `<context-file>` and extract these YAML frontmatter fields:
 Fields marked "may be empty" are not guaranteed to be set — a caller that needs one and finds it
 empty must compute it itself (see e.g. `ensure-working-branch`) rather than assuming a default.
 
+## Confirming the working branch
+
+If you are about to read or write repository files (not just the context file itself), confirm
+the working branch here rather than making a separate caller invoke `ensure-working-branch`
+unconditionally:
+
+- If `working_branch` is empty: invoke the `ensure-working-branch` skill with the `work-item-id`
+  to compute, create, and check it out.
+- If `working_branch` is set: cheaply confirm the repo is actually on it —
+  `git rev-parse --abbrev-ref HEAD` and compare to `working_branch`. If they match, no further
+  action is needed. If they don't match (or you need to confirm it's up to date with the remote),
+  invoke `ensure-working-branch` — it re-checks the context file's already-known fields itself
+  and only recomputes what's actually missing.
+
+Skip this whole check if you only need to read context-file fields and won't touch any other
+repository file this turn.
+
 The context file also carries a `<!-- section:Project Configuration -->` body section,
 written by `init-context-file.py` when it first creates the file: the full merged project
 configuration (the same JSON `get-project-configuration` returns), computed once so that

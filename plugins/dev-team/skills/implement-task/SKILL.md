@@ -50,9 +50,16 @@ If anything in the brief is ambiguous and the ambiguity would affect correctness
 
 ### 5 — Write E2E scenarios first
 
-Use the `behavior-driven-development` skill's step 1, by name: write Gherkin scenarios covering
-the exit criteria before any implementation exists, run them, and confirm they fail for the
-right reason.
+**Skip this step (go straight to step 6) when the brief's Components in scope section is present
+and every listed component is tier `Testable`** — E2E scenarios exercise externally-observable
+behavior, which only a `Wrapper` or `Orchestrator` component introduces; a Testable-only task
+(e.g. an internal refactor with no new entry point) has nothing new for one to exercise. Don't
+skip when there's no Components in scope section at all (the untagged work's shape isn't known
+yet) or when a `Wrapper`/`Orchestrator` is present alongside any `Testable` components.
+
+Otherwise, use the `behavior-driven-development` skill's step 1, by name: write Gherkin scenarios
+covering the exit criteria before any implementation exists, run them, and confirm they fail for
+the right reason.
 
 ### 6 — Dispatch declared components
 
@@ -95,8 +102,11 @@ in scope section at all — falls into one of two buckets:
 
 ### 8 — Confirm E2E scenarios pass
 
-Use the `behavior-driven-development` skill's step 2, by name: run the full new-scenario suite
-and confirm all new scenarios pass.
+Skip this step under the same condition step 5 was skipped (Components in scope present and
+every listed component is tier `Testable`) — there are no new scenarios from step 5 to confirm.
+
+Otherwise, use the `behavior-driven-development` skill's step 2, by name: run the full
+new-scenario suite and confirm all new scenarios pass.
 
 ### 9 — Self-review
 
