@@ -131,6 +131,6 @@ Fill every section. For anything genuinely unresolved, use `> TBD: reason` inlin
 
 After writing, tell the user:
 
-> Draft written to `<path>`. Please review it — edit any section directly and add `> **Review:** your comment or question` anywhere you want a change made or a question answered. Tell me when you're ready for the next pass.
+> Draft written to `<path>`. Please review it — edit any section directly and add `> **Review:** your comment or question` anywhere you want a change made or a question answered. If you notice a methodology worth recording for later reuse, drop a `> [!NOTE]` / `> **Method:** ...` callout instead — it's not a review comment and won't be resolved or removed; it records the rationale in place until it's harvested into a playbook. Tell me when you're ready for the next pass.
 
 **PAUSE — wait for the user to review and signal readiness.**
