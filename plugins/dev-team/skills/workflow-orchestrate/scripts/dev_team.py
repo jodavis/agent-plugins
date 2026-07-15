@@ -180,15 +180,6 @@ class StateMachine:
         return self.state
 
 
-# ---------------------------------------------------------------------------
-# Pipeline context (serializable state)
-# ---------------------------------------------------------------------------
-#
-# PipelineContext itself now lives in pipeline_context.py (imported above) and
-# is re-exported here for backward compatibility with existing `from dev_team
-# import PipelineContext` call sites.
-
-
 def _parse_sections(body: str) -> dict[str, str]:
     """Split a markdown body into {heading: content} by '<!-- section:Name -->' sentinels."""
     sections: dict[str, str] = {}
