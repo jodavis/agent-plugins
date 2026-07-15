@@ -129,6 +129,27 @@ class TestPipelineContextSaveLoadRoundTrip:
 
 
 # ---------------------------------------------------------------------------
+# save() side effects: parent directory creation
+# ---------------------------------------------------------------------------
+
+class TestPipelineContextSaveCreatesParentDirectory:
+    def make_sut(self, **kwargs):
+        from pipeline_context import PipelineContext
+        return PipelineContext(work_item_id="ADR-TEST", **kwargs)
+
+    def test_save_to_path_with_missing_parent_directory_creates_it_and_writes_file(self, tmp_path):
+        # Arrange
+        ctx = self.make_sut()
+        path = tmp_path / "nested" / "subdir" / "ctx.md"
+
+        # Act
+        ctx.save(path)
+
+        # Assert
+        assert path.exists()
+
+
+# ---------------------------------------------------------------------------
 # extra_frontmatter preservation for unrecognized frontmatter keys
 # ---------------------------------------------------------------------------
 

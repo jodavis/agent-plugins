@@ -124,6 +124,7 @@ class PipelineContext:
         if log_links:
             lines += ["<!-- section:Logs -->", ""] + log_links + [""]
 
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     @classmethod
