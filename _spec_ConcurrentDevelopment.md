@@ -2,7 +2,8 @@
 
 > **Status:** Draft
 > **Epic:** [ADR-296](https://jodasoft.atlassian.net/browse/ADR-296)
-> **Will become:** `_doc_ConcurrentDevelopment.md` once implementation is complete
+> **Design doc:** `_doc_ConcurrentDevelopment.md` — authored by the final documentation task once
+> implementation completes; this spec persists afterward for harvesting
 
 ## Overview
 
