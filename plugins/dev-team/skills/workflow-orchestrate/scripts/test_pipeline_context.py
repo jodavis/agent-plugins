@@ -109,6 +109,24 @@ class TestPipelineContextSaveLoadRoundTrip:
         assert loaded.started == ctx.started
         assert loaded.last_updated == ctx.last_updated
 
+    def test_save_then_load_roundtrips_default_empty_string_scalar_frontmatter_fields(self, tmp_path):
+        # Arrange
+        from pipeline_context import PipelineContext
+        ctx = self.make_sut()
+        path = tmp_path / "ctx.md"
+
+        # Act
+        ctx.save(path)
+        loaded = PipelineContext.load(path)
+
+        # Assert
+        assert loaded.spec_path == ""
+        assert loaded.pr_url == ""
+        assert loaded.build_log == ""
+        assert loaded.test_log == ""
+        assert loaded.troubleshooter_input == ""
+        assert loaded.pending_agent == ""
+
 
 # ---------------------------------------------------------------------------
 # extra_frontmatter preservation for unrecognized frontmatter keys

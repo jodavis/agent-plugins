@@ -144,6 +144,8 @@ class PipelineContext:
             if not in_frontmatter:
                 continue
             if line.startswith("- ") and current_list_key is not None:
+                if not isinstance(meta[current_list_key], list):
+                    meta[current_list_key] = []
                 meta[current_list_key].append(line[2:])
                 continue
             if ":" in line:
@@ -151,7 +153,9 @@ class PipelineContext:
                 key = key.strip()
                 value = value.strip()
                 if value == "":
-                    meta[key] = []
+                    # May turn out to be a list (if '- ' lines follow) or a
+                    # genuinely empty scalar value — resolved lazily above.
+                    meta[key] = ""
                     current_list_key = key
                 else:
                     meta[key] = value
