@@ -23,32 +23,43 @@ from get_context_path import get_repo_slug  # noqa: E402
 from pipeline_context import PipelineContext  # noqa: E402
 
 
-def dependency_status(task_work_item_id: str) -> Literal["ready", "in_progress", "done", "failed", "not_started"]:
+def _dependency_status_and_context(
+    task_work_item_id: str,
+) -> tuple[Literal["ready", "in_progress", "done", "failed", "not_started"], PipelineContext | None]:
+    """Load a dependency's context file once and derive both its coarse status and the loaded
+    `PipelineContext` (or `None` if it has no context file yet), so callers that need both don't
+    re-derive `get_repo_slug()`/reload the context file a second time."""
     path = compute_context_path(task_work_item_id, get_repo_slug())
     if not path.exists():
-        return "not_started"
+        return ("not_started", None)
     ctx = PipelineContext.load(path)
     if ctx.state == "done":
-        return "done"
+        return ("done", ctx)
     if ctx.state == "failed":
-        return "failed"
+        return ("failed", ctx)
     if ctx.pr_url:
-        return "ready"
-    return "in_progress"
+        return ("ready", ctx)
+    return ("in_progress", ctx)
+
+
+def dependency_status(task_work_item_id: str) -> Literal["ready", "in_progress", "done", "failed", "not_started"]:
+    status, _ = _dependency_status_and_context(task_work_item_id)
+    return status
 
 
 def is_task_eligible(task_work_item_id: str, dependency_ids: list[str]) -> tuple[Literal["eligible", "waiting", "blocked"], str | None]:
     if not dependency_ids:
         return ("eligible", None)
-    statuses = {dep_id: dependency_status(dep_id) for dep_id in dependency_ids}
+    results = {dep_id: _dependency_status_and_context(dep_id) for dep_id in dependency_ids}
+    statuses = {dep_id: status for dep_id, (status, _) in results.items()}
     if "failed" in statuses.values():
         return ("blocked", None)
     not_done = [dep_id for dep_id, status in statuses.items() if status != "done"]
     if not not_done:
         return ("eligible", None)
     if len(not_done) == 1 and statuses[not_done[0]] == "ready":
-        path = compute_context_path(not_done[0], get_repo_slug())
-        branch = PipelineContext.load(path).extra_frontmatter.get("working_branch")
+        _, ctx = results[not_done[0]]
+        branch = ctx.extra_frontmatter.get("working_branch")
         return ("eligible", branch)
     return ("waiting", None)
 
