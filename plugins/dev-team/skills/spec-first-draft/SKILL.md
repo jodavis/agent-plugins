@@ -45,7 +45,8 @@ Write the file using this structure:
 # \<Feature Name\>
 
 > **Status:** Draft
-> **Will become:** a living architecture doc once implementation is complete
+> **Design doc:** `_doc_<FeatureName>.md` — authored by the final documentation task once
+> implementation completes; this spec persists afterward for harvesting
 
 ## Overview
 
