@@ -1,0 +1,4 @@
+name: {{SERVICE_NAME}}
+port: 8080
+logging:
+  format: {{LOG_FORMAT}}
