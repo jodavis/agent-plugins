@@ -1,9 +1,18 @@
+#!/usr/bin/env python3
 """Task readiness checker.
 
 Reports per-dependency PR/merge status and whether a task-work-item is
 eligible to start given its declared dependencies.
+
+Usage: task_readiness.py <task-work-item-id> [comma-separated dependency ids]
+
+`main()` is a thin CLI wrapper so a prose skill (`ensure-working-branch`, which has no other
+way to call a Python function directly) can invoke this via `Bash`: it prints
+`is_task_eligible`'s result as `{"status": ..., "base_branch": ...}` JSON to stdout on success,
+or a clear `Error: ...` message to stderr with a non-zero exit on failure.
 """
 
+import json
 import sys
 from pathlib import Path
 from typing import Literal
@@ -42,3 +51,28 @@ def is_task_eligible(task_work_item_id: str, dependency_ids: list[str]) -> tuple
         branch = PipelineContext.load(path).extra_frontmatter.get("working_branch")
         return ("eligible", branch)
     return ("waiting", None)
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        print(
+            f"Usage: {Path(sys.argv[0]).name} <task-work-item-id> [comma-separated dependency ids]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    task_work_item_id = sys.argv[1]
+    raw_dependencies = sys.argv[2] if len(sys.argv) > 2 else ""
+    dependency_ids = [dep.strip() for dep in raw_dependencies.split(",") if dep.strip()]
+
+    try:
+        status, base_branch = is_task_eligible(task_work_item_id, dependency_ids)
+    except Exception as e:
+        print(f"Error: could not compute task eligibility for '{task_work_item_id}': {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(json.dumps({"status": status, "base_branch": base_branch}), flush=True)
+
+
+if __name__ == "__main__":
+    main()
