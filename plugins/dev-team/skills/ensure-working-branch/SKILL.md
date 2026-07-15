@@ -97,10 +97,11 @@ task's own dependencies from.
 Otherwise:
 
 1. Read this task's own dependency ids: invoke
-   `<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py "<spec_path>"` via `Bash`.
-   It prints the whole spec's `{task_key: [dependency_ids]}` graph as JSON on success. Look up
-   this task's own work-item-id key in that graph — that list is this task's own dependency ids
-   (an empty list if the task declares `— none —` or has no `Depends on:` line at all).
+   `python "<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py" "<spec_path>"` via
+   `Bash`. It prints the whole spec's `{task_key: [dependency_ids]}` graph as JSON on success.
+   Look up this task's own work-item-id key in that graph — that list is this task's own
+   dependency ids (an empty list if the task declares `— none —` or has no `Depends on:` line at
+   all).
 
 2. If that list is empty, skip the rest of this sub-step and fall through to 4c unchanged (no
    dependencies means nothing for this step to override).
