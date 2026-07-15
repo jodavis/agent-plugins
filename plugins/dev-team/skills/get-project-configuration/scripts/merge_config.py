@@ -14,8 +14,11 @@ Tiers, in ascending precedence:
 
 Merging is purely structural: dicts are merged recursively by key; any other
 value (scalar, list, None, or a type mismatch) is replaced wholesale by the
-higher-precedence tier. This script has no knowledge of what any key means —
-semantic interpretation of the merged result is left to the caller.
+higher-precedence tier. Beyond that, this script has no knowledge of what any
+key means — semantic interpretation of the merged result is left to the
+caller — with one deliberate exception: `developer-standards` entries marked
+"If this file exists, read it — ..." are checked against the filesystem after
+merging, so callers never see a soft entry for a file that doesn't exist.
 """
 
 import argparse
@@ -26,6 +29,8 @@ from pathlib import Path
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
 DEFAULT_CONFIG_ASSET = ASSETS_DIR / "default-config.yaml"
+
+SOFT_FILE_PREFIX = "If this file exists, read it — "
 
 Entry = tuple[int, int, str]  # (line_no, indent, content)
 
@@ -402,15 +407,57 @@ def load_tier(path: Path) -> dict:
     return parse_yaml(text, path)
 
 
+def _resolve_config_path(repo_root: Path, rel: str) -> Path:
+    """Resolve a path-like config value: `~`-relative to the user's home directory,
+    otherwise relative to `repo_root` — per get-project-configuration's documented
+    path convention."""
+    if rel.startswith("~"):
+        return Path.home() / rel[1:].lstrip("/")
+    return repo_root / rel
+
+
+def apply_developer_standards_filter(merged: dict, repo_root: Path) -> dict:
+    """Pre-resolve `developer-standards` entries against the filesystem: an entry whose
+    description starts with `SOFT_FILE_PREFIX` is dropped if the file doesn't exist, or
+    kept with the prefix stripped if it does. Entries without that prefix (required —
+    expected to exist) are left untouched either way; a missing required entry is a
+    project config pointing at something that isn't there, for the caller to note, not
+    something this function silently drops."""
+    developer_standards = merged.get("developer-standards")
+    if not isinstance(developer_standards, dict):
+        return merged
+
+    filtered: dict = {}
+    for filename, description in developer_standards.items():
+        if isinstance(description, str) and description.startswith(SOFT_FILE_PREFIX):
+            if not _resolve_config_path(repo_root, filename).is_file():
+                continue
+            filtered[filename] = description[len(SOFT_FILE_PREFIX):]
+        else:
+            filtered[filename] = description
+
+    merged["developer-standards"] = filtered
+    return merged
+
+
+def build_merged_config(repo_root: Path | None = None) -> dict:
+    """Resolve `repo_root` (if not given), merge all 4 config tiers, and apply the
+    `developer-standards` filesystem pre-filter. Raises `YamlParseError` or
+    `RuntimeError` on failure — same errors `main()` reports."""
+    resolved_root = repo_root.resolve() if repo_root else find_repo_root()
+    tiers = [load_tier(p) for p in candidate_config_paths(resolved_root)]
+    merged = merge_all_tiers(tiers)
+    return apply_developer_standards_filter(merged, resolved_root)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", default=None)
     args = parser.parse_args(argv)
 
     try:
-        repo_root = Path(args.repo_root).resolve() if args.repo_root else find_repo_root()
-        tiers = [load_tier(p) for p in candidate_config_paths(repo_root)]
-        merged = merge_all_tiers(tiers)
+        repo_root = Path(args.repo_root) if args.repo_root else None
+        merged = build_merged_config(repo_root)
     except (YamlParseError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

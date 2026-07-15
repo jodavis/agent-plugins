@@ -13,7 +13,10 @@ from pathlib import Path
 import pytest
 
 from merge_config import (
+    SOFT_FILE_PREFIX,
     YamlParseError,
+    apply_developer_standards_filter,
+    build_merged_config,
     candidate_config_paths,
     deep_merge,
     find_repo_root,
@@ -467,11 +470,113 @@ class TestDeepMerge:
 
 
 # ---------------------------------------------------------------------------
+# apply_developer_standards_filter
+# ---------------------------------------------------------------------------
+
+class TestApplyDeveloperStandardsFilter:
+    def test_soft_entry_missing_file_is_removed(self, tmp_path):
+        merged = {"developer-standards": {"STYLE.md": f"{SOFT_FILE_PREFIX}code style guide"}}
+
+        result = apply_developer_standards_filter(merged, tmp_path)
+
+        assert result["developer-standards"] == {}
+
+    def test_soft_entry_existing_file_has_prefix_stripped(self, tmp_path):
+        (tmp_path / "STYLE.md").write_text("x", encoding="utf-8")
+        merged = {"developer-standards": {"STYLE.md": f"{SOFT_FILE_PREFIX}code style guide"}}
+
+        result = apply_developer_standards_filter(merged, tmp_path)
+
+        assert result["developer-standards"] == {"STYLE.md": "code style guide"}
+
+    def test_required_entry_missing_file_is_kept_unchanged(self, tmp_path):
+        merged = {"developer-standards": {"CONTRIBUTING.md": "Code guidelines"}}
+
+        result = apply_developer_standards_filter(merged, tmp_path)
+
+        assert result["developer-standards"] == {"CONTRIBUTING.md": "Code guidelines"}
+
+    def test_tilde_relative_entry_resolved_against_home_directory(self, tmp_path, monkeypatch):
+        home = _isolate_home(monkeypatch, tmp_path)
+        (home / "notes.md").write_text("x", encoding="utf-8")
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        merged = {"developer-standards": {"~/notes.md": f"{SOFT_FILE_PREFIX}personal notes"}}
+
+        result = apply_developer_standards_filter(merged, repo_root)
+
+        assert result["developer-standards"] == {"~/notes.md": "personal notes"}
+
+    def test_null_developer_standards_passes_through_unchanged(self, tmp_path):
+        merged = {"developer-standards": None}
+
+        result = apply_developer_standards_filter(merged, tmp_path)
+
+        assert result == {"developer-standards": None}
+
+    def test_missing_developer_standards_key_passes_through_unchanged(self, tmp_path):
+        merged = {"other": 1}
+
+        result = apply_developer_standards_filter(merged, tmp_path)
+
+        assert result == {"other": 1}
+
+    def test_entry_order_preserved_for_surviving_entries(self, tmp_path):
+        (tmp_path / "b.md").write_text("x", encoding="utf-8")
+        merged = {
+            "developer-standards": {
+                "a.md": f"{SOFT_FILE_PREFIX}a",
+                "b.md": f"{SOFT_FILE_PREFIX}b",
+                "c.md": "required c",
+            }
+        }
+
+        result = apply_developer_standards_filter(merged, tmp_path)
+
+        assert list(result["developer-standards"].keys()) == ["b.md", "c.md"]
+
+
+# ---------------------------------------------------------------------------
+# build_merged_config
+# ---------------------------------------------------------------------------
+
+class TestBuildMergedConfig:
+    def test_defaults_to_find_repo_root_when_none_given(self, tmp_path, monkeypatch):
+        _isolate_home(monkeypatch, tmp_path)
+        root = _repo_root(tmp_path)
+        monkeypatch.chdir(root)
+
+        result = build_merged_config()
+
+        assert result["git-repo"]["user-alias"] == "claude"
+
+    def test_explicit_repo_root_used_for_developer_standards_filter(self, tmp_path, monkeypatch):
+        _isolate_home(monkeypatch, tmp_path)
+        root = _repo_root(tmp_path)
+        (root / "CONTRIBUTING.md").write_text("x", encoding="utf-8")
+
+        result = build_merged_config(root)
+
+        assert result["developer-standards"] == {
+            "CONTRIBUTING.md": "contribution guidelines and code conventions"
+        }
+
+    def test_malformed_tier_raises_yaml_parse_error(self, tmp_path, monkeypatch):
+        _isolate_home(monkeypatch, tmp_path)
+        root = _repo_root(tmp_path)
+        (root / ".dev-team").mkdir()
+        (root / ".dev-team" / "config.yaml").write_text("a:\n\tb: 1\n", encoding="utf-8")
+
+        with pytest.raises(YamlParseError):
+            build_merged_config(root)
+
+
+# ---------------------------------------------------------------------------
 # main() end-to-end
 # ---------------------------------------------------------------------------
 
 class TestMain:
-    def test_shipped_default_alone_produces_populated_developer_standards_and_null_work_tracking(
+    def test_shipped_default_with_no_standards_files_present_produces_empty_developer_standards(
         self, tmp_path, monkeypatch, capsys
     ):
         _isolate_home(monkeypatch, tmp_path)
@@ -483,9 +588,26 @@ class TestMain:
         import json
 
         merged = json.loads(capsys.readouterr().out)
-        assert "CONTRIBUTING.md" in merged["developer-standards"]
+        assert merged["developer-standards"] == {}
         assert merged["work-tracking"] is None
         assert merged["git-repo"]["user-alias"] == "claude"
+
+    def test_shipped_default_with_contributing_md_present_survives_filter_with_prefix_stripped(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        _isolate_home(monkeypatch, tmp_path)
+        root = _repo_root(tmp_path)
+        (root / "CONTRIBUTING.md").write_text("# Contributing\n", encoding="utf-8")
+
+        exit_code = main(["--repo-root", str(root)])
+
+        assert exit_code == 0
+        import json
+
+        merged = json.loads(capsys.readouterr().out)
+        assert merged["developer-standards"] == {
+            "CONTRIBUTING.md": "contribution guidelines and code conventions"
+        }
 
     def test_missing_optional_tiers_ok(self, tmp_path, monkeypatch, capsys):
         _isolate_home(monkeypatch, tmp_path)

@@ -28,6 +28,11 @@ documentation:
 validation:
   script: scripts/validate.sh
 
+testing:
+  test-file-patterns:
+    - test_*.py
+    - "*_test.py"
+
 git-repo:
   user-alias: claude
   working-branches:
