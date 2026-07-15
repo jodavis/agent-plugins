@@ -6,7 +6,7 @@ description: >
   Gathers inputs from supplied paths, classifies candidate methodology content via Method
   markers, litmus-test classification, and exemplar diffing, interviews the user, authors a
   vendor-neutral playbook directory, replaces consumed Method markers with provenance links,
-  and presents the TODO list plus the replay-and-diff validation procedure.
+  and presents the resulting TODO list.
 argument-hint: <spec-path | none> [--exemplar <repo-path>]... [--template-output <path>] --out <playbook-directory> [--name <playbook-name>]
 ---
 
@@ -18,8 +18,7 @@ Use this skill when:
 You are gathering durable-artifact inputs, classifying which of their content is reusable
 methodology, interviewing the user to confirm candidates and fill gaps, authoring a
 vendor-neutral playbook directory, replacing consumed Method markers in the source spec with
-provenance links, and presenting the resulting TODO list and the replay-and-diff validation
-procedure.
+provenance links, and presenting the resulting TODO list.
 
 Use the `playbook-contract` skill for: the playbook directory contract, TODO marker semantics,
 the Method marker format and lifecycle, the vendor-neutrality rules, and bare-name playbook
@@ -33,6 +32,13 @@ Arguments (accepted as flags per the syntax above, or conversationally — there
 CLI): `spec-path` (or `none`), zero or more `--exemplar <repo-path>`, an optional
 `--template-output <path>`, a required `--out <playbook-directory>`, and an optional
 `--name <playbook-name>`.
+
+The user may also state a harvest scope conversationally at this point — for example, "just
+pull out the new integration-test dependency strategy" rather than the whole spec's method.
+Record it if given; it narrows step 2's candidate-building and step 3's interview to that
+scope. If no scope is given here, step 3 asks for it explicitly before working the candidate
+list — harvesting the whole artifact is never the assumed default; it could be a part of the
+process, some particularly useful template content, or the whole thing.
 
 Before reading anything, enforce the two input-boundary rules:
 
@@ -58,6 +64,9 @@ With the boundary rules satisfied, read every supplied durable artifact:
 
 ### 2 — Build candidate method content
 
+If step 1 captured a harvest scope, keep this candidate-building focused on it — skip sources
+clearly outside that scope.
+
 Assemble the candidate list for the interview from four sources:
 
 - **Markers first.** Every Method marker found in the spec seeds a candidate step, carrying
@@ -78,6 +87,11 @@ Assemble the candidate list for the interview from four sources:
   from the plan, is a candidate for the interview to resolve, not a decision to make silently.
 
 ### 3 — Interview the user
+
+If step 1 captured no explicit harvest scope, ask first: does the user want the whole method
+harvested, a specific process, or particular template content? Use the answer to focus the
+rest of this interview — candidates outside that scope are set aside without being treated as
+rejected, and their Method markers (if any) are left untouched per step 6.
 
 Work through the candidate list from step 2 with the user, one item at a time:
 
@@ -115,37 +129,30 @@ If step 1 detected update mode, write the merged result — the existing playboo
 still held, revised by whatever the interview changed — rather than starting the directory
 over from nothing.
 
-### 5 — Replace consumed Method markers with provenance links
+### 5 — Review the authored playbook with the user
+
+Invoke the `spec-discussion` skill against the playbook's `SKILL.md` from step 4, treating it
+the same as a spec file: the user reads the authored content and leaves `> **REVIEW:**`
+comments anywhere they want a change, resolved one at a time until none remain. Do not proceed
+to step 6 until `spec-discussion` reports no outstanding review markers.
+
+### 6 — Replace consumed Method markers with provenance links
 
 For each Method marker whose candidate (from step 2) was confirmed into the authored playbook
-(step 4), replace its body in the spec with a single provenance line, keeping the callout
-itself so it still reads as a Method marker:
+(step 4) and survived review (step 5), replace its body in the spec with a single provenance
+line, keeping the callout itself so it still reads as a Method marker:
 
 ```markdown
 > [!NOTE]
-> **Method:** harvested into [<playbook-name> — Step <N>](<path-to-playbook>/SKILL.md).
+> **Method:** see [<playbook-name> — Step <N>](<path-to-playbook>/SKILL.md).
 ```
 
 The rationale text itself is removed from the spec, not duplicated — it now lives in the
 playbook step it fed. Leave any marker whose candidate was rejected in the interview, or that
 was not resolved this run, untouched.
 
-### 6 — Present the TODO list and the replay-and-diff validation procedure
+### 7 — Present the TODO list
 
 List every TODO recorded in step 4, each restated with its manual fallback so the user can see
 at a glance what is followable today versus what remains pending. Do not file any of these
 against a tracker — the playbook's own TODO list is the canonical record.
-
-Then present the standard replay-and-diff validation procedure so the user can run it once
-ready:
-
-1. Branch, clone, or worktree an exemplar repo at its initial commit — keeping the finished
-   exemplar available on disk elsewhere, since a TODO's manual fallback may still need to
-   reference it.
-2. Run a clean session against only the playbook, with no access to the finished exemplar's
-   later commits.
-3. Diff the session's result against the finished exemplar at HEAD.
-
-Diff gaps are the playbook's blind spots — under-specified steps or uncaptured decisions — and
-feed the next harvest update pass: re-run `/harvest` with `--out` pointed at the same playbook
-directory, so step 1 detects update mode.

@@ -288,24 +288,26 @@ loop, which fits the "harvest when I judge it proven" trigger model.
 _Context:_ A playbook's quality claim is "a cold reader could stand up the next instance from
 this." That is testable without waiting for a real next instance.
 
-_Decision:_ The standard validation procedure, documented as the final section of
-`harvest-playbook`: create a branch of an exemplar repo at its initial commit (a second clone
-or worktree, so the finished exemplar remains on disk for the TODO fallbacks to reference);
-run a clean session given only the playbook; diff the result against the finished exemplar at
-HEAD. Diff gaps are the playbook's blind spots — under-specified steps and uncaptured
-decisions — which feed a harvest update pass. The session must be blind to the finished code
-except through the playbook's own references.
+_Decision:_ A validation technique, not a step `harvest-playbook` presents on every run: create
+a branch of an exemplar repo at its initial commit (a second clone or worktree, so the finished
+exemplar remains on disk for the TODO fallbacks to reference); run a clean session given only
+the playbook; diff the result against the finished exemplar at HEAD. Diff gaps are the
+playbook's blind spots — under-specified steps and uncaptured decisions — which feed a harvest
+update pass. The session must be blind to the finished code except through the playbook's own
+references. This feature's own acceptance test applies it once, to the real microservice
+playbook (see Tasks) — it is not baked into `harvest-playbook`'s standard output for every
+harvested playbook.
 
-_Consequences:_ Reusable acceptance mechanism for any playbook, not just the first. This
-feature's own exit criterion uses it (see Tasks): the real microservice playbook, harvested
-from the three existing services, validated by replay-and-diff.
+_Consequences:_ `harvest-playbook`'s final step presents only the TODO list. Replay-and-diff
+stays available as a manual technique a user can apply to any playbook when they want that
+level of validation, without the skill mandating it on every run.
 
 ## Component Breakdown
 
 | Component | Type | Responsibility | Depends on |
 |---|---|---|---|
 | `playbook-contract` (new skill) | Wrapper | Defines the playbook contract, TODO marker semantics, and Method marker convention — definitional prose, no procedure | — |
-| `harvest-playbook` (new skill) | Testable | The harvest procedure: gather inputs from paths, classify via litmus test, interview, author vendor-neutral playbook, replace Method markers with links, document replay-and-diff validation | `playbook-contract`, skill dry-run harness |
+| `harvest-playbook` (new skill) | Testable | The harvest procedure: gather inputs from paths, classify via litmus test, interview, author vendor-neutral playbook, review with user, replace Method markers with links | `playbook-contract`, `spec-discussion`, skill dry-run harness |
 | `commands/harvest.md` (new) | Wrapper | Thin dispatcher: argument hints, invokes `harvest-playbook` | `harvest-playbook` |
 | `commands/spec.md` playbook argument (edit) | Wrapper | Argument-hint documents `using <playbook>`; forwards a detected playbook reference to `spec-first-draft` instance mode | — |
 | `spec-discussion` Method-marker guard (edit) | Wrapper | One rule: Method markers are not review comments; never resolve or remove | `playbook-contract` |
@@ -414,8 +416,8 @@ guessing.
   plan-vs-history divergence mining; (3) interview: confirm candidates, resolve exemplar
   conflicts, capture missing rationale, catch vendor-neutrality violations ("this step
   references your pipeline — what does it mean in plain terms?"); (4) author the playbook
-  directory per contract; (5) replace consumed Method markers with playbook links; (6) present
-  the TODO list and the replay-and-diff validation procedure
+  directory per contract; (5) review the authored playbook with the user via `spec-discussion`;
+  (6) replace consumed Method markers with playbook links; (7) present the TODO list
 - `plugins/dev-team/commands/harvest.md` — command wrapper
 - Edits: `spec-discussion` (guard), `spec-first-draft` (marker note + instance mode),
   `final-sign-off` (passive note)
@@ -524,9 +526,9 @@ The core harvest procedure and its thin command dispatcher. Requires Tasks 1–2
       steps are executable knowledge (agent-graded); a strip/replace step is correctly
       derived from the template-output diff; a plan-vs-history divergence mined from the
       exemplars surfaces in the playbook or interview
-- [ ] `harvest-playbook` implements the six-step procedure (gather from paths → candidate
+- [ ] `harvest-playbook` implements the seven-step procedure (gather from paths → candidate
       method content via markers/litmus test/exemplar diffing → interview → author playbook →
-      replace markers → present TODO list and replay-and-diff procedure)
+      review with user via `spec-discussion` → replace markers → present TODO list)
 - [ ] Argument contract enforced: at least one durable-artifact source required; existing
       playbook directory at the output path triggers update mode, never blind overwrite
 - [ ] `commands/harvest.md` dispatches to the skill with documented argument hints
