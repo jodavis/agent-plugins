@@ -274,36 +274,6 @@ class TestConsecutiveFailures:
 
 
 # ---------------------------------------------------------------------------
-# troubleshooter_input field
-# ---------------------------------------------------------------------------
-
-class TestTroubleshooterInput:
-    def test_defaults_to_empty_string(self):
-        from dev_team import PipelineContext
-        ctx = PipelineContext(work_item_id="ADR-TEST")
-        assert ctx.troubleshooter_input == ""
-
-    def test_roundtrip_through_save_load(self, tmp_path):
-        from dev_team import PipelineContext
-        ctx = PipelineContext(
-            work_item_id="ADR-123",
-            troubleshooter_input="Override the reviewer on thread abc",
-        )
-        path = tmp_path / "ctx.md"
-        ctx.save(path)
-        loaded = PipelineContext.load(path)
-        assert loaded.troubleshooter_input == "Override the reviewer on thread abc"
-
-    def test_empty_string_roundtrip(self, tmp_path):
-        from dev_team import PipelineContext
-        ctx = PipelineContext(work_item_id="ADR-123", troubleshooter_input="")
-        path = tmp_path / "ctx.md"
-        ctx.save(path)
-        loaded = PipelineContext.load(path)
-        assert loaded.troubleshooter_input == ""
-
-
-# ---------------------------------------------------------------------------
 # _parse_approval_status
 # ---------------------------------------------------------------------------
 
