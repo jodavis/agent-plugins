@@ -4,36 +4,36 @@ body sections.
 """
 
 import datetime
+import dataclasses
 from dataclasses import dataclass, field
 
-# Frontmatter keys with a dedicated PipelineContext field, populated explicitly
-# in load(). Anything else found in frontmatter is preserved via extra_frontmatter.
-KNOWN_FRONTMATTER_KEYS = {
-    "work_item_id", "spec_path", "state", "fix_iteration",
-    "review_fix_iteration", "pr_url", "build_log", "test_log",
-    "signoff_cycle_count", "consecutive_failures", "review_cycle_count",
-    "troubleshooter_input", "pending_agent", "started", "last_updated",
-}
+# Fields tagged frontmatter=True below are populated explicitly from YAML
+# frontmatter in load(); KNOWN_FRONTMATTER_KEYS (derived at the bottom of this
+# module from that tag) is what load() uses to route any other frontmatter key
+# into extra_frontmatter instead. Tagging inline keeps the set from drifting
+# out of sync as fields are added — there's no separate list to remember to
+# update.
+FRONTMATTER_FIELD = {"frontmatter": True}
 
 
 @dataclass
 class PipelineContext:
-    work_item_id: str
-    spec_path: str = ""
-    state: str = "init"
-    fix_iteration: int = 0
-    review_fix_iteration: int = 0
-    pr_url: str = ""
-    build_log: str = ""
-    test_log: str = ""
-    signoff_cycle_count: int = 0
-    consecutive_failures: int = 0
-    review_cycle_count: int = 0
-    troubleshooter_input: str = ""
-    pending_agent: str = ""
+    work_item_id: str = field(metadata=FRONTMATTER_FIELD)
+    spec_path: str = field(default="", metadata=FRONTMATTER_FIELD)
+    state: str = field(default="init", metadata=FRONTMATTER_FIELD)
+    fix_iteration: int = field(default=0, metadata=FRONTMATTER_FIELD)
+    review_fix_iteration: int = field(default=0, metadata=FRONTMATTER_FIELD)
+    pr_url: str = field(default="", metadata=FRONTMATTER_FIELD)
+    build_log: str = field(default="", metadata=FRONTMATTER_FIELD)
+    test_log: str = field(default="", metadata=FRONTMATTER_FIELD)
+    signoff_cycle_count: int = field(default=0, metadata=FRONTMATTER_FIELD)
+    consecutive_failures: int = field(default=0, metadata=FRONTMATTER_FIELD)
+    review_cycle_count: int = field(default=0, metadata=FRONTMATTER_FIELD)
+    troubleshooter_input: str = field(default="", metadata=FRONTMATTER_FIELD)
+    pending_agent: str = field(default="", metadata=FRONTMATTER_FIELD)
     project_configuration: str = ""
-    started: datetime.datetime = field(default_factory=datetime.datetime.now)
-    last_updated: datetime.datetime = field(default_factory=datetime.datetime.now)
+    started: datetime.datetime = field(default_factory=datetime.datetime.now, metadata=FRONTMATTER_FIELD)
+    last_updated: datetime.datetime = field(default_factory=datetime.datetime.now, metadata=FRONTMATTER_FIELD)
     extra_frontmatter: dict = field(default_factory=dict)
     workspace_setup: str = ""
     debug_report: str = ""
@@ -207,6 +207,14 @@ class PipelineContext:
                 i += 1
 
         return ctx
+
+
+# Derived (not hand-maintained) from the fields tagged frontmatter=True above,
+# so this can't drift out of sync as fields are added to PipelineContext.
+KNOWN_FRONTMATTER_KEYS = {
+    f.name for f in dataclasses.fields(PipelineContext)
+    if f.metadata.get("frontmatter")
+}
 
 
 def _parse_sections(body: str) -> dict[str, str]:
