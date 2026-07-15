@@ -106,4 +106,11 @@ and reference (a dangling reference or a dependency cycle). Surface that error t
 fix the offending `Depends on:` line(s) before the spec is considered done — never leave a
 dangling reference or cycle in the spec.
 
+Once validation passes, for each task with one or more `Depends on:` entries, record the same
+relationship in the tracker: use the matching adapter skill (per `get-project-configuration`'s
+provider dispatch table) to link that task's tracked work item to each dependency's tracked work
+item — e.g. for Jira, the `createIssueLink` operation from `work-with-Jira-tasks` (`Blocks` link
+type, with the dependency as the blocker). Skip this for a provider whose adapter skill doesn't
+document a linking operation, or when no tracker is configured.
+
 Update the `## Related Features` table with the keys assigned to related feature-work-items.
