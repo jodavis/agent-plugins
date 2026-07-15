@@ -130,7 +130,7 @@ class TestPipelineContextSaveLoadRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# save() side effects: parent directory creation, last_updated bump
+# save() side effects: parent directory creation, last_updated bump, heading
 # ---------------------------------------------------------------------------
 
 class TestPipelineContextSaveCreatesParentDirectory:
@@ -167,6 +167,24 @@ class TestPipelineContextSaveBumpsLastUpdated:
 
         # Assert
         assert ctx.last_updated > original_last_updated
+
+
+class TestPipelineContextSaveWritesHeading:
+    def make_sut(self, **kwargs):
+        from pipeline_context import PipelineContext
+        return PipelineContext(work_item_id="ADR-TEST", **kwargs)
+
+    def test_save_writes_work_item_id_heading_after_frontmatter(self, tmp_path):
+        # Arrange
+        ctx = self.make_sut()
+        path = tmp_path / "ctx.md"
+
+        # Act
+        ctx.save(path)
+
+        # Assert
+        text = path.read_text(encoding="utf-8")
+        assert "# ADR-TEST Dev Team Context" in text
 
 
 # ---------------------------------------------------------------------------

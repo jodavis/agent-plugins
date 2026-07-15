@@ -78,6 +78,8 @@ class PipelineContext:
         lines += [
             "---",
             "",
+            f"# {self.work_item_id} Dev Team Context",
+            "",
         ]
 
         if self.project_configuration:
