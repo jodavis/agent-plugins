@@ -60,8 +60,7 @@ empty must compute it itself (see e.g. `ensure-working-branch`) rather than assu
 ## Confirming the working branch
 
 If you are about to read or write repository files (not just the context file itself), confirm
-the working branch here rather than making a separate caller invoke `ensure-working-branch`
-unconditionally:
+the working branch here:
 
 - If `working_branch` is empty: invoke the `ensure-working-branch` skill with the `work-item-id`
   to compute, create, and check it out.
@@ -76,11 +75,9 @@ repository file this turn.
 
 The context file also carries a `<!-- section:Project Configuration -->` body section,
 written by `init-context-file.py` when it first creates the file: the full merged project
-configuration (the same JSON `get-project-configuration` returns), computed once so that
-callers with an already-resolved context file can read it directly instead of invoking
-`get-project-configuration` again. A context file created before this section existed simply
-won't have it — a caller that needs the config and finds the section missing falls back to
-invoking `get-project-configuration` directly.
+configuration (the same JSON `get-project-configuration` returns), computed once at the start
+of the pipeline workflow. If this section exists, do not use the `get-project-configuration`
+skill again, instead read it from the context file.
 
 ## Writing to the context file
 
