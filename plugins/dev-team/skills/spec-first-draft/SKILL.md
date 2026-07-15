@@ -45,8 +45,14 @@ Write the file using this structure:
 # \<Feature Name\>
 
 > **Status:** Draft
-> **Design doc:** `_doc_<FeatureName>.md` — authored by the final documentation task once
-> implementation completes; this spec persists afterward for harvesting
+> **Design doc:** `_doc_<FeatureName>.md` — authored by `spec-task-breakdown`'s unconditional
+> final "Author design documentation" task once implementation completes; this spec persists
+> afterward for harvesting
+
+This line names an obligation owned by `spec-task-breakdown`, not by this skill: every task
+breakdown must append that unconditional final documentation task, so the reference above is
+always honored. If `spec-task-breakdown` does not yet append it, treat that as a gap in
+`spec-task-breakdown`, not a reason to omit the header line here.
 
 ## Overview
 
