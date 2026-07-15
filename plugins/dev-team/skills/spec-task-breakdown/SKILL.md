@@ -91,7 +91,7 @@ section by invoking `parse_task_dependencies` (in
 text — this is the first point the dependency graph is guaranteed complete. Run it via `Bash`:
 
 ```bash
-python plugins/dev-team/skills/workflow-orchestrate/scripts/task_dependencies.py <path to spec file>
+python "plugins/dev-team/skills/workflow-orchestrate/scripts/task_dependencies.py" "<path to spec file>"
 ```
 
 If it exits non-zero, it printed a clear `Error: ...` message to stderr naming the offending task
