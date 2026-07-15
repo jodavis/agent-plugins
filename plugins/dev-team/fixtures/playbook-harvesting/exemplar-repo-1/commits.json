@@ -1,0 +1,14 @@
+[
+  {
+    "dir": "01-template-stamp",
+    "message": "Stamp from stand-up-fixture-service template"
+  },
+  {
+    "dir": "02-strip-replace",
+    "message": "Strip/replace: rename service to orders-service"
+  },
+  {
+    "dir": "03-divergent-choice",
+    "message": "Switch to structured JSON logging"
+  }
+]
