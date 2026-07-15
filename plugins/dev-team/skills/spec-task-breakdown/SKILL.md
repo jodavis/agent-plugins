@@ -86,16 +86,19 @@ reference (e.g. `Task 3`) with the real task-work-item key assigned to that task
 `**Depends on:** — none —` lines unchanged.
 
 Once every task's title and `Depends on:` line has been rewritten, validate the whole `## Tasks`
-section by invoking `parse_task_dependencies` (in
-`plugins/dev-team/skills/workflow-orchestrate/scripts/task_dependencies.py`) on the updated spec
-text — this is the first point the dependency graph is guaranteed complete. This script lives in
-a different skill's directory, so resolve the repo root first rather than assuming the Bash
-tool's CWD is already the repo root (it may not be, e.g. inside a git worktree). Run it via
-`Bash`:
+section by invoking `parse_task_dependencies` on the updated spec text — this is the first point
+the dependency graph is guaranteed complete.
+
+`<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
+skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an
+environment variable. `task_dependencies.py` lives in the sibling `workflow-orchestrate` skill's
+`scripts/` directory, reachable relative to `<skill-dir>` — this skill may run in a repo other
+than the one containing these plugin files (e.g. as an installed plugin), so resolve the path
+this way rather than assuming a particular repo layout or that the Bash tool's CWD is the repo
+root. Run it via `Bash`:
 
 ```bash
-REPO_ROOT=$(git rev-parse --show-toplevel)
-python "$REPO_ROOT/plugins/dev-team/skills/workflow-orchestrate/scripts/task_dependencies.py" "<path to spec file>"
+python "<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py" "<path to spec file>"
 ```
 
 If it exits non-zero, it printed a clear `Error: ...` message to stderr naming the offending task
