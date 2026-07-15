@@ -107,7 +107,7 @@ Otherwise:
    dependencies means nothing for this step to override).
 
 3. Otherwise, invoke
-   `<skill-dir>/../workflow-orchestrate/scripts/task_readiness.py "<work-item-id>" "<dep1>,<dep2>,..."`
+   `python "<skill-dir>/../workflow-orchestrate/scripts/task_readiness.py" "<work-item-id>" "<dep1>,<dep2>,..."`
    via `Bash`, passing this task's own dependency ids as a comma-separated list. It prints
    `{"status": "eligible" | "waiting" | "blocked", "base_branch": <branch-name-or-null>}` as JSON
    on success.
