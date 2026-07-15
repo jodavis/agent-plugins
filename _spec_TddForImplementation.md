@@ -1,7 +1,8 @@
 # TDD for Implementation
 
 > **Status:** Draft
-> **Will become:** `_doc_TddForImplementation.md` once implementation is complete
+> **Design doc:** `_doc_TddForImplementation.md` — authored by the final documentation task once
+> implementation completes; this spec persists afterward for harvesting
 > **Feature-work-item:** [ADR-288](https://jodasoft.atlassian.net/browse/ADR-288)
 
 ## Overview
