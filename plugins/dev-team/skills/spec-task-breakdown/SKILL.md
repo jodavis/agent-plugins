@@ -88,10 +88,14 @@ reference (e.g. `Task 3`) with the real task-work-item key assigned to that task
 Once every task's title and `Depends on:` line has been rewritten, validate the whole `## Tasks`
 section by invoking `parse_task_dependencies` (in
 `plugins/dev-team/skills/workflow-orchestrate/scripts/task_dependencies.py`) on the updated spec
-text — this is the first point the dependency graph is guaranteed complete. Run it via `Bash`:
+text — this is the first point the dependency graph is guaranteed complete. This script lives in
+a different skill's directory, so resolve the repo root first rather than assuming the Bash
+tool's CWD is already the repo root (it may not be, e.g. inside a git worktree). Run it via
+`Bash`:
 
 ```bash
-python "plugins/dev-team/skills/workflow-orchestrate/scripts/task_dependencies.py" "<path to spec file>"
+REPO_ROOT=$(git rev-parse --show-toplevel)
+python "$REPO_ROOT/plugins/dev-team/skills/workflow-orchestrate/scripts/task_dependencies.py" "<path to spec file>"
 ```
 
 If it exits non-zero, it printed a clear `Error: ...` message to stderr naming the offending task
