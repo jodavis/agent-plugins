@@ -13,6 +13,7 @@ Covers:
 """
 
 import datetime
+import time
 from pathlib import Path
 
 import pytest
@@ -129,7 +130,7 @@ class TestPipelineContextSaveLoadRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# save() side effects: parent directory creation
+# save() side effects: parent directory creation, last_updated bump
 # ---------------------------------------------------------------------------
 
 class TestPipelineContextSaveCreatesParentDirectory:
@@ -147,6 +148,25 @@ class TestPipelineContextSaveCreatesParentDirectory:
 
         # Assert
         assert path.exists()
+
+
+class TestPipelineContextSaveBumpsLastUpdated:
+    def make_sut(self, **kwargs):
+        from pipeline_context import PipelineContext
+        return PipelineContext(work_item_id="ADR-TEST", **kwargs)
+
+    def test_save_updates_last_updated_to_current_time_on_each_call(self, tmp_path):
+        # Arrange
+        ctx = self.make_sut()
+        original_last_updated = ctx.last_updated
+        path = tmp_path / "ctx.md"
+        time.sleep(0.01)
+
+        # Act
+        ctx.save(path)
+
+        # Assert
+        assert ctx.last_updated > original_last_updated
 
 
 # ---------------------------------------------------------------------------

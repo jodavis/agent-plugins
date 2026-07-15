@@ -48,6 +48,8 @@ class PipelineContext:
     handoff_result: str = ""
 
     def save(self, path):
+        self.last_updated = datetime.datetime.now()
+
         lines = [
             "---",
             f"work_item_id: {self.work_item_id}",
