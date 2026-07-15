@@ -23,6 +23,12 @@ Find all `> **Review:** ...` markers and note any direct edits the user made sin
 
 If there are no review markers and no edits, tell the user the spec has no outstanding comments and ask if they are ready to proceed.
 
+**Method markers are not review comments.** A `> [!NOTE]` / `> **Method:**` callout (defined by
+`playbook-contract`) records methodology rationale in flight for later harvesting — it is
+structurally distinct from `> **Review:**` markers and has the opposite lifecycle: it persists
+until harvest rather than being resolved. Never treat a Method marker as a review comment to
+collect in this step, and never resolve or remove one while working through this skill.
+
 ### 3 — Resolve each comment
 
 Address review comments **one at a time** in document order:
