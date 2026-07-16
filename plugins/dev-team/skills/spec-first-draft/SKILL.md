@@ -4,11 +4,18 @@ user-invocable: false
 description: >
   Use when writing a first draft of a complete new spec or a new part of an existing spec.
   Gathers context from docs, source code, and the user, then writes the draft to a _spec_*.md file.
-argument-hint: <feature brief | work-item-id | spec-file-path>
+  In instance mode (a playbook reference supplied), drafts a thin instance spec from that
+  playbook's spec-template.md instead of the default template.
+argument-hint: <feature brief | work-item-id | spec-file-path> [playbook reference]
 ---
 
 Use this skill when:
 - You are writing a first draft of a complete new spec or a new part of an existing spec
+- A playbook reference (a path or bare name) was supplied — draft a thin instance spec from that
+  playbook's `spec-template.md` instead of the default template (instance mode)
+
+Use the `playbook-contract` skill for: the playbook directory contract and bare-name playbook
+resolution order. This skill cites those definitions — it does not restate them.
 
 ## Steps
 
@@ -37,6 +44,15 @@ If answers raise new ambiguities that would materially affect the spec, ask one 
 Determine the spec file location: the `_spec_*.md` lives next to the code it describes — in the directory where the new feature's code will live.
 
 Name: `_spec_<FeatureName>.md` in PascalCase.
+
+**Instance mode.** If a playbook reference (a path or a bare name) was supplied when this skill
+was invoked, resolve it per `playbook-contract`'s bare-name resolution order (cite, don't
+restate). Once resolved, read the playbook directory's `spec-template.md` and use its own
+sections as the draft's body in place of the default `## Overview` through `## Related Docs`
+sections below. Keep the header block's `> **Status:**` and `> **Design doc:**` lines unchanged,
+and add one more line — `> **Playbook:** <name or path>` — stamping the resolved playbook
+reference into the header. If no playbook reference was supplied, use the default structure
+below unchanged — instance mode is additive, never the default path.
 
 Write the file using this structure:
 
