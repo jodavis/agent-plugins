@@ -165,7 +165,7 @@ Ask for the repo-root-relative path to the build/test validation script. If ther
 Detect a hint first:
 
 ```bash
-find . -maxdepth 3 -iname "test_*.py" -o -iname "*_test.py" -o -iname "*.test.ts" -o -iname "*.spec.ts" 2>/dev/null | head -10
+find . -maxdepth 3 -iname "test_*.py" -o -iname "*_test.py" -o -iname "*.test.ts" -o -iname "*.spec.ts" -o -iname "*Tests.cs" -o -iname "*Test.cs" 2>/dev/null | head -10
 ```
 
 Ask for the glob pattern(s) (matched against basename) that identify a test file in this project.
