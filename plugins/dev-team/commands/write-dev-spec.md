@@ -18,13 +18,16 @@ tasks, and verifying that it is complete.
 
 Use the `gather-brief-sources` skill to resolve the argument into a feature brief, from whatever
 mix of sources it points to (a tracked work item, pasted notes, a file, a link, or a combination).
+A brief with no tracked work item among its sources is fine, as long as at least one source
+resolved — `gather-brief-sources` already warns the user and asks them to fix or drop any
+individually-referenced source (e.g. a work-item key) that doesn't actually resolve.
 
 Additionally, check for an existing design doc: substitute the resolved `work-item-id` (if any)
 into `documentation.specs.search` (from `get-project-configuration`). If a design doc is found,
 read it in full and fold it in as the primary source — it already answers the problem/goals/
 behavior questions. Record its path for `dev-spec-first-draft`'s `> **Design:**` header line.
 
-If the work item does not exist, tell the user and stop.
+If `gather-brief-sources` could not resolve any sources at all, tell the user and stop.
 
 ### 2 — Write the first draft
 

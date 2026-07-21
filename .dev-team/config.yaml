@@ -34,9 +34,9 @@ documentation:
     name-format: "_doc_<slug>.md"
     search: grep -rl "^Summary:" . --include="_doc_*.md"
   specs:
-    location: In folder with related source files
+    location: docs/
     name-format: "_design_<slug>.md"
-    search: grep -rl "<work-item-id>" . --include="_design_*.md"
+    search: grep -rl "<work-item-id>" docs/ --include="_design_*.md"
   dev-specs:
     location: In folder with related source files
     name-format: "_spec_<slug>.md"

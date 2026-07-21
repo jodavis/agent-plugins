@@ -37,6 +37,11 @@ For every source identified, resolve it:
 - **Multiple sources at once** — resolve and gather all of them; do not force a single source to
   "win."
 
+If a specifically-referenced source (e.g. a work-item key the user or brief pointed at) does not
+resolve, tell the user it wasn't found and ask them to correct it or confirm dropping it — do not
+silently drop it. This is different from simply not having a tracked work item at all, which is
+always valid (see step 4).
+
 ### 3 — Synthesize the brief
 
 Combine everything gathered into one coherent feature brief. Note which sources contributed —
