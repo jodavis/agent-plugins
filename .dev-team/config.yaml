@@ -1,6 +1,5 @@
 developer-standards:
   CONTRIBUTING.md: "Code guidelines: Naming conventions, file structure, logging standards, and test conventions"
-  CLAUDE.md: "Quality gates and operational conventions"
   .editorconfig: "Authoritative code style specification"
 
 work-tracking:
