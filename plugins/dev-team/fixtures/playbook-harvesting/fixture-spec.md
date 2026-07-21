@@ -1,7 +1,7 @@
 # Fixture: Stand Up Orders Service
 
 > **Status:** Draft
-> **Design doc:** `_doc_StandUpOrdersService.md` — authored by the final documentation task
+> **Architecture doc:** `_doc_StandUpOrdersService.md` — authored by the final documentation task
 > once implementation is complete; this spec persists afterward for harvesting
 > **Feature-work-item:** FIX-100
 

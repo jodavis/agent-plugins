@@ -1,14 +1,14 @@
 ---
-name: spec-first-draft
+name: dev-spec-first-draft
 user-invocable: false
 description: >
-  Use when writing a first draft of a complete new spec or a new part of an existing spec.
+  Use when writing a first draft of a complete new dev spec or a new part of an existing dev spec.
   Gathers context from docs, source code, and the user, then writes the draft to a _spec_*.md file.
 argument-hint: <feature brief | work-item-id | spec-file-path>
 ---
 
 Use this skill when:
-- You are writing a first draft of a complete new spec or a new part of an existing spec
+- You are writing a first draft of a complete new dev spec or a new part of an existing dev spec
 
 ## Steps
 
@@ -16,9 +16,13 @@ Use this skill when:
 
 Use the `find-repo-documentation` skill to read the architecture docs relevant to the feature area.
 
+If a design doc is already known (passed in, or found via `documentation.specs.search` for the
+resolved work item), read it in full first. It already answers the problem/goals/behavior
+questions — do not re-ask those; only ask what the design doc leaves open for the implementation.
+
 Spawn one or more `dev-team:researcher` agents to research any frameworks, libraries, or patterns the feature will use. Each agent uses the `research-learn` skill and returns findings with source links.
 
-Use `AskUserQuestion` to ask the user focused questions that fill gaps the docs and feature description don't answer. Good questions cover:
+Use `AskUserQuestion` to ask the user focused questions that fill gaps the docs, design doc, and feature description don't answer. Good questions cover:
 
 - Ownership and boundaries (what this feature owns vs. delegates)
 - Integration points with existing subsystems
@@ -26,7 +30,7 @@ Use `AskUserQuestion` to ask the user focused questions that fill gaps the docs 
 - Constraints (performance, accessibility, testability requirements)
 - Anything the planned implementation section will need to be concrete
 
-Skip questions you can already answer from docs or source. Provide 2–4 concrete option choices per question; the user can always pick "Other". Batch up to 4 questions per `AskUserQuestion` call.
+Skip questions you can already answer from docs, the design doc, or source. Provide 2–4 concrete option choices per question; the user can always pick "Other". Batch up to 4 questions per `AskUserQuestion` call.
 
 **PAUSE — wait for the user's answers before continuing.**
 
@@ -45,14 +49,16 @@ Write the file using this structure:
 # \<Feature Name\>
 
 > **Status:** Draft
-> **Design doc:** `_doc_<FeatureName>.md` — authored by `spec-task-breakdown`'s unconditional
-> final "Author design documentation" task once implementation completes; this spec persists
-> afterward for harvesting
+> **Design:** `_design_<FeatureName>.md` — the PM design doc this spec implements, if one exists;
+> otherwise "— none"
+> **Architecture doc:** `_doc_<FeatureName>.md` — authored by `dev-spec-task-breakdown`'s
+> unconditional final "Author design documentation" task once implementation completes; this
+> spec persists afterward for harvesting
 
-This line names an obligation owned by `spec-task-breakdown`, not by this skill: every task
+This line names an obligation owned by `dev-spec-task-breakdown`, not by this skill: every task
 breakdown must append that unconditional final documentation task, so the reference above is
-always honored. If `spec-task-breakdown` does not yet append it, treat that as a gap in
-`spec-task-breakdown`, not a reason to omit the header line here.
+always honored. If `dev-spec-task-breakdown` does not yet append it, treat that as a gap in
+`dev-spec-task-breakdown`, not a reason to omit the header line here.
 
 ## Overview
 

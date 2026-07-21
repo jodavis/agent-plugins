@@ -1,5 +1,5 @@
 ---
-name: spec-task-work-items
+name: dev-spec-task-work-items
 user-invocable: false
 description: >
   Use when you are writing a new spec or a new part of an existing spec.
@@ -9,7 +9,7 @@ argument-hint: <work-item-id> <spec-path>
 
 **Extension point skill** — configure this via `get-project-configuration`'s `work-tracking`
 section (preferred). Full-file override remains available as an escape hatch: place a `SKILL.md`
-in `.claude/skills/spec-task-work-items/` to replace this skill's process entirely.
+in `.claude/skills/dev-spec-task-work-items/` to replace this skill's process entirely.
 
 Use this skill when:
 - You are writing a new spec or a new part of an existing spec

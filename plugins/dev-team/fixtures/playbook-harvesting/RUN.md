@@ -10,8 +10,8 @@ components introduced by the Playbook Harvesting feature (`_spec_PlaybookHarvest
 | Target skill | Dry-run task |
 |---|---|
 | `harvest-playbook` | [ADR-319](https://jodasoft.atlassian.net/browse/ADR-319) |
-| `spec-first-draft` instance mode | [ADR-321](https://jodasoft.atlassian.net/browse/ADR-321) |
-| `spec-task-breakdown` playbook seeding | [ADR-322](https://jodasoft.atlassian.net/browse/ADR-322) |
+| `dev-spec-first-draft` instance mode | [ADR-321](https://jodasoft.atlassian.net/browse/ADR-321) |
+| `dev-spec-task-breakdown` playbook seeding | [ADR-322](https://jodasoft.atlassian.net/browse/ADR-322) |
 
 None of those skills exist yet as of this harness being built — this file documents the
 procedure those tasks will follow, so it can be reviewed and re-run unchanged once they land.
@@ -24,15 +24,15 @@ procedure those tasks will follow, so it can be reviewed and re-run unchanged on
 | `exemplar-repo-1/`, `exemplar-repo-2/` | Checked-in per-commit snapshots (no `.git` directories) for two sibling service instances (`orders-service`, `billing-service`) stamped from the same template, plus a commit where the two diverge on logging format — the `--exemplar` inputs to a `harvest-playbook` dry run |
 | `materialize.py` | Replays an exemplar's `commits.json` manifest into a throwaway git repo on demand |
 | `template-output/` | Pristine template-stamp output (unresolved placeholder tokens) — the `--template-output` input, used to derive the strip/replace step by diffing against an exemplar's post-strip/replace commit |
-| `fixture-playbook/` | Hand-authored playbook conforming to `playbook-contract` (`SKILL.md`, `spec-template.md`, `dev-team.md` overlay, `service-yaml-schema.md`) — the input to the `spec-first-draft` instance-mode dry run |
-| `fixture-instance-spec.md` | Hand-authored instance spec carrying a `> **Playbook:**` header that points at `fixture-playbook/` — the input to the `spec-task-breakdown` seeding dry run |
+| `fixture-playbook/` | Hand-authored playbook conforming to `playbook-contract` (`SKILL.md`, `spec-template.md`, `dev-team.md` overlay, `service-yaml-schema.md`) — the input to the `dev-spec-first-draft` instance-mode dry run |
+| `fixture-instance-spec.md` | Hand-authored instance spec carrying a `> **Playbook:**` header that points at `fixture-playbook/` — the input to the `dev-spec-task-breakdown` seeding dry run |
 | `interview-answer-key.md` | Scripted Q&A for the `harvest-playbook` dry run's interview step, plus the "no answer — proceed with your recommendation" fallback rule |
 | `test_materialize.py` | Unit tests for `materialize.py` |
 
 ## Invocation model: on-demand, not CI
 
 Dry runs in this harness are **run by the implementing or validating agent whenever
-`harvest-playbook`, `spec-first-draft`, or `spec-task-breakdown` is edited** — they are not a
+`harvest-playbook`, `dev-spec-first-draft`, or `dev-spec-task-breakdown` is edited** — they are not a
 CI gate. Two reasons: a headless dry run needs a managed API credential this repo does not
 have, and the agent-graded checklist items (see below) are not deterministic enough to make a
 reliable automated gate. CI automation of this same procedure is deferred to
@@ -123,7 +123,7 @@ than delegation; the strip/replace step is correctly derived from the `template-
 exemplar diff; the plan-vs-history divergence (the logging-format split between
 `exemplar-repo-1` and `exemplar-repo-2`) surfaces in the playbook or the interview transcript.
 
-### `spec-first-draft` instance mode — checks
+### `dev-spec-first-draft` instance mode — checks
 
 ```bash
 # The draft was written (agent-graded: confirm its sections match fixture-playbook/spec-template.md's
@@ -134,7 +134,7 @@ test -f <draft-instance-spec-path>
 grep -q "^> \*\*Playbook:\*\*" <draft-instance-spec-path>
 ```
 
-### `spec-task-breakdown` playbook seeding — checks
+### `dev-spec-task-breakdown` playbook seeding — checks
 
 Run against a breakdown produced from `fixture-instance-spec.md`:
 
@@ -150,8 +150,8 @@ an exit criterion in its task, not just prose.
 
 ## Re-running after a skill edit
 
-This harness is meant to be re-run every time `harvest-playbook`, `spec-first-draft`, or
-`spec-task-breakdown` is edited:
+This harness is meant to be re-run every time `harvest-playbook`, `dev-spec-first-draft`, or
+`dev-spec-task-breakdown` is edited:
 
 1. Re-materialize both exemplar repos (Step 1) — always from scratch, so a stale throwaway
    repo from a previous run never leaks into the new one.

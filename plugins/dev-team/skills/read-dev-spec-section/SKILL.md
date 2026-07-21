@@ -1,15 +1,15 @@
 ---
-name: read-spec-section
+name: read-dev-spec-section
 user-invocable: false
 description: >
-  Use when you need to read the spec file section for a work item.
+  Use when you need to read the dev spec file section for a work item.
   Resolves the context file, ensures the working branch, locates the spec file,
   and extracts the section that describes the given work item.
 argument-hint: <work-item-id>
 ---
 
 Use this skill when:
-- You need to read the spec section for a work item before researching or planning it
+- You need to read the dev spec section for a work item before researching or planning it
 
 ## Steps
 
