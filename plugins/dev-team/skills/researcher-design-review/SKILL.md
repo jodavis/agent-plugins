@@ -1,0 +1,72 @@
+---
+name: researcher-design-review
+user-invocable: false
+description: >
+  Use when verifying a design doc actually solves the problem it describes.
+  Reads the design and related docs, then returns blocking questions or a ready confirmation.
+argument-hint: <path to _design_*.md file>
+---
+
+Use this skill when:
+- You need to verify a design doc is complete and actually solves the stated problem
+- You are reviewing a design doc, or its deliverable breakdown, for blocking gaps
+
+This is an objective, critical review of problem/solution fit — not an implementation-readiness
+review. Do not ask about interfaces, classes, or code-level concerns; that is
+`researcher-dev-spec-review`'s job on the resulting dev spec.
+
+## Steps
+
+### 1 — Read the design doc
+
+Read the design doc at the provided path in full — every section.
+
+### 2 — Read related docs
+
+Use the `find-repo-documentation` skill to discover and read any existing architecture docs
+relevant to the problem area, to check the design isn't solving an already-solved problem or
+missing a constraint the system already has.
+
+### 3 — Research external context
+
+Use the `research-learn` skill if the design cites prior art, competing solutions, or standards
+that are worth double-checking or that the design doc doesn't fully substantiate.
+
+### 4 — Assess and return
+
+From the perspective of a critical, objective reviewer — does this solution actually solve the
+stated problem?
+
+- Is the problem concrete and falsifiable (not just an assertion)?
+- Does the proposed solution plausibly resolve the stated problem, not just something adjacent to it?
+- Are the success criteria observable — could you tell, after shipping, whether the problem was solved?
+- Are non-goals explicit, or could scope quietly creep?
+- Is every behavior scenario concrete enough to evaluate without guessing at what "done" looks like?
+- Were reasonable alternatives (including existing solutions) genuinely considered, with real reasons for rejecting them?
+
+### 5 — Deliverable independence check
+
+Run this check only when the design doc has a `## Deliverables` section (i.e. after
+`design-deliverable-breakdown` has run). For each deliverable, confirm:
+
+- It provides value entirely on its own, without depending on another deliverable shipping first.
+- It cannot be meaningfully done "partway" — there's no sensible partial version.
+
+Raise one blocking question per deliverable that fails either check, naming the specific
+dependency or partial-value problem.
+
+### 6 — Return results
+
+**If no blocking gaps exist**, return exactly:
+
+> No blocking questions — design is ready.
+
+**If gaps exist**, return:
+- A numbered list of concrete questions. Each must be specific enough to resolve the gap, reference the section or deliverable it pertains to, and be a genuine blocker — not a suggestion or style preference.
+- For each question, rate how confidently you could answer it yourself if forced to guess, on a 1–5 scale:
+  - 1 — you could answer this easily with high confidence (an obvious, low-risk inference)
+  - 5 — you cannot continue without this answered (no reasonable inference exists; it requires a human decision)
+  Format each question as `N. [Rating: X/5] <question text>`.
+- Under a `## Useful resources` heading: any external resources from step 3 that would inform the design.
+
+Do not include summaries, recommendations, or file quotes.

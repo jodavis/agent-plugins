@@ -1,5 +1,5 @@
 ---
-name: spec-task-breakdown
+name: dev-spec-task-breakdown
 user-invocable: false
 description: >
   Use when breaking down a spec into tasks.

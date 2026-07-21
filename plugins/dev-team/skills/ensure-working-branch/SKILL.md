@@ -51,8 +51,8 @@ Skip this step if `base_branch` was already known from step 1.
 #### 3a — Search the repo for a spec file
 
 Skip this lookup if `spec_path` was already known from step 1. Substitute `<work-item-id>` into
-`documentation.specs.search` and run it. If it returns a spec file, read it and write its path to
-the context file's `spec_path` field via `use-context-file`.
+`documentation.dev-specs.search` and run it. If it returns a spec file, read it and write its path
+to the context file's `spec_path` field via `use-context-file`.
 
 Then, unless `parent_work_item` was already known from step 1, look in the spec for the parent
 feature-work-item: a heading or field naming it, e.g. a heading shaped `<type> <key>` where

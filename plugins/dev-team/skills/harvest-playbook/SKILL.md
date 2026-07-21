@@ -131,10 +131,10 @@ over from nothing.
 
 ### 5 — Review the authored playbook with the user
 
-Invoke the `spec-discussion` skill against the playbook's `SKILL.md` from step 4, treating it
+Invoke the `document-discussion` skill against the playbook's `SKILL.md` from step 4, treating it
 the same as a spec file: the user reads the authored content and leaves `> **REVIEW:**`
 comments anywhere they want a change, resolved one at a time until none remain. Do not proceed
-to step 6 until `spec-discussion` reports no outstanding review markers.
+to step 6 until `document-discussion` reports no outstanding review markers.
 
 ### 6 — Replace consumed Method markers with provenance links
 

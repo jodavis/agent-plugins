@@ -20,8 +20,12 @@ Invoke `get-project-configuration` and read `documentation`.
 - Place a post-implementation doc at `documentation.architecture.location` (relative to the repo
   root per the path-interpretation rule, unless it starts with `~`), named per
   `documentation.architecture.name-format` (e.g. `<slug>.md`).
-- If drafting a pre-implementation design doc, place it at `documentation.specs.location` instead,
-  named per `documentation.specs.name-format` (e.g. `<slug>_Spec.md`).
+- If drafting a pre-implementation PM-style design doc (via `design-first-draft`), place it at
+  `documentation.specs.location` instead, named per `documentation.specs.name-format` (e.g.
+  `<slug>_Design.md`).
+- If drafting a pre-implementation dev spec (via `dev-spec-first-draft`), place it at
+  `documentation.dev-specs.location` instead, named per `documentation.dev-specs.name-format`
+  (e.g. `<slug>_Spec.md`).
 - Write the doc in `documentation.format`.
 
 ### Standard doc structure

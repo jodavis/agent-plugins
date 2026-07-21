@@ -2,8 +2,8 @@
 
 > **Playbook:** plugins/dev-team/fixtures/playbook-harvesting/fixture-playbook/
 
-This file is a **fixture** for `spec-task-breakdown`'s playbook-seeding dry run (see `RUN.md`
-in this directory). It represents the thin instance spec that `spec-first-draft`'s instance
+This file is a **fixture** for `dev-spec-task-breakdown`'s playbook-seeding dry run (see `RUN.md`
+in this directory). It represents the thin instance spec that `dev-spec-first-draft`'s instance
 mode would draft from `fixture-playbook/spec-template.md`. Do not treat this as a real spec
 for this repository.
 

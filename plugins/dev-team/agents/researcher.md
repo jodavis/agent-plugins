@@ -92,4 +92,5 @@ Use the `Skill` tool to invoke your task-specific workflows:
 
 - `plan-task` — produce a task brief from a spec and task key
 - `researcher-validate` — validate completed work against a plan's exit criteria
-- `researcher-spec-review` — review a spec for implementation readiness; surface blocking questions
+- `researcher-dev-spec-review` — review a dev spec for implementation readiness; surface blocking questions
+- `researcher-design-review` — review a design doc for problem/solution fit; surface blocking questions

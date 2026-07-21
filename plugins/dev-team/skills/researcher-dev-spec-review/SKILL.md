@@ -1,5 +1,5 @@
 ---
-name: researcher-spec-review
+name: researcher-dev-spec-review
 user-invocable: false
 description: >
   Use when verifying a spec file is ready for implementation.

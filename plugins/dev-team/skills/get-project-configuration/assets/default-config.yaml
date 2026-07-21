@@ -22,8 +22,12 @@ documentation:
     name-format: <slug>.md
   specs:
     location: specs/
+    name-format: <slug>_Design.md
+    search: grep -l "<work-item-id>" specs/*_Design.md
+  dev-specs:
+    location: specs/
     name-format: <slug>_Spec.md
-    search: grep -l "<work-item-id>" specs/*.md
+    search: grep -l "<work-item-id>" specs/*_Spec.md
 
 validation:
   script: scripts/validate.sh
