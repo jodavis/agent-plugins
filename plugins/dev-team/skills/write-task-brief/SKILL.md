@@ -31,7 +31,7 @@ Copy the exit criteria checklist from the spec section verbatim. If the spec use
 Decisions already made in the spec that directly constrain this task's implementation. Do not include decisions from other parts of the spec that don't affect this task.
 
 **Components in scope**
-Only relevant when the spec has a `## Component Breakdown` section (see `spec-first-draft`
+Only relevant when the spec has a `## Component Breakdown` section (see `dev-spec-first-draft`
 for the table format: `| Component | Type | Responsibility | Depends on |`). That table lives
 once, spec-wide — not inside this task's own spec-section excerpt — so look it up separately:
 use the `use-context-file` skill with the task key to read `spec_path` from the context file,

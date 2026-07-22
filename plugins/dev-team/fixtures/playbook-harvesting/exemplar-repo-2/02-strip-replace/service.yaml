@@ -1,0 +1,4 @@
+name: billing-service
+port: 8080
+logging:
+  format: {{LOG_FORMAT}}

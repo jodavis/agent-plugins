@@ -18,7 +18,10 @@ The context file for a work item lives at:
 
 If the argument ends in `.md` or points to an existing file, it is already the `<context-file>` path. Derive the `<work-item-id>` from the filename stem (e.g. `PROJ-228.md` → `PROJ-228`).
 
-Otherwise, treat the argument as a `<work-item-id>` and compute the context file path.
+Otherwise, if a `<work-item-id>` argument was given, treat it as the `<work-item-id>` and compute the context file path.
+
+If no argument was given at all, use the `identify-project-work-items` skill to determine the `<work-item-id>` from the user's input or conversation context, then compute the context file path from it.
+
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for
 this skill" path shown when this skill was invoked. Resolve it to that literal path; it
 is not an environment variable.
@@ -53,6 +56,28 @@ Read `<context-file>` and extract these YAML frontmatter fields:
 
 Fields marked "may be empty" are not guaranteed to be set — a caller that needs one and finds it
 empty must compute it itself (see e.g. `ensure-working-branch`) rather than assuming a default.
+
+## Confirming the working branch
+
+If you are about to read or write repository files (not just the context file itself), confirm
+the working branch here:
+
+- If `working_branch` is empty: invoke the `ensure-working-branch` skill with the `work-item-id`
+  to compute, create, and check it out.
+- If `working_branch` is set: cheaply confirm the repo is actually on it —
+  `git rev-parse --abbrev-ref HEAD` and compare to `working_branch`. If they match, no further
+  action is needed. If they don't match (or you need to confirm it's up to date with the remote),
+  invoke `ensure-working-branch` — it re-checks the context file's already-known fields itself
+  and only recomputes what's actually missing.
+
+Skip this whole check if you only need to read context-file fields and won't touch any other
+repository file this turn.
+
+The context file also carries a `<!-- section:Project Configuration -->` body section,
+written by `init-context-file.py` when it first creates the file: the full merged project
+configuration (the same JSON `get-project-configuration` returns), computed once at the start
+of the pipeline workflow. If this section exists, do not use the `get-project-configuration`
+skill again, instead read it from the context file.
 
 ## Writing to the context file
 

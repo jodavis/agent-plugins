@@ -1,7 +1,8 @@
 # Agent Orchestration Refactor
 
 > **Status:** Draft
-> **Will become:** `_doc_AgentOrchestration.md` once implementation is complete
+> **Design doc:** `_doc_AgentOrchestration.md` — authored by the final documentation task once
+> implementation completes; this spec persists afterward for harvesting
 
 ## Overview
 
