@@ -4,6 +4,7 @@ fired for a task's PR, given its own context file and the current GitHub/git sta
 """
 
 import json
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -805,4 +806,31 @@ class TestDetectPrEventsQuietCall:
         # Assert
         assert result == []
         assert path.read_text() == text_before
+
+
+# ---------------------------------------------------------------------------
+# detect_pr_events — pr_url doesn't match the expected GitHub PR URL shape:
+# raise a clear diagnostic instead of a confusing AttributeError from
+# `.match(...).groups()` on a None match
+# ---------------------------------------------------------------------------
+
+class TestDetectPrEventsMalformedPrUrl:
+    def test_detect_pr_events_malformed_pr_url_raises_value_error_naming_the_url(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        from pr_event_detector import detect_pr_events
+
+        malformed_pr_url = "https://github.com/acme/widget/pull/57/"
+        path = compute_context_path("ADR-999", get_repo_slug())
+        PipelineContext(work_item_id="ADR-999", pr_url=malformed_pr_url).save(path)
+
+        # Act / Assert
+        with pytest.raises(ValueError, match=re.escape(malformed_pr_url)):
+            detect_pr_events("ADR-999")
 

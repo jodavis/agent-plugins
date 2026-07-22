@@ -35,6 +35,13 @@ def _pr_state_and_base(pr_url: str) -> tuple[str, str]:
     return data.get("state", ""), data.get("baseRefName", "")
 
 
+def _parse_pr_url(pr_url: str) -> tuple[str, str, str]:
+    match = _PR_URL_RE.match(pr_url)
+    if not match:
+        raise ValueError(f"pr_url does not match expected GitHub PR URL format: {pr_url!r}")
+    return match.groups()
+
+
 def _remote_tip_sha(branch: str) -> str:
     result = subprocess.run(
         ["git", "ls-remote", "origin", branch],
@@ -60,7 +67,7 @@ def detect_pr_events(
     events: list[str] = []
     changed = False
 
-    owner, repo, number = _PR_URL_RE.match(ctx.pr_url).groups()
+    owner, repo, number = _parse_pr_url(ctx.pr_url)
     result = subprocess.run(
         ["gh", "api", f"repos/{owner}/{repo}/pulls/{number}/comments"],
         capture_output=True,
