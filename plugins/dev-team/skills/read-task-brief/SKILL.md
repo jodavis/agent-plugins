@@ -12,15 +12,13 @@ Use this skill when:
 
 ## Steps
 
-### 1 — Resolve the context file
+### 1 — Resolve the context file and confirm the working branch
 
-Use the `use-context-file` skill with the `work-item-id` to locate and read the context file.
+Use the `use-context-file` skill with the `work-item-id` to locate and read the context file,
+including its "Confirming the working branch" step — this skill is about to read/write repository
+files in the next steps.
 
-### 2 — Ensure the working branch
-
-Use the `ensure-working-branch` skill with the `work-item-id` and the resolved context file path.
-
-### 3 — Read the task brief
+### 2 — Read the task brief
 
 Read the context file. Locate the `<!-- section:task-brief -->` sentinel and extract all content that follows it until the next `<!-- section:` marker or end of file.
 

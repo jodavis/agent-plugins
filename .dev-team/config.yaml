@@ -1,6 +1,5 @@
 developer-standards:
   CONTRIBUTING.md: "Code guidelines: Naming conventions, file structure, logging standards, and test conventions"
-  CLAUDE.md: "Quality gates and operational conventions"
   .editorconfig: "Authoritative code style specification"
 
 work-tracking:
@@ -34,6 +33,10 @@ documentation:
     name-format: "_doc_<slug>.md"
     search: grep -rl "^Summary:" . --include="_doc_*.md"
   specs:
+    location: docs/
+    name-format: "_design_<slug>.md"
+    search: grep -rl "<work-item-id>" docs/ --include="_design_*.md"
+  dev-specs:
     location: In folder with related source files
     name-format: "_spec_<slug>.md"
     search: grep -rl "<work-item-id>" . --include="_spec_*.md"

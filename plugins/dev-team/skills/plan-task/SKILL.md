@@ -20,7 +20,7 @@ Use the `identify-work-item` skill to determine the `work-item-id` from the user
 
 ### 2 — Read the spec section
 
-Use the `read-spec-section` skill with the `work-item-id` to get the **task context** (the spec section describing this work item).
+Use the `read-dev-spec-section` skill with the `work-item-id` to get the **task context** (the spec section describing this work item).
 
 ### 3 — Spawn parallel researcher agents
 

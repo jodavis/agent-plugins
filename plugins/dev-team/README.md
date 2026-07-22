@@ -25,11 +25,12 @@ project.
 | Skill | Called by | What it does | Stub behavior |
 |---|---|---|---|
 | `developer-standards` | code-change-expectations, fix-draft, fix-pr, implement-task, review, review-sign-off | Loads code guidelines and quality gates | Reads CONTRIBUTING.md, CLAUDE.md, and all `.editorconfig` rules |
-| `find-repo-documentation` | investigate-bug, plan-task, researcher-spec-review, review, spec-first-draft | Discovers and reads architecture docs relevant to the task | Searches `docs/`, `doc/`, and root-level Markdown files |
-| `write-repo-documentation` | spec flow | Establishes doc naming, file location, and required sections | Follows existing doc conventions in the repo |
+| `find-repo-documentation` | investigate-bug, plan-task, researcher-dev-spec-review, researcher-design-review, review, dev-spec-first-draft, design-first-draft | Discovers and reads architecture docs relevant to the task | Searches `docs/`, `doc/`, and root-level Markdown files |
+| `write-repo-documentation` | write-design-spec flow, write-dev-spec flow | Establishes doc naming, file location, and required sections | Follows existing doc conventions in the repo |
 | `identify-project-work-items` | investigate-bug, plan-task, review, and others | Resolves work-item-id and work-item-type from user input | Asks the user what work item to work on |
-| `ensure-working-branch` | investigate-bug, read-spec-section, read-task-brief | Ensures the correct working branch is checked out | Warns if on main/master; asks which branch to use |
-| `spec-task-work-items` | spec | Updates project work items after a spec is finalized | Skips with a message (no tracker configured) |
+| `ensure-working-branch` | investigate-bug, read-dev-spec-section, read-task-brief | Ensures the correct working branch is checked out | Warns if on main/master; asks which branch to use |
+| `dev-spec-task-work-items` | write-dev-spec | Updates project work items after a dev spec is finalized | Skips with a message (no tracker configured) |
+| `design-work-items` | write-design-spec | Updates the source work item after a design doc is finalized | Skips with a message (no tracker configured, or no source item) |
 | `write-e2e-test` | investigate-bug | Establishes E2E test framework, file locations, and conventions | Finds the existing test directory and follows observed patterns |
 
 ### Authoring an override

@@ -48,12 +48,13 @@ dirty worktree at this point means it isn't the fresh one this task expects.
 
 ### 2 — Check the context file for already-known values
 
-Invoke `get-project-configuration` and read `git-repo` and `documentation`.
-
 Use the `use-context-file` skill with the `work-item-id` to locate and read the context file.
 Note any of these frontmatter fields that are already set: `working_branch`, `base_branch`,
 `spec_path`, `parent_work_item`. Skip the corresponding step below for each one found, and use
 the recorded value instead of recomputing it.
+
+Also read `git-repo` and `documentation` from the same context file's
+`<!-- section:Project Configuration -->` section.
 
 If `working_branch` is already known, skip straight to step 5.
 
@@ -75,8 +76,8 @@ context file has it explicitly set (a scheduler-spawned task may pre-populate it
 #### 4a — Search the repo for a spec file
 
 Skip this lookup if `spec_path` was already known from step 2. Substitute `<work-item-id>` into
-`documentation.specs.search` and run it. If it returns a spec file, read it and write its path to
-the context file's `spec_path` field via `use-context-file`.
+`documentation.dev-specs.search` and run it. If it returns a spec file, read it and write its path
+to the context file's `spec_path` field via `use-context-file`.
 
 Then, unless `parent_work_item` was already known from step 2, look in the spec for the parent
 feature-work-item: a heading or field naming it, e.g. a heading shaped `<type> <key>` where

@@ -266,6 +266,12 @@ def _load_project_config(repo_root: Path) -> dict:
     return json.loads(result.stdout)
 
 
+def _project_configuration(ctx: "PipelineContext") -> dict:
+    """Return the project configuration cached on `ctx.project_configuration` at
+    context-file creation time."""
+    return json.loads(ctx.project_configuration)
+
+
 def _resolve_validation_script(config: dict, repo_root: Path) -> str | None:
     """Return the validation script command for this project, or None if unconfigured.
 
@@ -544,7 +550,7 @@ class ValidateStep(Step):
         ctx = self._ctx
         if ctx.validate_result:
             return []
-        validate_command = _resolve_validation_script(_load_project_config(REPO_ROOT), REPO_ROOT)
+        validate_command = _resolve_validation_script(_project_configuration(ctx), REPO_ROOT)
         if validate_command is None:
             ctx.validate_result = "Succeeded (no validation script configured for this project)"
             return []
@@ -1316,6 +1322,7 @@ def main() -> None:
         print(f"Resuming {work_item_id} from state '{ctx.state}'...", flush=True)
     else:
         ctx = PipelineContext(work_item_id=work_item_id, state=workflow.initial_state)
+        ctx.project_configuration = json.dumps(_load_project_config(REPO_ROOT), indent=2)
         ctx.save(context_path)
 
     DevTeamPipeline(

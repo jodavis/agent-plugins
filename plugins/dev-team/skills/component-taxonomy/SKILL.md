@@ -3,7 +3,7 @@ name: component-taxonomy
 user-invocable: false
 description: >
   Reference skill defining the Wrapper / Testable / Orchestrator component taxonomy used to
-  decide how thoroughly a piece of code needs to be tested. Shared by spec-first-draft's
+  decide how thoroughly a piece of code needs to be tested. Shared by dev-spec-first-draft's
   Component Breakdown authoring and by Developer's ad hoc triage of work outside classified
   components.
 ---

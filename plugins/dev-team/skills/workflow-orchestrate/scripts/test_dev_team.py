@@ -180,6 +180,60 @@ class TestSignoffCycleCount:
 
 
 # ---------------------------------------------------------------------------
+# project_configuration field / section
+# ---------------------------------------------------------------------------
+
+class TestProjectConfiguration:
+    def test_defaults_to_empty(self):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-TEST")
+        assert ctx.project_configuration == ""
+
+    def test_roundtrip_through_save_load(self, tmp_path):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-123", project_configuration='{"a": 1}')
+        path = tmp_path / "ctx.md"
+        ctx.save(path)
+        loaded = PipelineContext.load(path)
+        assert loaded.project_configuration == '{"a": 1}'
+
+    def test_written_as_first_section_before_other_known_sections(self, tmp_path):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(
+            work_item_id="ADR-123",
+            project_configuration='{"a": 1}',
+            workspace_setup="setup notes",
+        )
+        path = tmp_path / "ctx.md"
+        ctx.save(path)
+        text = path.read_text(encoding="utf-8")
+        assert text.index("<!-- section:Project Configuration -->") < text.index(
+            "<!-- section:Workspace Setup -->"
+        )
+
+    def test_omitted_from_file_when_empty(self, tmp_path):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-123")
+        path = tmp_path / "ctx.md"
+        ctx.save(path)
+        assert "<!-- section:Project Configuration -->" not in path.read_text(encoding="utf-8")
+
+
+class TestProjectConfigurationHelper:
+    def test_uses_cached_value_without_calling_load_project_config(self, monkeypatch):
+        import dev_team
+        from dev_team import PipelineContext, _project_configuration
+
+        def _fail(repo_root):
+            raise AssertionError("_load_project_config should not be called when cached")
+
+        monkeypatch.setattr(dev_team, "_load_project_config", _fail)
+        ctx = PipelineContext(work_item_id="ADR-TEST", project_configuration='{"a": 1}')
+
+        assert _project_configuration(ctx) == {"a": 1}
+
+
+# ---------------------------------------------------------------------------
 # review_cycle_count counter
 # ---------------------------------------------------------------------------
 
@@ -928,11 +982,11 @@ class TestValidateStepGetActions:
 
     def test_skips_run_script_when_no_validation_script_configured(self, tmp_path, monkeypatch):
         """A repo that opts out of validation (validation: null) should not spawn a script run."""
-        import dev_team
         from dev_team import ValidateStep
 
-        monkeypatch.setattr(dev_team, "_load_project_config", lambda repo_root: {"validation": None})
-        ctx, context_path = self._make_ctx(tmp_path)
+        ctx, context_path = self._make_ctx(
+            tmp_path, project_configuration=json.dumps({"validation": None}),
+        )
         step = ValidateStep(ctx, context_path, tmp_path / "logs")
 
         actions = step.get_actions()
@@ -944,18 +998,37 @@ class TestValidateStepGetActions:
         import dev_team
         from dev_team import ValidateStep
 
-        monkeypatch.setattr(
-            dev_team, "_load_project_config",
-            lambda repo_root: {"validation": {"script": "scripts/validate.sh"}},
-        )
         monkeypatch.setattr(dev_team, "REPO_ROOT", tmp_path)
-        ctx, context_path = self._make_ctx(tmp_path)
+        ctx, context_path = self._make_ctx(
+            tmp_path,
+            project_configuration=json.dumps({"validation": {"script": "scripts/validate.sh"}}),
+        )
         step = ValidateStep(ctx, context_path, tmp_path / "logs")
 
         actions = step.get_actions()
 
         assert len(actions) == 1
         assert actions[0]["action"] == "run_script"
+        assert actions[0]["command"] == str(tmp_path / "scripts/validate.sh")
+
+    def test_uses_cached_project_configuration_without_reloading(self, tmp_path, monkeypatch):
+        import dev_team
+        from dev_team import ValidateStep
+
+        def _fail(repo_root):
+            raise AssertionError("_load_project_config should not be called when cached")
+
+        monkeypatch.setattr(dev_team, "_load_project_config", _fail)
+        monkeypatch.setattr(dev_team, "REPO_ROOT", tmp_path)
+        ctx, context_path = self._make_ctx(
+            tmp_path,
+            project_configuration=json.dumps({"validation": {"script": "scripts/validate.sh"}}),
+        )
+        step = ValidateStep(ctx, context_path, tmp_path / "logs")
+
+        actions = step.get_actions()
+
+        assert len(actions) == 1
         assert actions[0]["command"] == str(tmp_path / "scripts/validate.sh")
 
 
