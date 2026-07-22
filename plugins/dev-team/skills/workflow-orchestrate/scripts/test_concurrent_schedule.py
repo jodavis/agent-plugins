@@ -1,0 +1,454 @@
+"""Tests for concurrent_schedule.py — compute_next_batch() computes the "up to" target's
+dependency closure (or takes an explicit list as-is, with no closure expansion), validates an
+explicit list's dependencies upfront, tracks each target task's cached status via the Task
+readiness checker, enforces a repo-wide concurrency cap across every
+`concurrent-<target-slug>.json` file, and never spawns anything itself.
+
+Covers:
+- TargetSpec / target_slug: "up to" vs. explicit-list slug derivation
+- compute_next_batch: closure computation ("up to"), no expansion (explicit list), persistence
+  of the target's own data file
+- Explicit-list upfront validation: rejects a dependency neither in the list nor done; accepts
+  one that is
+- compute_next_batch: "waiting" with newly eligible spawn, "complete" once all done, "blocked"
+  once every spawned task is terminal but a not-yet-started task has a failed ancestor, and
+  the not-yet-blocked case where an active (non-terminal) spawn still exists
+- Repo-wide concurrency cap: enforced across multiple target data files, not just its own
+- _max_parallel_tasks: default (3) and project-configured override
+- main() CLI wrapper: one narrow integration test for the primary happy path
+"""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+SCRIPTS_DIR = Path(__file__).parent
+
+
+def _write_spec(tmp_path: Path, edges: dict[str, list[str]]) -> Path:
+    """Write a fake `_spec_Test.md` file into `tmp_path` with one `### [KEY: Title](url) 🤖`
+    heading per key in `edges`, each followed by a `**Depends on:**` line built from its
+    dependency list (or `— none —`)."""
+    lines = []
+    for key, deps in edges.items():
+        lines.append(f"### [{key}: Title](https://example.atlassian.net/browse/{key}) 🤖")
+        lines.append("")
+        if deps:
+            lines.append(f"**Depends on:** {', '.join(deps)}")
+        else:
+            lines.append("**Depends on:** — none —")
+        lines.append("")
+    spec_path = tmp_path / "_spec_Test.md"
+    spec_path.write_text("\n".join(lines), encoding="utf-8")
+    return spec_path
+
+
+@pytest.fixture(autouse=True)
+def _env(tmp_path, monkeypatch):
+    """Common env seams every test needs: an isolated state dir and a fixed repo slug."""
+    monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+    return tmp_path
+
+
+def _set_repo_root(tmp_path, monkeypatch):
+    import dev_team
+    monkeypatch.setattr(dev_team, "REPO_ROOT", tmp_path)
+
+
+def _save_context(work_item_id: str, **kwargs) -> None:
+    from dev_team import compute_context_path
+    from get_context_path import get_repo_slug
+    from pipeline_context import PipelineContext
+
+    path = compute_context_path(work_item_id, get_repo_slug())
+    PipelineContext(work_item_id=work_item_id, **kwargs).save(path)
+
+
+# ---------------------------------------------------------------------------
+# target_slug
+# ---------------------------------------------------------------------------
+
+class TestTargetSlug:
+    def test_target_slug_up_to_mode_uses_up_to_prefixed_key(self):
+        from concurrent_schedule import TargetSpec, target_slug
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-310",))
+
+        assert target_slug(target) == "up-to-ADR-310"
+
+    def test_target_slug_list_mode_uses_sorted_joined_keys(self):
+        from concurrent_schedule import TargetSpec, target_slug
+
+        target = TargetSpec(mode="list", tasks=("ADR-312", "ADR-310", "ADR-311"))
+
+        assert target_slug(target) == "ADR-310-ADR-311-ADR-312"
+
+
+# ---------------------------------------------------------------------------
+# compute_next_batch — "up to" closure computation
+# ---------------------------------------------------------------------------
+
+class TestComputeNextBatchUpToClosure:
+    def test_compute_next_batch_up_to_expands_transitive_closure_and_spawns_root_dependency(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {
+            "ADR-1": ["ADR-2"],
+            "ADR-2": ["ADR-3"],
+            "ADR-3": [],
+        })
+        from concurrent_schedule import TargetSpec, compute_next_batch, _data_file_path
+        from get_context_path import get_repo_slug
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["status"] == "waiting"
+        assert result["spawn"] == [{"task_id": "ADR-3", "base_branch": None}]
+        assert result["blocked_tasks"] == []
+        data = json.loads(_data_file_path(get_repo_slug(), target).read_text(encoding="utf-8"))
+        assert data["tasks"] == ["ADR-1", "ADR-2", "ADR-3"]
+        assert data["mode"] == "up_to"
+
+
+# ---------------------------------------------------------------------------
+# compute_next_batch — explicit list, no closure expansion
+# ---------------------------------------------------------------------------
+
+class TestComputeNextBatchListNoExpansion:
+    def test_compute_next_batch_list_mode_does_not_expand_beyond_given_tasks(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {
+            "ADR-1": ["ADR-2"],
+            "ADR-2": ["ADR-3"],
+            "ADR-3": [],
+        })
+        _save_context("ADR-3", state="done")
+        from concurrent_schedule import TargetSpec, compute_next_batch, _data_file_path
+        from get_context_path import get_repo_slug
+
+        target = TargetSpec(mode="list", tasks=("ADR-1", "ADR-2"))
+
+        # Act
+        compute_next_batch(target)
+
+        # Assert
+        data = json.loads(_data_file_path(get_repo_slug(), target).read_text(encoding="utf-8"))
+        assert data["tasks"] == ["ADR-1", "ADR-2"]
+        assert data["mode"] == "list"
+
+
+# ---------------------------------------------------------------------------
+# Explicit list upfront validation
+# ---------------------------------------------------------------------------
+
+class TestExplicitListValidation:
+    def test_compute_next_batch_list_dependency_outside_list_and_not_done_raises(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {
+            "ADR-1": ["ADR-2"],
+            "ADR-2": [],
+        })
+        from concurrent_schedule import ConcurrentScheduleError, TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="list", tasks=("ADR-1",))
+
+        # Act & Assert
+        with pytest.raises(ConcurrentScheduleError, match="ADR-1.*ADR-2"):
+            compute_next_batch(target)
+
+    def test_compute_next_batch_list_dependency_outside_list_but_already_done_is_accepted(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {
+            "ADR-1": ["ADR-2"],
+            "ADR-2": [],
+        })
+        _save_context("ADR-2", state="done")
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="list", tasks=("ADR-1",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert — no exception, and normal scheduling proceeds
+        assert result["status"] == "waiting"
+        assert result["spawn"] == [{"task_id": "ADR-1", "base_branch": None}]
+
+
+# ---------------------------------------------------------------------------
+# compute_next_batch — "complete"
+# ---------------------------------------------------------------------------
+
+class TestComputeNextBatchComplete:
+    def test_compute_next_batch_all_tasks_done_returns_complete_with_empty_spawn(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        _save_context("ADR-1", state="done")
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result == {"status": "complete", "spawn": [], "blocked_tasks": []}
+
+
+# ---------------------------------------------------------------------------
+# compute_next_batch — "blocked"
+# ---------------------------------------------------------------------------
+
+class TestComputeNextBatchBlocked:
+    def test_compute_next_batch_failed_dependency_with_no_active_spawns_returns_blocked(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {
+            "ADR-1": ["ADR-2"],
+            "ADR-2": [],
+        })
+        _save_context("ADR-2", state="failed")
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"]}
+
+    def test_compute_next_batch_failed_dependency_with_active_spawn_still_waiting(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — ADR-2 and ADR-4 both have no dependencies, so the first call spawns both.
+        # ADR-2 then fails, but ADR-4 (also spawned) stays in progress (non-terminal). Since not
+        # every currently-spawned task has reached a terminal state yet, the scheduler must not
+        # report "blocked" for ADR-1 yet, even though ADR-1 can already never become eligible.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {
+            "ADR-1": ["ADR-2"],
+            "ADR-2": [],
+            "ADR-4": [],
+        })
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="list", tasks=("ADR-1", "ADR-2", "ADR-4"))
+        first = compute_next_batch(target)
+        assert {entry["task_id"] for entry in first["spawn"]} == {"ADR-2", "ADR-4"}
+
+        _save_context("ADR-2", state="failed")
+        _save_context("ADR-4", state="researching")  # spawned, still in progress (non-terminal)
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["status"] == "waiting"
+        assert result["spawn"] == []
+
+    def test_compute_next_batch_blocked_once_active_spawn_reaches_terminal(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — same setup as above, but ADR-4 (the one active spawn) has now reached its
+        # own terminal state, so the scheduler can finally report "blocked" for ADR-1.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {
+            "ADR-1": ["ADR-2"],
+            "ADR-2": [],
+            "ADR-4": [],
+        })
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="list", tasks=("ADR-1", "ADR-2", "ADR-4"))
+        compute_next_batch(target)
+
+        _save_context("ADR-2", state="failed")
+        _save_context("ADR-4", state="done")
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"]}
+
+
+# ---------------------------------------------------------------------------
+# Repo-wide concurrency cap enforcement
+# ---------------------------------------------------------------------------
+
+class TestConcurrencyCap:
+    def test_compute_next_batch_caps_spawn_to_available_slots(self, tmp_path, monkeypatch):
+        # Arrange
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": [], "ADR-2": [], "ADR-3": []})
+        import concurrent_schedule
+        monkeypatch.setattr(concurrent_schedule, "_max_parallel_tasks", lambda repo_root: 2)
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="list", tasks=("ADR-1", "ADR-2", "ADR-3"))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["status"] == "waiting"
+        assert len(result["spawn"]) == 2
+
+    def test_compute_next_batch_counts_active_spawns_from_other_target_files_repo_wide(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — a different target's data file already has one active (non-terminal) spawn
+        # tracked; this target's own cap check must count it too.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-5": [], "ADR-6": []})
+        import concurrent_schedule
+        from concurrent_schedule import TargetSpec, compute_next_batch, _data_file_path
+        from get_context_path import get_repo_slug
+
+        monkeypatch.setattr(concurrent_schedule, "_max_parallel_tasks", lambda repo_root: 1)
+
+        other_target = TargetSpec(mode="up_to", tasks=("ADR-99",))
+        other_path = _data_file_path(get_repo_slug(), other_target)
+        other_path.parent.mkdir(parents=True, exist_ok=True)
+        other_path.write_text(
+            json.dumps({"mode": "up_to", "tasks": ["ADR-99"], "spawned": ["ADR-99"]}),
+            encoding="utf-8",
+        )
+        _save_context("ADR-99", state="researching")  # active, non-terminal
+
+        target = TargetSpec(mode="list", tasks=("ADR-5", "ADR-6"))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert — cap of 1 is already consumed by ADR-99, so nothing new spawns
+        assert result["status"] == "waiting"
+        assert result["spawn"] == []
+
+    def test_compute_next_batch_does_not_count_terminal_spawns_from_other_target_files(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — a different target's data file has a spawn that already reached "done", so
+        # it must not consume this target's cap slot.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-7": []})
+        import concurrent_schedule
+        from concurrent_schedule import TargetSpec, compute_next_batch, _data_file_path
+        from get_context_path import get_repo_slug
+
+        monkeypatch.setattr(concurrent_schedule, "_max_parallel_tasks", lambda repo_root: 1)
+
+        other_target = TargetSpec(mode="up_to", tasks=("ADR-98",))
+        other_path = _data_file_path(get_repo_slug(), other_target)
+        other_path.parent.mkdir(parents=True, exist_ok=True)
+        other_path.write_text(
+            json.dumps({"mode": "up_to", "tasks": ["ADR-98"], "spawned": ["ADR-98"]}),
+            encoding="utf-8",
+        )
+        _save_context("ADR-98", state="done")
+
+        target = TargetSpec(mode="list", tasks=("ADR-7",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["spawn"] == [{"task_id": "ADR-7", "base_branch": None}]
+
+
+# ---------------------------------------------------------------------------
+# _max_parallel_tasks
+# ---------------------------------------------------------------------------
+
+class TestMaxParallelTasks:
+    def test_max_parallel_tasks_defaults_to_three(self, tmp_path):
+        from concurrent_schedule import _max_parallel_tasks
+
+        assert _max_parallel_tasks(tmp_path) == 3
+
+    def test_max_parallel_tasks_uses_project_override(self, tmp_path):
+        config_dir = tmp_path / ".dev-team"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text(
+            "concurrency:\n  max-parallel-tasks: 7\n", encoding="utf-8"
+        )
+        from concurrent_schedule import _max_parallel_tasks
+
+        assert _max_parallel_tasks(tmp_path) == 7
+
+
+# ---------------------------------------------------------------------------
+# main() CLI wrapper — one narrow integration test for the primary happy path
+# ---------------------------------------------------------------------------
+
+class TestMainCliWrapper:
+    def test_main_up_to_single_task_no_dependencies_prints_waiting_with_spawn(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — a `.git` marker so dev_team.py's own repo-root discovery resolves to
+        # tmp_path (where the fake spec lives), the same way it would in a real checkout.
+        (tmp_path / ".git").mkdir()
+        _write_spec(tmp_path, {"ADR-1": []})
+        import os
+        full_env = {**os.environ, "DEV_TEAM_STATE_DIR": str(tmp_path),
+                     "GIT_REMOTE_URL_OVERRIDE": "https://github.com/example/repo.git"}
+
+        # Act
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "concurrent_schedule.py"), "--up-to", "ADR-1"],
+            capture_output=True, text=True, timeout=15, env=full_env, cwd=str(tmp_path),
+        )
+
+        # Assert
+        assert result.returncode == 0
+        assert json.loads(result.stdout) == {
+            "status": "waiting",
+            "spawn": [{"task_id": "ADR-1", "base_branch": None}],
+            "blocked_tasks": [],
+        }
+
+    def test_main_list_dependency_outside_list_and_not_done_prints_error_and_exits_nonzero(
+        self, tmp_path
+    ):
+        # Arrange
+        (tmp_path / ".git").mkdir()
+        _write_spec(tmp_path, {"ADR-1": ["ADR-2"], "ADR-2": []})
+        import os
+        full_env = {**os.environ, "DEV_TEAM_STATE_DIR": str(tmp_path),
+                     "GIT_REMOTE_URL_OVERRIDE": "https://github.com/example/repo.git"}
+
+        # Act
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "concurrent_schedule.py"), "--list", "ADR-1"],
+            capture_output=True, text=True, timeout=15, env=full_env, cwd=str(tmp_path),
+        )
+
+        # Assert
+        assert result.returncode == 1
+        assert result.stdout == ""
+        assert "Error:" in result.stderr
