@@ -161,9 +161,10 @@ class TestRebaseOntoFreshlyFetchedBase:
         from rebase_mechanic import rebase_onto
 
         # Act
-        rebase_onto(working_branch, new_base, work)
+        result = rebase_onto(working_branch, new_base, work)
 
         # Assert
+        assert result == "rebased"
         assert (work / "tundra.txt").exists()
 
 
