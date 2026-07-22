@@ -156,6 +156,84 @@ class TestDetectPrEventsSingleSignal:
 
 
 # ---------------------------------------------------------------------------
+# detect_pr_events — a gh call other than the CI-checks call returns non-JSON
+# output (e.g. a transient rate-limit or network blip): the affected signal is
+# skipped rather than raising an unhandled JSONDecodeError out of the detector
+# ---------------------------------------------------------------------------
+
+class TestDetectPrEventsReviewCommentsOutputNotJson:
+    def test_detect_pr_events_review_comments_output_not_json_skips_review_comment_signal(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        from pr_event_detector import detect_pr_events
+
+        path = compute_context_path("ADR-999", get_repo_slug())
+        PipelineContext(
+            work_item_id="ADR-999",
+            pr_url="https://github.com/acme/widget/pull/57",
+        ).save(path)
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:2] == ["gh", "api"]:
+                return MagicMock(returncode=1, stdout="", stderr="rate limited")
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:3] == ["gh", "pr", "view"]:
+                return MagicMock(
+                    returncode=0, stdout=json.dumps({"state": "OPEN", "baseRefName": "main"}), stderr=""
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        # Act
+        with patch("subprocess.run", side_effect=fake_run):
+            result = detect_pr_events("ADR-999")
+
+        # Assert
+        assert result == []
+
+
+class TestDetectPrEventsOwnPrViewOutputNotJson:
+    def test_detect_pr_events_own_pr_view_output_not_json_skips_task_merged_signal(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        from pr_event_detector import detect_pr_events
+
+        path = compute_context_path("ADR-999", get_repo_slug())
+        PipelineContext(
+            work_item_id="ADR-999",
+            pr_url="https://github.com/acme/widget/pull/57",
+        ).save(path)
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:2] == ["gh", "api"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:3] == ["gh", "pr", "view"]:
+                return MagicMock(returncode=1, stdout="", stderr="rate limited")
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        # Act
+        with patch("subprocess.run", side_effect=fake_run):
+            result = detect_pr_events("ADR-999")
+
+        # Assert
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
 # detect_pr_events — the base branch's remote tip moves past the recorded sha,
 # alone or together with another signal firing in the same call, unless the
 # remote lookup itself fails
@@ -555,6 +633,68 @@ class TestDetectPrEventsDependencyMergedNoPrUrl:
 
 
 # ---------------------------------------------------------------------------
+# detect_pr_events — a dependency's own `gh pr view` call returns non-JSON output:
+# dependency_merged is skipped for that dependency rather than raising
+# ---------------------------------------------------------------------------
+
+class TestDetectPrEventsDependencyPrViewOutputNotJson:
+    def test_detect_pr_events_dependency_pr_view_output_not_json_skips_dependency_merged(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        import pr_event_detector
+        from pr_event_detector import detect_pr_events
+
+        monkeypatch.setattr(pr_event_detector, "REPO_ROOT", tmp_path)
+
+        (tmp_path / "spec.md").write_text(
+            "### [ADR-1: Title One](https://example.com/ADR-1) \U0001F916\n"
+            "\n"
+            "**Depends on:** ADR-2\n"
+            "\n"
+            "### [ADR-2: Title Two](https://example.com/ADR-2) \U0001F916\n"
+            "\n"
+            "**Depends on:** — none —\n"
+        )
+
+        repo_slug = get_repo_slug()
+        PipelineContext(
+            work_item_id="ADR-1",
+            pr_url="https://github.com/acme/widget/pull/57",
+            spec_path="spec.md",
+        ).save(compute_context_path("ADR-1", repo_slug))
+        PipelineContext(
+            work_item_id="ADR-2",
+            pr_url="https://github.com/acme/widget/pull/99",
+        ).save(compute_context_path("ADR-2", repo_slug))
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:2] == ["gh", "api"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:3] == ["gh", "pr", "view"]:
+                if cmd[3] == "https://github.com/acme/widget/pull/99":
+                    return MagicMock(returncode=1, stdout="", stderr="rate limited")
+                return MagicMock(
+                    returncode=0, stdout=json.dumps({"state": "OPEN", "baseRefName": "old-base"}), stderr=""
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        # Act
+        with patch("subprocess.run", side_effect=fake_run):
+            result = detect_pr_events("ADR-1")
+
+        # Assert
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
 # detect_pr_events — the dependency graph yields nothing to check for this task
 # (no declared dependencies, or a spec that fails to parse), so dependency_merged
 # is skipped silently rather than raising
@@ -665,3 +805,4 @@ class TestDetectPrEventsQuietCall:
         # Assert
         assert result == []
         assert path.read_text() == text_before
+

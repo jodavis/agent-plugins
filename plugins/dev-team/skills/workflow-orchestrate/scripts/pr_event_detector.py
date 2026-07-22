@@ -28,7 +28,10 @@ def _pr_state_and_base(pr_url: str) -> tuple[str, str]:
         text=True,
         timeout=30,
     )
-    data = json.loads(result.stdout)
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return "", ""
     return data.get("state", ""), data.get("baseRefName", "")
 
 
@@ -64,7 +67,10 @@ def detect_pr_events(
         text=True,
         timeout=30,
     )
-    comments = json.loads(result.stdout)
+    try:
+        comments = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        comments = []
     if comments:
         max_id = max(c["id"] for c in comments)
         last_seen = int(ctx.extra_frontmatter.get("last_seen_review_comment_id") or 0)
