@@ -268,6 +268,14 @@ class TestDetectPrEventsBaseUpdated:
                 [],
                 id="remote_lookup_fails_skips_base_updated",
             ),
+            pytest.param(
+                json.dumps([]),
+                0,
+                "oldsha123\trefs/heads/main\n",
+                "",
+                [],
+                id="base_sha_unchanged_no_refire",
+            ),
         ],
     )
     def test_detect_pr_events_base_branch_tip_changed_fires_base_updated(
@@ -806,6 +814,51 @@ class TestDetectPrEventsQuietCall:
         # Assert
         assert result == []
         assert path.read_text() == text_before
+
+
+# ---------------------------------------------------------------------------
+# detect_pr_events — task_merged has no persisted "already reported" field
+# (unlike review_comment/ci_failure/dependency_merged, which each derive
+# idempotency from a recorded field); a merged PR is a terminal state, so
+# task_merged fires on every call for as long as the PR stays merged. This
+# documents that behavior explicitly rather than leaving it untested.
+# ---------------------------------------------------------------------------
+
+class TestDetectPrEventsTaskMergedCalledAgain:
+    def test_detect_pr_events_task_merged_still_fires_on_a_second_call(self, tmp_path, monkeypatch):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        from pr_event_detector import detect_pr_events
+
+        path = compute_context_path("ADR-999", get_repo_slug())
+        PipelineContext(
+            work_item_id="ADR-999",
+            pr_url="https://github.com/acme/widget/pull/57",
+        ).save(path)
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:2] == ["gh", "api"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:3] == ["gh", "pr", "view"]:
+                return MagicMock(
+                    returncode=0, stdout=json.dumps({"state": "MERGED", "baseRefName": "main"}), stderr=""
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        # Act
+        with patch("subprocess.run", side_effect=fake_run):
+            first_result = detect_pr_events("ADR-999")
+            second_result = detect_pr_events("ADR-999")
+
+        # Assert
+        assert first_result == ["task_merged"]
+        assert second_result == ["task_merged"]
 
 
 # ---------------------------------------------------------------------------
