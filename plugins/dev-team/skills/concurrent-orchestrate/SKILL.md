@@ -4,7 +4,8 @@ user-invocable: false
 description: >
   Orchestration loop for running several dependency-ordered task-work-items concurrently.
   Repeatedly invokes concurrent_schedule.py, spawns an isolated workflow-orchestrate run per
-  newly eligible task, and stops on "complete" or "blocked" instead of polling forever.
+  newly eligible task, auto-starts a dev-team:watch-pr monitor the moment each one reaches
+  hand-off, and stops on "complete" or "blocked" instead of polling forever.
 argument-hint: --target-mode <up-to|list> --target <key, or comma-separated keys>
 ---
 
@@ -51,7 +52,7 @@ and stopping on `"complete"` or `"blocked"`.
   `concurrent_schedule.py` owns all of that
 - Fix build errors, test failures, or code review comments yourself
 - Invoke agent skills directly (other than spawning `workflow-orchestrate` itself, unmodified,
-  per task)
+  per task, and `dev-team:watch-pr` once that task reaches hand-off)
 - Edit source files or test files
 - Take any action beyond what the script's JSON descriptor instructs
 
@@ -121,8 +122,42 @@ Re-invoke the scheduler (step 1a) whenever either of these happens, whichever co
   readiness gate for its dependents) is not a terminal event you're notified on, so periodic
   re-invocation is the only way to catch it.
 - **Any spawned pipeline from step 1c finishes** — the harness notifies on background-agent
-  completion; treat that notification as an immediate trigger to re-invoke rather than waiting
-  out the rest of the 60 seconds.
+  completion; treat that notification as an immediate trigger both to re-invoke rather than
+  waiting out the rest of the 60 seconds, and to run step 1e below for the task_id(s) that
+  notification names.
+
+#### 1e — Auto-start `dev-team:watch-pr` for a task that just reached hand-off
+
+Keep your own in-session record of which task_ids you've already spawned a `dev-team:watch-pr`
+monitor for (start empty; this record lives only in this session's own memory, never written to
+any file — a restarted `concurrent-orchestrate` run has no spawned pipelines finishing anew for
+an already-handed-off task, so it never re-triggers this step for one).
+
+A spawned pipeline finishing successfully (step 1c's `workflow-orchestrate` `Agent` session
+reporting success) means that task's own state machine transitioned `handoff → done` in one
+pass — there is no separately observable "reached hand-off" event apart from that session
+finishing successfully. For each task_id whose spawned pipeline the step 1d trigger just
+reported as finished *successfully*, and that isn't already in your in-session record:
+
+1. Use the `use-context-file` skill to read that task's context file and confirm `pr_url` is
+   set (it always will be, on a successful hand-off — this is a sanity check, not a retry loop).
+2. Spawn `dev-team:watch-pr` for it as a **local background `Agent`** (`run_in_background: true`,
+   not a cloud routine), mirroring the exact spawn pattern step 1c already uses for
+   `workflow-orchestrate` itself:
+   ```
+   Agent(
+     subagent_type: "claude",
+     isolation: "worktree",
+     run_in_background: true,
+     prompt: "Invoke the `watch-pr` skill with arguments:
+   --work-item-id <task_id>"
+   )
+   ```
+3. Add `task_id` to your in-session record so this task never gets a second monitor spawned for
+   it, even if a later poll re-notices its pipeline as finished.
+
+A pipeline that finished *unsuccessfully* (failed rather than handed off) never reaches this
+step — there is no PR to monitor, so no `dev-team:watch-pr` is spawned for it.
 
 ### 2 — Report
 
