@@ -17,9 +17,8 @@ argument-hint: --target-mode <up-to|list> --target <key, or comma-separated keys
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an
-environment variable. `concurrent_schedule.py` lives in the sibling `workflow-orchestrate`
-skill's `scripts/` directory, so it is invoked as
-`<skill-dir>/../workflow-orchestrate/scripts/concurrent_schedule.py` — still anchored to
+environment variable. `concurrent_schedule.py` lives in this skill's own `scripts/` directory,
+so it is invoked as `<skill-dir>/scripts/concurrent_schedule.py` — still anchored to
 `<skill-dir>`, never to an assumed repo-root CWD.
 
 ## Role
@@ -48,13 +47,13 @@ Repeat the following until the script reports `"complete"` or `"blocked"`.
 #### 1a — Run the scheduler script
 
 ```bash
-python "<skill-dir>/../workflow-orchestrate/scripts/concurrent_schedule.py" --up-to "<target>"
+python "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>"
 ```
 
 or, for the explicit-list form:
 
 ```bash
-python "<skill-dir>/../workflow-orchestrate/scripts/concurrent_schedule.py" --list "<target>"
+python "<skill-dir>/scripts/concurrent_schedule.py" --list "<target>"
 ```
 
 Capture stdout — a single JSON object `{"status": ..., "spawn": [...], "blocked_tasks": [...]}`.

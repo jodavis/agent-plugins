@@ -32,7 +32,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-sys.path.insert(0, str(Path(__file__).parent))
+_WORKFLOW_ORCHESTRATE_SCRIPTS = (
+    Path(__file__).resolve().parent.parent.parent / "workflow-orchestrate" / "scripts"
+)
+sys.path.insert(0, str(_WORKFLOW_ORCHESTRATE_SCRIPTS))
 import dev_team  # noqa: E402 — referenced via module attribute so tests can monkeypatch dev_team.REPO_ROOT
 from get_context_path import get_repo_slug  # noqa: E402
 from task_dependencies import TaskDependencyError, parse_task_dependencies  # noqa: E402
