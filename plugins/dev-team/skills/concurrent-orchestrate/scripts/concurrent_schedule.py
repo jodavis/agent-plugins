@@ -262,7 +262,14 @@ def main() -> None:
 
     try:
         result = compute_next_batch(target)
-    except (TaskDependencyError, ConcurrentScheduleError, OSError, RuntimeError) as e:
+    except (
+        TaskDependencyError,
+        ConcurrentScheduleError,
+        OSError,
+        RuntimeError,
+        json.JSONDecodeError,
+        subprocess.TimeoutExpired,
+    ) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 

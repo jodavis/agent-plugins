@@ -452,3 +452,58 @@ class TestMainCliWrapper:
         assert result.returncode == 1
         assert result.stdout == ""
         assert "Error:" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# main() CLI wrapper — exception-handling coverage beyond the documented
+# (TaskDependencyError, ConcurrentScheduleError, OSError, RuntimeError) tuple
+# ---------------------------------------------------------------------------
+
+class TestMainUnhandledFailureModes:
+    def test_main_corrupted_data_file_prints_clean_error_and_exits_nonzero(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Arrange — a target's own data file exists but is not valid JSON, simulating
+        # on-disk corruption of `concurrent-<target-slug>.json`.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        import concurrent_schedule
+        from concurrent_schedule import TargetSpec, _data_file_path
+        from get_context_path import get_repo_slug
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+        data_path = _data_file_path(get_repo_slug(), target)
+        data_path.parent.mkdir(parents=True, exist_ok=True)
+        data_path.write_text("{not valid json", encoding="utf-8")
+        monkeypatch.setattr(sys, "argv", ["concurrent_schedule.py", "--up-to", "ADR-1"])
+
+        # Act & Assert
+        with pytest.raises(SystemExit) as exc_info:
+            concurrent_schedule.main()
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "Error:" in captured.err
+
+    def test_main_merge_config_subprocess_timeout_prints_clean_error_and_exits_nonzero(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Arrange — `_max_parallel_tasks`'s call to `merge_config.py` times out.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        import concurrent_schedule
+        from concurrent_schedule import TargetSpec
+
+        def _raise_timeout(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="merge_config.py", timeout=30)
+
+        monkeypatch.setattr(concurrent_schedule.subprocess, "run", _raise_timeout)
+        monkeypatch.setattr(sys, "argv", ["concurrent_schedule.py", "--up-to", "ADR-1"])
+
+        # Act & Assert
+        with pytest.raises(SystemExit) as exc_info:
+            concurrent_schedule.main()
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "Error:" in captured.err
