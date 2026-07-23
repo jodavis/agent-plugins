@@ -149,6 +149,21 @@ stop and report that error in detail.
 The result is a list that may contain more than one fired event in the same pass — handle all of
 them before returning to 4a, in this order:
 
+0. **`task_merged`, if present, takes absolute precedence over everything else in this list** —
+   the task's own PR has merged, so nothing else fired alongside it (a rebase, a review comment,
+   a CI result) is still actionable against a PR that's already closed. Remove this session's own
+   worktree/branch, then stop, skipping bullets 1–3 below entirely for this pass:
+   ```bash
+   cd "$(git rev-parse --path-format=absolute --git-common-dir)/.."
+   git worktree remove <watch_worktree_path> --force
+   git branch -D <watch_worktree_branch>
+   ```
+   (`cd` out first — a worktree cannot reliably remove itself while it's still the process's own
+   cwd.) Report success: the task's PR has merged and its monitor has stopped.
+
+Otherwise, handle every one of the remaining event types present in this pass, rebase-related
+first, **before** returning to step 4a — do not re-poll partway through:
+
 1. **`dependency_merged`** — re-read `base_branch` from the context file via `use-context-file`.
    `pr_event_detector.py` already re-targeted it (to wherever the dependency's PR actually merged
    — usually the feature branch, but possibly another still-open task's branch in an
@@ -157,6 +172,13 @@ them before returning to 4a, in this order:
 2. **`base_updated`** (and `dependency_merged` was not also present) — run the rebase mechanic
    (step 4c) using the `base_branch` already on file; it hasn't changed identity, only moved
    forward.
+
+   Either way, once the rebase mechanic (step 4c) concludes with `"rebased"`, or step 5 concludes
+   a conflict with `"resolved"` and this session's own push succeeds, continue on to bullet 3
+   below **for this same pass** — the events it names already fired and were marked seen by
+   `pr_event_detector.py` the moment `watch_pr_poll.py` returned them, so skipping them here
+   would silently drop them, not just defer them to the next poll. (If step 5 instead concludes
+   `"unresolved"`, this agent stops entirely per step 5 — bullet 3 is moot.)
 3. **`review_comment`** and/or **`ci_failure`** — if either or both fired this pass, spawn `fix-pr`
    **once** (not once per event type — `fix-pr`'s own step 4 already fetches both open review
    comment threads and PR check failures together in one pass):
@@ -176,22 +198,12 @@ them before returning to 4a, in this order:
    through) — start `<n>` at 1 and increment it for each such spawn made during this run. If the
    spawn reports anything other than `successful`, stop and report the failure in detail — do not
    retry automatically.
-4. **`task_merged`** — the task's own PR has merged. Remove this session's own worktree/branch,
-   then stop:
-   ```bash
-   cd "$(git rev-parse --path-format=absolute --git-common-dir)/.."
-   git worktree remove <watch_worktree_path> --force
-   git branch -D <watch_worktree_branch>
-   ```
-   (`cd` out first — a worktree cannot reliably remove itself while it's still the process's own
-   cwd.) Report success: the task's PR has merged and its monitor has stopped.
 
 If none of the above fired but the list was non-empty (should not happen — `watch_pr_poll.py`
 only returns a non-empty list when `detect_pr_events` reports a real fired event), treat it the
 same as `"no_change"` and return to step 4a.
 
-Once every fired event in this pass has been handled (steps 1–3 may all run in the same pass;
-step 4 always ends the loop), return to step 4a — unless step 4c routed you to step 5 instead.
+Once every event in this pass has been handled, return to step 4a.
 
 #### 4c — Run the rebase mechanic
 
@@ -205,8 +217,8 @@ print(rebase_onto('<working_branch>', '<base_branch>', Path.cwd()))
 "
 ```
 
-- **`rebased`** — the mechanic already fetched, rebased, and force-pushed with lease. Return to
-  step 4a.
+- **`rebased`** — the mechanic already fetched, rebased, and force-pushed with lease. Continue
+  with step 4b's bullet 3 for this same pass.
 - **`conflict`** — go to step 5.
 
 ### 5 — Resolve a rebase conflict
@@ -239,7 +251,9 @@ Otherwise, read the content the spawned agent wrote to `Rebase Conflict <n>` in 
 the spawn's generic `successful` status:
 
 - **`"resolved"`** — run `git push --force-with-lease origin <working_branch>` yourself (not
-  routed back through `rebase_onto()`, which already exited on the conflict). Return to step 4a.
+  routed back through `rebase_onto()`, which already exited on the conflict). Continue with step
+  4b's bullet 3 for the same pass that triggered this conflict (not step 4a directly) — any
+  `review_comment`/`ci_failure` already marked seen in that pass still needs handling.
 - **`"unresolved"`** — run `git rebase --abort` to leave a clean worktree (no rebase in progress),
   then **stop this agent**. There is no `AskUserQuestion` fallback. Your final message must
   describe the conflict in detail (which files, which commit, why it couldn't be resolved with
