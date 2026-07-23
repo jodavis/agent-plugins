@@ -34,6 +34,8 @@ Check the arguments, in order:
 Invoke the `workflow-orchestrate` skill with arguments:
 `--work-item-id <work-item-id> --workflow implement-task-plan --research-skill plan-task`
 
+Then stop.
+
 ### 3 — Run the concurrent workflow
 
 Invoke the `concurrent-orchestrate` skill with arguments:
