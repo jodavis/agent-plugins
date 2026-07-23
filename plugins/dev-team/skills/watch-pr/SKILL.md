@@ -113,7 +113,9 @@ git branch -D <worktree_branch>
 ```
 
 `--force` is deliberate here: the worktree should be clean post hand-off, but this removal must
-not get blocked by any stray state left behind by earlier spawned sub-agents.
+not get blocked by any stray state left behind by earlier spawned sub-agents. If either command
+exits non-zero, this is a **hard stop**: stop immediately and report the failure in detail — do
+not proceed to the recording step below or attempt any further recovery.
 
 Record this session's own worktree as `watch_worktree_path`/`watch_worktree_branch` via
 `use-context-file`:
