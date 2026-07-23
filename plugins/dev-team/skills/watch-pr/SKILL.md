@@ -161,7 +161,10 @@ them before returning to 4a, in this order:
    git branch -D <watch_worktree_branch>
    ```
    (`cd` out first — a worktree cannot reliably remove itself while it's still the process's own
-   cwd.) Report success: the task's PR has merged and its monitor has stopped.
+   cwd.) If either command exits non-zero, this is a **hard stop**: stop immediately and report
+   the failure in detail instead of reporting success — a failed cleanup here must never be
+   reported as a clean halt. Only once both commands succeed, report success: the task's PR has
+   merged and its monitor has stopped.
 
 Otherwise, handle every one of the remaining event types present in this pass, rebase-related
 first, **before** returning to step 4a — do not re-poll partway through:
