@@ -37,6 +37,9 @@ testing:
     - test_*.py
     - "*_test.py"
 
+concurrency:
+  max-parallel-tasks: 3
+
 git-repo:
   user-alias: claude
   working-branches:
