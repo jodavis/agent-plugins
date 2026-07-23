@@ -141,6 +141,10 @@ reported as finished *successfully*, and that isn't already in your in-session r
 
 1. Use the `use-context-file` skill to read that task's context file and confirm `pr_url` is
    set (it always will be, on a successful hand-off — this is a sanity check, not a retry loop).
+   If `pr_url` is empty, do not spawn a monitor for this task_id: skip it, report the
+   inconsistency in detail (task_id and the fact that a successful hand-off left no `pr_url`),
+   and add it to the in-session record anyway so a later poll doesn't repeatedly re-report the
+   same inconsistency for it.
 2. Spawn `dev-team:watch-pr` for it as a **local background `Agent`** (`run_in_background: true`,
    not a cloud routine), mirroring the exact spawn pattern step 1c already uses for
    `workflow-orchestrate` itself:
