@@ -7,7 +7,7 @@ description: >
   moves, and dependency merges, reacting to every fired event — rebasing, spawning `fix-pr` for
   review/CI issues, resolving rebase conflicts via the developer agent, and halting once the
   task's own PR merges.
-argument-hint: <work-item-id>
+argument-hint: --work-item-id <work-item-id>
 ---
 
 Use this skill when:
