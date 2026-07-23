@@ -136,21 +136,6 @@ testing:
     - "*.spec.ts"
 ```
 
-### `concurrency.max-parallel-tasks` — integer
-
-The repo-wide cap on concurrently active task-pipeline spawns, enforced by
-`concurrent_schedule.py` when running `/implement up to <key>` or an explicit multi-task
-`/implement` list. Counts only active (non-terminal) `workflow-orchestrate` spawns tracked
-across every `concurrent-<target-slug>.json` file under this repo's state directory — never a
-`dev-team:watch-pr` monitor, which is idle almost all the time it's running. Defaults to `3`;
-override in `.dev-team/config.yaml` for a machine with more (or less) headroom for parallel
-agent sessions:
-
-```yaml
-concurrency:
-  max-parallel-tasks: 5
-```
-
 ### `git-repo`
 
 `user-alias` — substituted for `<user-alias>` in the `working-branches.*` templates below.

@@ -21,6 +21,23 @@ environment variable. `concurrent_schedule.py` lives in this skill's own `script
 so it is invoked as `<skill-dir>/scripts/concurrent_schedule.py` — still anchored to
 `<skill-dir>`, never to an assumed repo-root CWD.
 
+## Configuration
+
+### `concurrency.max-parallel-tasks` — integer
+
+The repo-wide cap on concurrently active task-pipeline spawns, enforced internally by
+`concurrent_schedule.py` (via `get-project-configuration`'s merged config) — never something
+this skill's own prose reads or reasons about directly. Counts only active (non-terminal)
+`workflow-orchestrate` spawns tracked across every `concurrent-<target-slug>.json` file under
+this repo's state directory — never a `dev-team:watch-pr` monitor, which is idle almost all the
+time it's running. Defaults to `3`; override in `.dev-team/config.yaml` for a machine with more
+(or less) headroom for parallel agent sessions:
+
+```yaml
+concurrency:
+  max-parallel-tasks: 5
+```
+
 ## Role
 
 You are the orchestration loop for running several task-work-items concurrently, all bounded
