@@ -39,6 +39,7 @@ report that rather than guessing a tool name.
 | Transition to a new status | `transitionJiraIssue` | Move the issue to a new status |
 | Look up account ID by email | `lookupJiraAccountId` | Resolve a user's Jira account ID (and linked GitHub username, if any) from their email |
 | Get authenticated user info | `atlassianUserInfo` | Return the identity of the currently authenticated Atlassian user |
+| Link two issues | `createIssueLink` | Create a typed link (e.g. `Blocks`) between two issues |
 
 Other skills should reference these operations by name (e.g. "the `editJiraIssue` operation
 from `work-with-Jira-tasks`") rather than hardcoding a `mcp__<prefix>__<suffix>` tool name
@@ -48,6 +49,14 @@ directly.
 
 Use the `getJiraIssue` operation with the issue key (e.g. `PROJ-228`) to retrieve the issue
 fields, including summary, description, status, parent/epic, and assignee.
+
+### Recording a "depends on" relationship
+
+To record that one task-work-item depends on another, use the `createIssueLink` operation with
+the `Blocks` link type: the dependency is the blocker, the dependent task is the blocked issue.
+Jira's link direction is named from the blocker's side, so set `inwardIssue` to the dependency's
+key and `outwardIssue` to the dependent task's key (e.g. task `PROJ-230` depends on `PROJ-228` →
+`inwardIssue: PROJ-228`, `outwardIssue: PROJ-230`, `type: Blocks`).
 
 ## Finding the parent feature-work-item
 
