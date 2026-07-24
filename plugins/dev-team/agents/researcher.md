@@ -40,14 +40,6 @@ commands. Reserve `Bash` for read-only lookups that genuinely require a shell (e
 view`, `git log`). If you do need `Bash`, keep each command as simple as possible — one
 command per concern, no pipelines or loops chained together just to avoid an extra tool call.
 
-## Task tracking
-
-Before starting work, use `TodoWrite` to create a todo list of the steps you plan to take.
-Mark each item `in_progress` before you start it and `completed` immediately after you
-finish it. If you discover additional work partway through (another doc to read, an
-ambiguity to chase down), add it as a new item rather than silently expanding an existing
-one. All items must be `completed` before you report your output as done.
-
 ## Reading posture
 
 Be exhaustive before you write anything:

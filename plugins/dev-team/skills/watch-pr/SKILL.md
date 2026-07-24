@@ -22,8 +22,8 @@ Do NOT use this skill when:
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an
-environment variable. `watch_pr_poll.py`, `pr_event_detector.py`, `rebase_mechanic.py`, and
-`get_todo_log_path.py` all live in the sibling `workflow-orchestrate` skill's `scripts/`
+environment variable. `watch_pr_poll.py`, `pr_event_detector.py`, and `rebase_mechanic.py` all
+live in the sibling `workflow-orchestrate` skill's `scripts/`
 directory, so they are invoked as `<skill-dir>/../workflow-orchestrate/scripts/<script>.py` —
 still anchored to `<skill-dir>`, never to an assumed repo-root CWD.
 
@@ -75,26 +75,6 @@ git checkout <working_branch>
 
 From this point on, plain git commands work directly (no `git -C`) — the whole session's cwd is
 already this worktree.
-
-Also compute this session's own todo log path, mirroring `workflow-orchestrate`'s own step 1:
-
-```bash
-python "<skill-dir>/../workflow-orchestrate/scripts/get_todo_log_path.py" <context_file> <work-item-id>
-```
-
-Start a persistent monitor on it before entering the poll loop, exactly as `workflow-orchestrate`
-does, since this skill's own nested spawns (step 4b/5) write their `TodoWrite` updates there via
-`workflow-worker`:
-
-```
-Monitor(
-  command: "tail -n 0 -F <todo_log>",
-  description: "todo updates for <work-item-id> (watch-pr)",
-  persistent: true
-)
-```
-
-Mirror each notification into your own `TodoWrite` call with that exact payload.
 
 ### 3 — Remove the implement-phase worktree and record this one
 
@@ -194,8 +174,7 @@ first, **before** returning to step 4a — do not re-poll partway through:
    --context-file <context_file>
    --write-section Post-Handoff Fix <n>
    --skill fix-pr
-   --skill-args <work-item-id>
-   --todo-log <todo_log>"
+   --skill-args <work-item-id>"
    )
    ```
    `Post-Handoff Fix <n>` is a section name distinct from the pre-hand-off pipeline's own
@@ -242,8 +221,7 @@ Agent(
 --context-file <context_file>
 --write-section Rebase Conflict <n>
 --skill resolve-rebase-conflict
---skill-args <task's brief/spec context text>
---todo-log <todo_log>"
+--skill-args <task's brief/spec context text>"
 )
 ```
 
@@ -272,5 +250,4 @@ the spawn's generic `successful` status:
 - `read-task-brief` — sourcing the brief/spec context `resolve-rebase-conflict` needs as its
   argument
 - `workflow-worker` — the mediated spawn pattern (`--context-file`/`--write-section`/`--skill`/
-  `--skill-args`/`--todo-log`) for nested `fix-pr` and `resolve-rebase-conflict` calls; its
-  removal is tracked separately as ADR-314 and is not pre-empted here
+  `--skill-args`) for nested `fix-pr` and `resolve-rebase-conflict` calls
