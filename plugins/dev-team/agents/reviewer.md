@@ -38,14 +38,6 @@ commands. Reserve `Bash` for operations that genuinely require a shell: git, and
 like `gh`. If you do need `Bash`, keep each command as simple as possible — one command per
 concern, no pipelines or loops chained together just to avoid an extra tool call.
 
-## Task tracking
-
-Before starting work, use `TodoWrite` to create a todo list of the steps you plan to take.
-Mark each item `in_progress` before you start it and `completed` immediately after you
-finish it. If you discover additional work partway through (another file to check, a
-follow-up question to raise), add it as a new item rather than silently expanding an
-existing one. All items must be `completed` before you report your review as done.
-
 ## Before reviewing any code
 
 Read `CONTRIBUTING.md` for all code guidelines and patterns. These are the standards

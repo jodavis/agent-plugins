@@ -32,50 +32,17 @@ appropriate agent for each step.
 
 ## Steps
 
-### 1 — Compute context file and todo log paths
+### 1 — Compute context file path
 
 ```bash
 python "<skill-dir>/scripts/get_context_path.py" "<work-item-id>"
 ```
 
-Derive the todo log path from the context file's directory and create it using this script:
-
-```bash
-python "<skill-dir>/scripts/get_todo_log_path.py" "<context_file>" "<work-item-id>"
-```
-
-### 2 — Start tailing the todo log
-
-Spawned agents never call `TodoWrite` directly — they append their todo updates to
-`<todo_log>` instead (see `workflow-worker`). Mirror those updates into your own todo
-list so the user can see subagent progress in your context.
-
-Start a persistent monitor on the todo log **before entering the orchestration loop**:
-
-```
-Monitor(
-  command: "tail -n 0 -F <todo_log>",
-  description: "todo updates for <work-item-id>",
-  persistent: true
-)
-```
-
-`tail -n 0 -F` emits only lines appended from this point forward — never the file's
-existing contents — so you only ever see incremental changes, not the full history.
-
-Each line is a complete JSON object with the same shape you would pass to `TodoWrite`
-(e.g. `{"todos": [...]}`). Whenever a notification arrives, call `TodoWrite` yourself
-with that exact payload. Do not read the rest of the log file or summarize past entries
-— only act on the new line(s) in the notification, to keep your own context clean.
-
-Keep this monitor running for the duration of the workflow. Stop it with `TaskStop` once
-the loop reaches a terminal `"done"` action (success or failure).
-
-### 3 — Orchestration loop
+### 2 — Orchestration loop
 
 Repeat the following until `action == "done"` or a terminal condition is reached.
 
-#### 3a — Run the step machine
+#### 2a — Run the step machine
 
 ```bash
 python -u <skill-dir>/scripts/dev_team.py <work-item-id> \
@@ -86,7 +53,7 @@ python -u <skill-dir>/scripts/dev_team.py <work-item-id> \
 
 Capture all stdout. The last JSON array on stdout is the action descriptor list.
 
-#### 3b — Parse the descriptor array
+#### 2b — Parse the descriptor array
 
 Display any non-JSON stdout lines as status updates to the user.
 
@@ -95,15 +62,13 @@ Extract the last line from stdout that is a valid JSON array (starts with `[`).
 If the descriptors contain any `"message"` fields, use them to describe to the user
 what work is being done before spawning the next agents.
 
-#### 3c — Branch on action
+#### 2c — Branch on action
 
 Let `descriptors` be the parsed JSON array. The array always has at least one item.
 
 **If `descriptors` is a single-item array and `descriptors[0].action == "done"`:**
-- If `result == "success"`: report success to the user, stop the todo log monitor with
-  `TaskStop`, and stop.
-- If `result == "failed"`: report the failure reason to the user, stop the todo log
-  monitor with `TaskStop`, and stop.
+- If `result == "success"`: report success to the user and stop.
+- If `result == "failed"`: report the failure reason to the user and stop.
 
 **If `descriptors` is a single-item array and `descriptors[0].skill == "troubleshooter"`:**
 
@@ -121,8 +86,7 @@ results = await [
 --context-file <context_file>
 --write-section <item.write_section>
 --skill <item.skill>
---skill-args <item.args>
---todo-log <todo_log>"
+--skill-args <item.args>"
   )  if item.action == "spawn_agent"  else
 
   Agent(
@@ -148,7 +112,7 @@ Log each result:
 
 If any result is anything other than `successful` (case-insensitive), run the troubleshooter agent (see below).
 
-### 4 — Error handling
+### 3 — Error handling
 
 If `dev_team.py` exits with a non-zero code, run the troubleshooter agent (see below).
 
@@ -169,8 +133,7 @@ Agent(
 
 Handle the outcome (a JSON object with `action` field):
 - `"continue"` → continue the loop (the troubleshooter has edited the context file)
-- `"terminate"` → report the reason to the user, stop the todo log monitor with
-  `TaskStop`, and stop
+- `"terminate"` → report the reason to the user and stop
 - `"needs_user_input"` →
   1. Ask the user the troubleshooter's question
   2. Write the user's answer to the `troubleshooter_input` frontmatter key in the
