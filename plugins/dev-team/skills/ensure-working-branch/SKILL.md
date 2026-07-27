@@ -36,15 +36,14 @@ Run this first, unconditionally, before anything else in this skill — even bef
 already-known-values check:
 
 ```bash
-git stash list
 git status --short
 ```
 
-Both must be empty. If either produces any output, this is a **hard stop**: stop immediately and
-report the failure in detail (do not proceed to step 2 or attempt any recovery). This guards
-against a confirmed upstream `isolation: "worktree"` bug (Claude Code issues #51596, #37873,
-#41010) that can silently reuse a stale worktree/branch on an 8-hex-char ID-prefix collision — a
-dirty worktree at this point means it isn't the fresh one this task expects.
+Must be empty. If it produces any output, this is a **hard stop**: stop immediately and report
+the failure in detail (do not proceed to step 2 or attempt any recovery). This guards against a
+confirmed upstream `isolation: "worktree"` bug (Claude Code issues #51596, #37873, #41010) that
+can silently reuse a stale worktree/branch on an 8-hex-char ID-prefix collision — a dirty
+worktree at this point means it isn't the fresh one this task expects.
 
 ### 2 — Check the context file for already-known values
 
