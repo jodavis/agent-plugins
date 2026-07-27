@@ -74,6 +74,10 @@ or, for the explicit-list form:
 python "<skill-dir>/scripts/concurrent_schedule.py" --list "<target>"
 ```
 
+The script blocks internally rather than returning the instant it sees nothing to do.
+Invoke this `Bash` call with an explicit `timeout` of at least `330000`
+(5.5 minutes) — comfortably past the script's own ~5-minute default polling budget.
+
 Capture stdout — a single JSON object `{"status": ..., "spawn": [...], "blocked_tasks": [...]}`.
 If the script exits non-zero, it prints a clear `Error: ...` message to stderr instead — stop
 and report that error in detail (a dangling/cyclic spec, or an explicit-list task whose
@@ -117,14 +121,22 @@ For each `{task_id, base_branch}` in `spawn`:
 
 #### 1d — Wait, then re-invoke
 
-Re-invoke the scheduler (step 1a) whenever either of these happens, whichever comes first:
-- **60 seconds elapse** — a dependency merely reaching "PR open" mid-pipeline (the actual
-  readiness gate for its dependents) is not a terminal event you're notified on, so periodic
-  re-invocation is the only way to catch it.
-- **Any spawned pipeline from step 1c finishes** — the harness notifies on background-agent
-  completion; treat that notification as an immediate trigger both to re-invoke rather than
-  waiting out the rest of the 60 seconds, and to run step 1e below for the task_id(s) that
-  notification names.
+If step 1c just spawned anything, or a spawned pipeline's completion notification is already
+sitting in front of you, re-invoke the scheduler (step 1a) right away — no extra pause needed,
+since the script's own internal polling (step 1a) already paces repeat calls for you.
+
+Otherwise — step 1a returned `"waiting"` with an empty `spawn`, meaning its own internal ~5
+minutes of polling turned up nothing new — use this natural pause to sanity-check that
+previously spawned pipelines still look healthy (e.g. no unexplained silence from a spawn that
+should be active). If everything looks as expected, wait 30 seconds and re-invoke step 1a again.
+If something looks broken instead, invoke a troubleshooting step rather than continuing to poll
+blindly.
+
+Either way, **any spawned pipeline from step 1c finishing** — reported to you as a background-
+agent completion notification, whether it arrives between cycles or while step 1a's `Bash` call
+is still in flight (in which case you'll see it as soon as that call returns) — is always the
+trigger to run step 1e below for the task_id(s) it names, in addition to whatever re-invocation
+timing applies above.
 
 #### 1e — Auto-start `dev-team:watch-pr` for a task that just reached hand-off
 
