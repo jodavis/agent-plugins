@@ -298,6 +298,116 @@ class TestComputeNextBatchBlocked:
 
 
 # ---------------------------------------------------------------------------
+# poll_until_actionable — blocking wait for something actionable
+# ---------------------------------------------------------------------------
+
+class TestPollUntilActionable:
+    def test_poll_until_actionable_returns_immediately_when_first_poll_has_spawn(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        from concurrent_schedule import TargetSpec, poll_until_actionable
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+        sleeps: list[float] = []
+
+        # Act
+        result = poll_until_actionable(target, sleep=sleeps.append)
+
+        # Assert — spawn is non-empty on the very first poll, so no sleep is ever needed
+        assert result["status"] == "waiting"
+        assert result["spawn"] == [{"task_id": "ADR-1", "base_branch": None}]
+        assert sleeps == []
+
+    def test_poll_until_actionable_returns_immediately_on_complete_without_sleeping(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        _save_context("ADR-1", state="done")
+        from concurrent_schedule import TargetSpec, poll_until_actionable
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+        sleeps: list[float] = []
+
+        # Act
+        result = poll_until_actionable(target, sleep=sleeps.append)
+
+        # Assert
+        assert result["status"] == "complete"
+        assert sleeps == []
+
+    def test_poll_until_actionable_sleeps_and_repolls_while_idle_then_returns_new_spawn(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — ADR-1 depends on ADR-2, which isn't done yet, so the first poll spawns
+        # ADR-2 and nothing is left to spawn for ADR-1 until ADR-2 finishes. Once ADR-2 is
+        # marked "done" partway through polling, the next poll should surface ADR-1 as newly
+        # eligible instead of exhausting all cycles.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": ["ADR-2"], "ADR-2": []})
+        _save_context("ADR-2", state="done")
+        from concurrent_schedule import TargetSpec, compute_next_batch, poll_until_actionable
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+        # First real poll (outside the function, to seed "spawned") — simulate ADR-1 already
+        # spawned so the very first internal poll comes back idle ("waiting", empty spawn).
+        first = compute_next_batch(target)
+        assert first["spawn"] == [{"task_id": "ADR-1", "base_branch": None}]
+        _save_context("ADR-1", state="researching")  # active, non-terminal — still "waiting"
+
+        sleeps: list[float] = []
+        call_count = 0
+        real_compute_next_batch = compute_next_batch
+
+        def _fake_compute(t):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                _save_context("ADR-1", state="done")
+            return real_compute_next_batch(t)
+
+        monkeypatch.setattr("concurrent_schedule.compute_next_batch", _fake_compute)
+
+        # Act
+        result = poll_until_actionable(
+            target, poll_interval_seconds=5, max_poll_cycles=10, sleep=sleeps.append,
+        )
+
+        # Assert — one idle poll, one sleep, then "complete" on the second poll
+        assert result["status"] == "complete"
+        assert sleeps == [5]
+        assert call_count == 2
+
+    def test_poll_until_actionable_gives_up_after_max_poll_cycles_still_idle(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — a single task with an unmet dependency stays "waiting" with an empty spawn
+        # forever (nothing newly eligible), so the poll loop must give up after exhausting its
+        # configured cycle budget rather than blocking indefinitely.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": ["ADR-2"], "ADR-2": []})
+        _save_context("ADR-2", state="researching")  # never reaches "done"
+        from concurrent_schedule import TargetSpec, poll_until_actionable
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+        sleeps: list[float] = []
+
+        # Act
+        result = poll_until_actionable(
+            target, poll_interval_seconds=30, max_poll_cycles=3, sleep=sleeps.append,
+        )
+
+        # Assert — initial poll + 3 more, each preceded by one 30s sleep
+        assert result["status"] == "waiting"
+        assert result["spawn"] == []
+        assert sleeps == [30, 30, 30]
+
+
+# ---------------------------------------------------------------------------
 # Repo-wide concurrency cap enforcement
 # ---------------------------------------------------------------------------
 

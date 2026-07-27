@@ -30,6 +30,17 @@ appropriate agent for each step.
 - Edit source files or test files
 - Take any action beyond what the JSON descriptor instructs
 
+**On any termination outside the normal `"done"` path** — an unhandled exception, a descriptor
+shape that matches none of step 2c's cases, a tool failure the troubleshooter loop doesn't cover,
+or any other condition this skill's prose doesn't explicitly name — report in as much detail as
+you can: what you were doing, the exact error/output you saw, and the state you're leaving
+things in. This session's own final message is the only record a caller (whether that's
+`concurrent-orchestrate`, watching this session run in the background, or a human) gets of what
+went wrong, so it is the one place terseness actively hurts. This is the exception to the
+terse-reporting convention the worker/TDD agents you spawn otherwise follow — their one-line
+contract is fine for the routine success/failure cases it's designed for, but you should never
+compress your own report of a genuinely unexpected failure down to one line.
+
 ## Steps
 
 ### 1 — Compute context file path
@@ -111,6 +122,11 @@ Log each result:
 ```
 
 If any result is anything other than `successful` (case-insensitive), run the troubleshooter agent (see below).
+
+**If `descriptors` matches none of the shapes above** (e.g. an unrecognized `action` value, a
+single-item array whose one item is neither `"done"` nor `troubleshooter`): do not guess and
+proceed — this is an unknown condition. Stop and report it in full detail per this skill's Role
+section above: the raw `descriptors` JSON, what shape you expected, and why it didn't match.
 
 ### 3 — Error handling
 
