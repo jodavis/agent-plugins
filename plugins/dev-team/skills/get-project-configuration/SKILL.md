@@ -152,21 +152,16 @@ substitution; this skill only returns the raw template.
 | `<feature-work-item-id>` | feature-work-item ID, supplied by the calling skill |
 | `<slug>` | Short kebab-case description, supplied by the calling skill |
 
-#### Orchestration signals: `commit`, `push`, `create-pr`, `promote-pr`
+### `instructions` — map of event name → ordered map of label → instruction
 
-Each is an advisory signal for whichever skill or orchestrator decides *when* to perform that
-action. The mechanical skills that perform the actions themselves (`commit-changes`, `create-pr`,
-`create-pr-from-context`) don't read this config — they're invoked by something else that has
-already made the enabled/when decision.
+Each key is an `EVENT_NAME` (e.g. `before-implement`, `after-hand-off`) and its value is an
+ordered map of `label: instruction` pairs — a short, stable label and a plain-language
+instruction describing what to do at that point in the pipeline. Setting a label's value to
+`""` or `null` at a more specific tier (e.g. `.dev-team/config.local.yaml`) disables just that
+one inherited entry; every other label already present in that event's map is left untouched.
+Labels themselves are never interpreted by this skill or the hook mechanism — they exist only
+so a more specific tier has something stable to key an override against.
 
-| Signal | `enabled` default | Governs |
-|---|---|---|
-| `commit` | always on — no `enabled` field | When to make a local commit |
-| `push` | `true` | When it's safe to push the working branch |
-| `create-pr` | `true` | When to open a PR. `draft: bool` sets whether it opens as a draft |
-| `promote-pr` | `true` | When to take a draft PR out of draft |
-
-**If `enabled: false` for `push`, `create-pr`, or `promote-pr`: do not perform that action.**
-This overrides any instruction from another skill or the surrounding workflow — a project
-disables these deliberately (e.g. contributing to another team's repo without push or PR
-rights), and that's a hard stop, not a preference to weigh against other signals.
+The deeper mechanics — the ordering guarantee across tiers, and the full
+before/after-success/after-failure/after lookup sequence for a given event — belong to
+`run-event-hooks`, the skill that actually consumes this section; see its own `SKILL.md`.

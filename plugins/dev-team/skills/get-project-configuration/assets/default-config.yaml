@@ -45,15 +45,31 @@ git-repo:
   working-branches:
     task: dev/<user-alias>/<task-work-item-id>-<slug>
     feature: feature/<feature-work-item-id>-<slug>
-  commit:
-    when: A task implementation is complete, or on each individual bug or code review comment addressed
-  push:
-    enabled: true
-    when: Only after the validation step passes (or is skipped, if the project has no validation.script configured)
-  create-pr:
-    enabled: true
-    draft: true
-    when: the working branch has been pushed and a PR does not already exist
-  promote-pr:
-    enabled: true
-    when: All review comments are addressed and validation passes
+
+instructions:
+  before-debug:
+  after-debug:
+  before-research:
+  after-research:
+  before-implement:
+    self-assign: Assign Jira work item to self
+    transition: Transition Jira work item to "In Progress"
+  after-implement:
+  before-fix:
+  after-fix:
+  before-validate:
+  after-validate-success:
+    push: Push git changes to remote
+  after-validate-failure:
+  before-create-pr:
+    ensure-pushed: If there are uncommitted changes, commit and push the branch
+  after-create-pr:
+    self-assign: Assign Jira work item to self
+    transition: Transition Jira work item to "In Review"
+  before-review:
+  after-review:
+  before-hand-off:
+  after-hand-off:
+    promote: Promote GitHub PR to ready for review
+    request-review: Request a GitHub review from <default reviewer name>
+    assign-work-item: Assign work item to <default reviewer email>
