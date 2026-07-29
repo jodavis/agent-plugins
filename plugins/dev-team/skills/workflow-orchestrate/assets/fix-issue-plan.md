@@ -44,5 +44,6 @@ All three must pass for `signoff` to emit `approved`. Any failure from any task 
 
 The `handoff` state runs `final-sign-off` once a PR has been approved — either directly
 out of `reviewing` on a clean first pass, or out of `signoff` after a `fixing-pr` cycle.
-It converts the PR from draft to ready for review, assigns the Jira issue to the human
-reviewer, requests their GitHub review, and adds a Jira comment noting the hand-off.
+`final-sign-off` itself only reports that the hand-off point was reached; converting the PR
+to ready for review, requesting the human reviewer's GitHub review, and assigning the work
+item to them is performed afterward by this event's configured `after-hand-off` instructions.
