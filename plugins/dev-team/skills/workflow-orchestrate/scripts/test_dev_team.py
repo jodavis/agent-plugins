@@ -587,7 +587,7 @@ class TestReviewStepPrUrlExtraction:
         """When pending_agent==create-pr and PR URL section is written, pr_url lands in frontmatter."""
         from dev_team import PipelineContext
         ctx = self.make_sut(
-            state="creating-pr",
+            state="creating_pr",
             pending_agent="create-pr",
             work_summaries=["# Summary"],
         )
@@ -1124,7 +1124,7 @@ class TestEventNamePerStep:
         ("ReviewStep", "review"),
         ("FixStep", "fix"),
         ("FixPrStep", "fix"),
-        ("HandoffStep", "hand-off"),
+        ("HandoffStep", "signoff"),
     ])
     def test_step_declares_expected_event_name(self, step_class_name, expected_event):
         import dev_team
@@ -1269,3 +1269,40 @@ class TestEventFieldInjection:
         trigger = pipeline._do_get_actions_and_exit(step)
 
         assert trigger == "done_ok"
+
+
+# ---------------------------------------------------------------------------
+# Workflow asset transitions — reviewing must always route through signoff
+# ---------------------------------------------------------------------------
+
+class TestWorkflowAssetSignoffRouting:
+    """Regression coverage for a real bug PR #99's human reviewer found: both shipped
+    workflow assets let `reviewing --> handoff : approved` bypass `signoff` entirely on a
+    clean first-pass review, so a task that never needed a `fixing_pr` cycle skipped the
+    signoff parallel checks (and, before this fix, the hand-off hooks tied to them) outright.
+    `reviewing`'s only `approved` exit must be `signoff` — `signoff` is what may reach
+    `handoff`, never `reviewing` directly."""
+
+    ASSETS_DIR = SCRIPTS_DIR.parent / "assets"
+
+    @pytest.mark.parametrize("asset_name", [
+        "implement-task-plan.md",
+        "fix-issue-plan.md",
+    ])
+    def test_reviewing_approved_routes_to_signoff_not_handoff(self, asset_name):
+        from dev_team import parse_workflow
+        workflow = parse_workflow(self.ASSETS_DIR / asset_name)
+        assert workflow.transitions["reviewing"]["approved"] == "signoff"
+
+    @pytest.mark.parametrize("asset_name", [
+        "implement-task-plan.md",
+        "fix-issue-plan.md",
+    ])
+    def test_only_signoff_reaches_handoff(self, asset_name):
+        from dev_team import parse_workflow
+        workflow = parse_workflow(self.ASSETS_DIR / asset_name)
+        sources_reaching_handoff = [
+            src for src, triggers in workflow.transitions.items()
+            if "handoff" in triggers.values()
+        ]
+        assert sources_reaching_handoff == ["signoff"]

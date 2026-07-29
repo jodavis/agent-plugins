@@ -602,7 +602,7 @@ class ValidateStep(Step):
 
 
 class CreatePrStep(Step):
-    handles = "creating-pr"
+    handles = "creating_pr"
     EVENT_NAME = "create-pr"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
@@ -955,7 +955,7 @@ class FixStep(Step):
 
 
 class FixPrStep(Step):
-    handles = "fixing-pr"
+    handles = "fixing_pr"
     EVENT_NAME = "fix"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
@@ -1020,8 +1020,18 @@ class FixPrStep(Step):
 
 
 class HandoffStep(Step):
+    """Runs only once `signoff` has approved — `reviewing`'s own `approved` trigger routes
+    to `signoff`, never here directly, so every hand-off is preceded by a full signoff pass.
+
+    Its event is named `signoff` (not `handoff`) because the pipeline event a project's
+    `instructions:` config customizes around this step is `before-signoff`/
+    `after-signoff-success`/`after-signoff-failure` — the hand-off work (promote PR, request
+    review, assign the work item) is configured as `after-signoff-success` instructions, run
+    generically by `run-event-hooks` around this near-no-op dispatch.
+    """
+
     handles = "handoff"
-    EVENT_NAME = "hand-off"
+    EVENT_NAME = "signoff"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -1033,7 +1043,7 @@ class HandoffStep(Step):
             return []
         return [{
             "action": "spawn_agent",
-            "message": "PR approved. Developer is handing off to a human reviewer.",
+            "message": "Signoff approved. Developer is handing off to a human reviewer.",
             "agent": "dev-team:developer",
             "skill": "final-sign-off",
             "args": f"{ctx.pr_url} {ctx.work_item_id}",
@@ -1083,10 +1093,10 @@ class DevTeamPipeline:
             "implementing": ImplementStep(ctx, context_path),
             "validating": ValidateStep(ctx, context_path, log_dir),
             "fixing": FixStep(ctx, context_path),
-            "creating-pr": CreatePrStep(ctx, context_path),
+            "creating_pr": CreatePrStep(ctx, context_path),
             "reviewing": ReviewStep(ctx, context_path),
             "signoff": SignoffStep(ctx, context_path, log_dir),
-            "fixing-pr": FixPrStep(ctx, context_path),
+            "fixing_pr": FixPrStep(ctx, context_path),
             "handoff": HandoffStep(ctx, context_path),
         }
 

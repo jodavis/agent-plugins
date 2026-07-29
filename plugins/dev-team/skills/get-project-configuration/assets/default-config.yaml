@@ -68,8 +68,9 @@ instructions:
     transition: Transition Jira work item to "In Review"
   before-review:
   after-review:
-  before-hand-off:
-  after-hand-off:
+  before-signoff:
+  after-signoff-success:
     promote: Promote GitHub PR to ready for review
     request-review: Request a GitHub review from <default reviewer name>
     assign-work-item: Assign work item to <default reviewer email>
+  after-signoff-failure:
