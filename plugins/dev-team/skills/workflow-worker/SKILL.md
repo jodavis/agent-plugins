@@ -13,7 +13,7 @@ argument-hint: --context-file <path> --write-section <section> --skill <skill> [
 - `--write-section` — name of the section to write output to (e.g. `Researcher Brief`)
 - `--skill` — name of the skill to invoke
 - `--skill-args` — (optional) arguments to pass to the skill
-- `--event` — (optional) the pipeline event name for this step (e.g. `implement`, `hand-off`),
+- `--event` — (optional) the pipeline event name for this step (e.g. `implement`, `signoff`),
   matching a `dev_team.py` `Step`'s `EVENT_NAME`. When present, wraps the skill invocation with
   the project's configured before-/after-event instructions via `run-event-hooks`. When absent,
   no hook calls are made at all — behavior is identical to before this argument existed.

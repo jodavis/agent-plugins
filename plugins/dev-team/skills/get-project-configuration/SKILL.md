@@ -154,7 +154,7 @@ substitution; this skill only returns the raw template.
 
 ### `instructions` — map of event name → ordered map of label → instruction
 
-Each key is an `EVENT_NAME` (e.g. `before-implement`, `after-hand-off`) and its value is an
+Each key is an `EVENT_NAME` (e.g. `before-implement`, `after-signoff-success`) and its value is an
 ordered map of `label: instruction` pairs — a short, stable label and a plain-language
 instruction describing what to do at that point in the pipeline. Setting a label's value to
 `""` or `null` at a more specific tier (e.g. `.dev-team/config.local.yaml`) disables just that

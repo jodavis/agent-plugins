@@ -78,7 +78,7 @@ mcp__plugin_github_github__pull_request_review_write(method="resolve_thread", ow
 
 These three operations are bare, mechanical, and independently callable — each is invoked on
 its own from a plain-language instruction (e.g. by `run-event-hooks`, following a project's
-configured `after-hand-off` instructions). None of them reads an environment variable; the
+configured `after-signoff-success` instructions). None of them reads an environment variable; the
 reviewer's or assignee's identity is always a literal value the calling instruction supplies.
 
 ### convert-to-ready
