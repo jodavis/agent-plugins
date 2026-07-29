@@ -573,11 +573,15 @@ the follow-up human task rather than designed here — this decision only fixes 
    context_file)`, which does its own `get-project-configuration` read, resolves `before-<event>`,
    and follows it if non-empty (reading whatever it needs — `work_item_id`, etc. — from the same
    context file). `workflow-worker` then invokes `<skill>` as today, capturing its success/failure
-   outcome, and calls `run-event-hooks(event, "after", outcome, context_file)` — which resolves and
-   follows `after-<event>-success`/`after-<event>-failure` (by `outcome`) then unconditionally
-   `after-<event>` — before writing the skill's own output to the context file. If either
-   `run-event-hooks` call returned `"failed"`, `workflow-worker`'s own overall result is a failure
-   regardless of `<skill>`'s own outcome; otherwise it returns `successful`.
+   outcome, and writes the skill's own output to the context file — before calling
+   `run-event-hooks(event, "after", outcome, context_file)`, which resolves and follows
+   `after-<event>-success`/`after-<event>-failure` (by `outcome`) then unconditionally
+   `after-<event>`. This ordering (write, then after-hook) is intentional: the write happens
+   regardless of the hook's own outcome either way, and there is no concurrency concern within one
+   agent session, so the after-hook runs last rather than sandwiched between invoking `<skill>`
+   and persisting its result. If either `run-event-hooks` call returned `"failed"`,
+   `workflow-worker`'s own overall result is a failure regardless of `<skill>`'s own outcome;
+   otherwise it returns `successful`.
 4. For `validating` with a validation script configured: the `run_script` action dispatches to
    `dev-team:script-runner` via `workflow-script` as today, with `event: "validate"` passed
    alongside it. `workflow-script` runs the validation command, determines `outcome` from the
