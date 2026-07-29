@@ -83,16 +83,30 @@ any, and append it to the `body` argument.
 mcp__plugin_github_github__pull_request_review_write(method="resolve_thread", owner=<owner>, repo=<repo>, pullNumber=<number>, threadId=<PRRT_... node ID>)
 ```
 
-## Requesting human review (approved sign-off only)
+## Hand-off operations
 
-When a review is approved and it is time to hand off to a human reviewer:
+These three operations are bare, mechanical, and independently callable — each is invoked on
+its own from a plain-language instruction (e.g. by `run-event-hooks`, following a project's
+configured `after-signoff-success` instructions). None of them reads an environment variable; the
+reviewer's or assignee's identity is always a literal value the calling instruction supplies.
 
-1. Convert the PR from draft to Ready for Review:
-   ```
-   mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullNumber=<number>, draft=false)
-   ```
-2. Look up the human reviewer's GitHub account via the `lookupJiraAccountId` operation from `work-with-Jira-tasks` with `$REVIEW_ASSIGNEE_EMAIL`.
-3. Request their review:
-   ```
-   mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullNumber=<number>, reviewers=["<github-username>"])
-   ```
+### convert-to-ready
+
+Convert the PR from draft to Ready for Review:
+```
+mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullNumber=<number>, draft=false)
+```
+
+### request-review
+
+Given a GitHub username (supplied by the caller), request their review on the PR:
+```
+mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullNumber=<number>, reviewers=["<github-username>"])
+```
+
+### assign-issue
+
+Given a Jira issue key and a reviewer identity (name or email, supplied by the caller), assign
+the Jira issue to that reviewer using `work-with-Jira-tasks`:
+1. Use the `lookupJiraAccountId` operation to resolve the identity to a Jira account ID.
+2. Use the `editJiraIssue` operation to set the issue's assignee to that account ID.

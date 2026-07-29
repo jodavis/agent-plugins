@@ -21,9 +21,11 @@ Do NOT use this skill when:
 
 ## Arguments
 
-- `--event` — the event name (e.g. `implement`, `hand-off`) — matches the `EVENT_NAME` a
+- `--event` — the event name (e.g. `implement`, `signoff`) — matches the `EVENT_NAME` a
   `dev_team.py` `Step` puts on its descriptor's `event` field, without the `before-`/`after-`
-  prefix
+  prefix. Note `signoff` here names `HandoffStep`'s event (fired only once `signoff` the pipeline
+  state has approved), not the `signoff` state's own three parallel children, which still have no
+  `EVENT_NAME` at all — see "Do NOT use this skill when" above.
 - `--phase` — `before` or `after`
 - `--outcome` — `success` or `failure`; required when `--phase after`, ignored (and normally
   omitted) when `--phase before`, since nothing has run yet to have an outcome at that point
@@ -132,7 +134,7 @@ that fits each, plus the general pattern for anything else:
 | Anything else | Read the instruction literally and pick whichever tool call or skill in this pipeline (Jira, GitHub, git, `work-with-Jira-tasks`, `work-with-GitHub-issues`, `work-with-pr`, `commit-changes`, `create-pr-from-context`) most plausibly performs it, scoped to whatever tools the current agent session actually has (see "Tool scope" below). If genuinely nothing fits, that is a failure for this entry, not a silent skip |
 
 `create-pr-from-context` is never dispatched from here for PR *creation* itself — per the spec,
-PR creation stays `creating-pr`'s own fixed, always-fires pipeline job, not something a hook
+PR creation stays `creating_pr`'s own fixed, always-fires pipeline job, not something a hook
 instruction triggers or skips. `before-create-pr`/`after-create-pr` instructions only layer
 *extra* work around it (e.g. `ensure-pushed`).
 
@@ -144,7 +146,7 @@ This skill runs in-session — invoked directly by whichever agent is already ru
 GitHub-scoped instructions (`self-assign`, `transition`, `promote`, `request-review`,
 `assign-work-item`) only resolve successfully on `dev-team:developer`-dispatched events (which
 have both Jira and GitHub MCP access) — this is exactly why the shipped defaults place all such
-instructions on `before-implement`/`after-create-pr`/`after-hand-off` rather than
+instructions on `before-implement`/`after-create-pr`/`after-signoff-success` rather than
 `before-review` (`dev-team:reviewer` has GitHub-PR tools only, no Jira) or any
 `dev-team:researcher`/`dev-team:debugger`-dispatched event (neither Jira nor GitHub PR tools). An
 instruction that needs a tool the current session doesn't have is simply another way for step 3's

@@ -92,7 +92,7 @@ class TestDependencyStatusPrUrlSet:
 
         path = compute_context_path("ADR-1", get_repo_slug())
         PipelineContext(
-            work_item_id="ADR-1", state="creating-pr", pr_url="https://github.com/example/repo/pull/1"
+            work_item_id="ADR-1", state="creating_pr", pr_url="https://github.com/example/repo/pull/1"
         ).save(path)
 
         # Act
@@ -209,7 +209,7 @@ class TestIsTaskEligibleSingleDependency:
         [
             pytest.param(
                 dict(
-                    state="creating-pr",
+                    state="creating_pr",
                     pr_url="https://github.com/example/repo/pull/2",
                     extra_frontmatter={"working_branch": "dev/claude/ADR-2"},
                 ),
@@ -282,7 +282,7 @@ class TestIsTaskEligibleAllButOneDone:
         PipelineContext(work_item_id="ADR-2", state="done").save(compute_context_path("ADR-2", repo_slug))
         PipelineContext(
             work_item_id="ADR-3",
-            state="creating-pr",
+            state="creating_pr",
             pr_url="https://github.com/example/repo/pull/3",
             extra_frontmatter={"working_branch": "dev/claude/ADR-3"},
         ).save(compute_context_path("ADR-3", repo_slug))
@@ -370,7 +370,7 @@ class TestMainCliWrapper:
         dep_path = compute_context_path("ADR-2", get_repo_slug())
         PipelineContext(
             work_item_id="ADR-2",
-            state="creating-pr",
+            state="creating_pr",
             pr_url="https://github.com/example/repo/pull/2",
             extra_frontmatter={"working_branch": "dev/claude/ADR-2"},
         ).save(dep_path)
