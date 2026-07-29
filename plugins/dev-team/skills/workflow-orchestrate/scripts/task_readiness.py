@@ -47,6 +47,17 @@ def dependency_status(task_work_item_id: str) -> Literal["ready", "in_progress",
     return status
 
 
+def task_snapshot(task_work_item_id: str) -> dict:
+    status, ctx = _dependency_status_and_context(task_work_item_id)
+    if ctx is None:
+        return {"status": status, "last_updated": None, "worktree_path": None}
+    return {
+        "status": status,
+        "last_updated": ctx.last_updated.isoformat(),
+        "worktree_path": ctx.extra_frontmatter.get("worktree_path"),
+    }
+
+
 def is_task_eligible(task_work_item_id: str, dependency_ids: list[str]) -> tuple[Literal["eligible", "waiting", "blocked"], str | None]:
     if not dependency_ids:
         return ("eligible", None)
