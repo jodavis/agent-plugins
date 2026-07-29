@@ -15,6 +15,8 @@ Covers:
   the not-yet-blocked case where an active (non-terminal) spawn still exists
 - Repo-wide concurrency cap: enforced across multiple target data files, not just its own
 - _max_parallel_tasks: default (3) and project-configured override
+- compute_next_batch: "running" includes a task_snapshot() entry for each non-terminal
+  already-spawned task, and excludes one once it reaches a terminal state
 - main() CLI wrapper: one narrow integration test for the primary happy path
 """
 
@@ -214,7 +216,7 @@ class TestComputeNextBatchComplete:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "complete", "spawn": [], "blocked_tasks": []}
+        assert result == {"status": "complete", "spawn": [], "blocked_tasks": [], "running": []}
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +242,7 @@ class TestComputeNextBatchBlocked:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"]}
+        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": []}
 
     def test_compute_next_batch_failed_dependency_with_active_spawn_still_waiting(
         self, tmp_path, monkeypatch
@@ -294,7 +296,62 @@ class TestComputeNextBatchBlocked:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"]}
+        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": []}
+
+
+# ---------------------------------------------------------------------------
+# compute_next_batch — "running"
+# ---------------------------------------------------------------------------
+
+class TestComputeNextBatchRunning:
+    def test_compute_next_batch_running_includes_snapshot_for_non_terminal_spawned_task(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — first call spawns ADR-1 (no dependencies); once its context file reflects a
+        # non-terminal, in-progress state with a worktree_path, a second call must report it in
+        # "running" with its snapshot fields populated.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        from concurrent_schedule import TargetSpec, compute_next_batch
+        from task_readiness import task_snapshot
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+        compute_next_batch(target)
+        _save_context(
+            "ADR-1", state="researching",
+            extra_frontmatter={"worktree_path": "/tmp/worktrees/ADR-1"},
+        )
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["running"] == [{"task_id": "ADR-1", **task_snapshot("ADR-1")}]
+
+    def test_compute_next_batch_running_excludes_task_once_it_reaches_terminal_state(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — ADR-2 has no dependencies, so the first call spawns it, leaving ADR-1
+        # (which depends on ADR-2) not yet started. Once ADR-2's context file reflects "done"
+        # (terminal), the second call must both newly spawn ADR-1 (now eligible) and exclude
+        # ADR-2 from "running", since it's no longer non-terminal.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {
+            "ADR-1": ["ADR-2"],
+            "ADR-2": [],
+        })
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+        first = compute_next_batch(target)
+        assert first["spawn"] == [{"task_id": "ADR-2", "base_branch": None}]
+        _save_context("ADR-2", state="done")
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["running"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +597,7 @@ class TestMainCliWrapper:
             "status": "waiting",
             "spawn": [{"task_id": "ADR-1", "base_branch": None}],
             "blocked_tasks": [],
+            "running": [],
         }
 
     def test_main_list_dependency_outside_list_and_not_done_prints_error_and_exits_nonzero(
