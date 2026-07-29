@@ -1020,8 +1020,18 @@ class FixPrStep(Step):
 
 
 class HandoffStep(Step):
+    """Runs only once `signoff` has approved — `reviewing`'s own `approved` trigger routes
+    to `signoff`, never here directly, so every hand-off is preceded by a full signoff pass.
+
+    Its event is named `signoff` (not `handoff`) because the pipeline event a project's
+    `instructions:` config customizes around this step is `before-signoff`/
+    `after-signoff-success`/`after-signoff-failure` — the hand-off work (promote PR, request
+    review, assign the work item) is configured as `after-signoff-success` instructions, run
+    generically by `run-event-hooks` around this near-no-op dispatch.
+    """
+
     handles = "handoff"
-    EVENT_NAME = "hand-off"
+    EVENT_NAME = "signoff"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -1033,7 +1043,7 @@ class HandoffStep(Step):
             return []
         return [{
             "action": "spawn_agent",
-            "message": "PR approved. Developer is handing off to a human reviewer.",
+            "message": "Signoff approved. Developer is handing off to a human reviewer.",
             "agent": "dev-team:developer",
             "skill": "final-sign-off",
             "args": f"{ctx.pr_url} {ctx.work_item_id}",

@@ -10,7 +10,7 @@ stateDiagram-v2
     validating --> fixing : tests_failed
     validating --> creating-pr : clean
     creating-pr --> reviewing : pr_created
-    reviewing --> handoff : approved
+    reviewing --> signoff : approved
     reviewing --> fixing-pr : changes_requested
     fixing-pr --> signoff : fix_done
     signoff --> handoff : approved
@@ -42,8 +42,13 @@ The `signoff` state runs three tasks in parallel before making its decision:
 All three must pass for `signoff` to emit `approved`. Any failure from any task emits
 `changes_requested` and routes back to `fixing-pr`, with accumulated failure details.
 
-The `handoff` state runs `final-sign-off` once a PR has been approved — either directly
-out of `reviewing` on a clean first pass, or out of `signoff` after a `fixing-pr` cycle.
-`final-sign-off` itself only reports that the hand-off point was reached; converting the PR
-to ready for review, requesting the human reviewer's GitHub review, and assigning the work
-item to them is performed afterward by this event's configured `after-hand-off` instructions.
+`reviewing`'s own `approved` trigger routes to `signoff`, never directly to `handoff` — every
+approval, including a clean first pass with no `fixing-pr` cycle, runs the full signoff checks
+before any hand-off work happens.
+
+The `handoff` state is reached only out of `signoff`'s own `approved` trigger. It runs
+`final-sign-off`, a near-no-op agent turn whose only job is to report that the hand-off point
+was reached — it does not itself convert the PR to ready, assign the Jira issue, or request a
+review. That work is performed by this pipeline event's `after-signoff-success` instructions
+(run generically by `run-event-hooks`, wrapped around this dispatch by `workflow-worker`), so a
+project can configure or disable each piece independently.
