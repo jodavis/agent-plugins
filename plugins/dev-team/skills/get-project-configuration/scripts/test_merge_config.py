@@ -191,6 +191,27 @@ class TestParseYaml:
             parse_yaml("a: 1\nnot a valid line\n")
         assert exc_info.value.line_no == 2
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "key: {}\n",
+            "key: []\n",
+            "key: {a: 1}\n",
+            "key: [1, 2]\n",
+            "items:\n- {}\n",
+        ],
+        ids=[
+            "empty_map",
+            "empty_list",
+            "nonempty_map",
+            "nonempty_list",
+            "empty_map_as_list_item",
+        ],
+    )
+    def test_flow_style_syntax_raises(self, text):
+        with pytest.raises(YamlParseError):
+            parse_yaml(text)
+
     def test_adaptiveremote_sample_config_parses_end_to_end(self):
         result = parse_yaml(ADAPTIVEREMOTE_CONFIG)
         assert set(result["work-tracking"].keys()) == {"jira", "github"}

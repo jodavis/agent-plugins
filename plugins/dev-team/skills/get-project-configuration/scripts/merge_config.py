@@ -224,6 +224,8 @@ def _parse_scalar(raw: str, path: Path, line_no: int):
     if len(raw) >= 2 and raw[0] == "'" and raw[-1] == "'":
         # Single-quoted scalars have no backslash escaping; '' is a literal quote.
         return raw[1:-1].replace("''", "'")
+    if raw.startswith("{") or raw.startswith("["):
+        raise YamlParseError(path, line_no, "flow-style YAML (\"{}\"/\"[]\") is not supported")
     return raw
 
 
