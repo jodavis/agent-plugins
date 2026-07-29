@@ -353,6 +353,48 @@ class TestComputeNextBatchRunning:
         # Assert
         assert result["running"] == []
 
+    def test_compute_next_batch_running_reads_each_spawned_tasks_context_file_only_once(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — ADR-1 is spawned and non-terminal, so it lands in both `statuses` (used to
+        # decide it isn't yet "complete"/"blocked") and `running`. Those two must share a single
+        # context-file read per task, not one read to build `statuses` and a second, independent
+        # one to build the `running` snapshot — the second read would double I/O on every poll
+        # cycle and could observe a different (later) state than the one `statuses` already
+        # decided on. (A third, separate read of the same file happens via
+        # `_repo_wide_active_spawn_count`'s repo-wide concurrency-cap scan, which reads every
+        # target's own spawned set independently of this call's `statuses`/`running` and is out
+        # of scope here — so 2 reads, not 1, is the fixed-and-correct count.)
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        from concurrent_schedule import TargetSpec, compute_next_batch
+        import pipeline_context
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+        compute_next_batch(target)
+        _save_context(
+            "ADR-1", state="researching",
+            extra_frontmatter={"worktree_path": "/tmp/worktrees/ADR-1"},
+        )
+
+        load_call_paths: list[str] = []
+        real_load = pipeline_context.PipelineContext.load.__func__
+
+        def _counting_load(cls, path):
+            load_call_paths.append(str(path))
+            return real_load(cls, path)
+
+        monkeypatch.setattr(
+            pipeline_context.PipelineContext, "load", classmethod(_counting_load)
+        )
+
+        # Act
+        compute_next_batch(target)
+
+        # Assert — two context-file reads for ADR-1 while computing this batch: one shared by
+        # `statuses`/`running`, one from the separate repo-wide concurrency-cap scan.
+        assert load_call_paths.count(load_call_paths[0]) == 2
+
 
 # ---------------------------------------------------------------------------
 # poll_until_actionable — blocking wait for something actionable

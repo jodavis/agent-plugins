@@ -23,12 +23,15 @@ from get_context_path import get_repo_slug  # noqa: E402
 from pipeline_context import PipelineContext  # noqa: E402
 
 
-def _dependency_status_and_context(
+def dependency_status_and_context(
     task_work_item_id: str,
 ) -> tuple[Literal["ready", "in_progress", "done", "failed", "not_started"], PipelineContext | None]:
-    """Load a dependency's context file once and derive both its coarse status and the loaded
+    """Load a task's context file once and derive both its coarse status and the loaded
     `PipelineContext` (or `None` if it has no context file yet), so callers that need both don't
-    re-derive `get_repo_slug()`/reload the context file a second time."""
+    re-derive `get_repo_slug()`/reload the context file a second time. Public (not
+    underscore-prefixed) because `concurrent_schedule.py`'s `compute_next_batch()` also reuses
+    this same read to avoid a second, independent context-file read when building its `running`
+    snapshot for a task whose status it already computed."""
     path = compute_context_path(task_work_item_id, get_repo_slug())
     if not path.exists():
         return ("not_started", None)
@@ -43,12 +46,18 @@ def _dependency_status_and_context(
 
 
 def dependency_status(task_work_item_id: str) -> Literal["ready", "in_progress", "done", "failed", "not_started"]:
-    status, _ = _dependency_status_and_context(task_work_item_id)
+    status, _ = dependency_status_and_context(task_work_item_id)
     return status
 
 
-def task_snapshot(task_work_item_id: str) -> dict:
-    status, ctx = _dependency_status_and_context(task_work_item_id)
+def snapshot_from_status_and_context(
+    status: Literal["ready", "in_progress", "done", "failed", "not_started"],
+    ctx: PipelineContext | None,
+) -> dict:
+    """Build the `{"status", "last_updated", "worktree_path"}` snapshot dict from an
+    already-loaded `(status, ctx)` pair — the shared body behind `task_snapshot()`, factored out
+    so a caller that already holds both (e.g. `dependency_status_and_context()`'s own result) can
+    reuse them without a second context-file read."""
     if ctx is None:
         return {"status": status, "last_updated": None, "worktree_path": None}
     return {
@@ -58,10 +67,15 @@ def task_snapshot(task_work_item_id: str) -> dict:
     }
 
 
+def task_snapshot(task_work_item_id: str) -> dict:
+    status, ctx = dependency_status_and_context(task_work_item_id)
+    return snapshot_from_status_and_context(status, ctx)
+
+
 def is_task_eligible(task_work_item_id: str, dependency_ids: list[str]) -> tuple[Literal["eligible", "waiting", "blocked"], str | None]:
     if not dependency_ids:
         return ("eligible", None)
-    results = {dep_id: _dependency_status_and_context(dep_id) for dep_id in dependency_ids}
+    results = {dep_id: dependency_status_and_context(dep_id) for dep_id in dependency_ids}
     statuses = {dep_id: status for dep_id, (status, _) in results.items()}
     if "failed" in statuses.values():
         return ("blocked", None)

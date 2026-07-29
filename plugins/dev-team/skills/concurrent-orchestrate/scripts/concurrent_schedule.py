@@ -49,7 +49,12 @@ sys.path.insert(0, str(_WORKFLOW_ORCHESTRATE_SCRIPTS))
 import dev_team  # noqa: E402 — referenced via module attribute so tests can monkeypatch dev_team.REPO_ROOT
 from get_context_path import get_repo_slug  # noqa: E402
 from task_dependencies import TaskDependencyError, parse_task_dependencies  # noqa: E402
-from task_readiness import dependency_status, is_task_eligible, task_snapshot  # noqa: E402
+from task_readiness import (  # noqa: E402
+    dependency_status,
+    dependency_status_and_context,
+    is_task_eligible,
+    snapshot_from_status_and_context,
+)
 
 _MERGE_CONFIG_SCRIPT = (
     Path(__file__).resolve().parent.parent.parent
@@ -198,14 +203,19 @@ def _load_or_initialize_data(target: TargetSpec, data_path: Path, graph: dict[st
     return data
 
 
-def _running_snapshots(spawned: set[str], statuses: dict[str, str]) -> list[dict]:
-    """One `task_snapshot()` entry per already-spawned task that is still non-terminal, in
-    stable sorted-by-task-id order — matching how every other list `compute_next_batch()`
-    returns is already sorted or ordered from a sorted `tasks` list."""
+def _running_snapshots(
+    spawned: set[str], statuses_and_contexts: dict[str, tuple[str, object]]
+) -> list[dict]:
+    """One snapshot entry per already-spawned task that is still non-terminal, in stable
+    sorted-by-task-id order — matching how every other list `compute_next_batch()` returns is
+    already sorted or ordered from a sorted `tasks` list. Built from the same `(status, ctx)`
+    pairs `compute_next_batch()` already read once to build `statuses` — never a second,
+    independent context-file read per task — so a task's snapshot `status` can never disagree
+    with the value that decided whether it's included."""
     return [
-        {"task_id": task, **task_snapshot(task)}
+        {"task_id": task, **snapshot_from_status_and_context(*statuses_and_contexts[task])}
         for task in sorted(spawned)
-        if statuses[task] not in _TERMINAL_STATUSES
+        if statuses_and_contexts[task][0] not in _TERMINAL_STATUSES
     ]
 
 
@@ -225,7 +235,8 @@ def compute_next_batch(target: TargetSpec) -> dict:
 
     tasks: list[str] = data["tasks"]
     spawned: set[str] = set(data.get("spawned", []))
-    statuses = {task: dependency_status(task) for task in tasks}
+    statuses_and_contexts = {task: dependency_status_and_context(task) for task in tasks}
+    statuses = {task: status for task, (status, _) in statuses_and_contexts.items()}
 
     if all(statuses[task] == "done" for task in tasks):
         return {"status": "complete", "spawn": [], "blocked_tasks": [], "running": []}
@@ -242,7 +253,7 @@ def compute_next_batch(target: TargetSpec) -> dict:
     if blocked_tasks and currently_spawned_terminal:
         return {
             "status": "blocked", "spawn": [], "blocked_tasks": blocked_tasks,
-            "running": _running_snapshots(spawned, statuses),
+            "running": _running_snapshots(spawned, statuses_and_contexts),
         }
 
     eligible: list[tuple[str, str | None]] = []
@@ -262,7 +273,7 @@ def compute_next_batch(target: TargetSpec) -> dict:
         for task, base_branch in eligible[:available]
     ]
 
-    running = _running_snapshots(spawned, statuses)
+    running = _running_snapshots(spawned, statuses_and_contexts)
 
     if spawn:
         data["spawned"] = sorted(spawned | {entry["task_id"] for entry in spawn})
