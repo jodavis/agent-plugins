@@ -134,7 +134,7 @@ that fits each, plus the general pattern for anything else:
 | Anything else | Read the instruction literally and pick whichever tool call or skill in this pipeline (Jira, GitHub, git, `work-with-Jira-tasks`, `work-with-GitHub-issues`, `work-with-pr`, `commit-changes`, `create-pr-from-context`) most plausibly performs it, scoped to whatever tools the current agent session actually has (see "Tool scope" below). If genuinely nothing fits, that is a failure for this entry, not a silent skip |
 
 `create-pr-from-context` is never dispatched from here for PR *creation* itself — per the spec,
-PR creation stays `creating-pr`'s own fixed, always-fires pipeline job, not something a hook
+PR creation stays `creating_pr`'s own fixed, always-fires pipeline job, not something a hook
 instruction triggers or skips. `before-create-pr`/`after-create-pr` instructions only layer
 *extra* work around it (e.g. `ensure-pushed`).
 

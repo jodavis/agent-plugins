@@ -587,7 +587,7 @@ class TestReviewStepPrUrlExtraction:
         """When pending_agent==create-pr and PR URL section is written, pr_url lands in frontmatter."""
         from dev_team import PipelineContext
         ctx = self.make_sut(
-            state="creating-pr",
+            state="creating_pr",
             pending_agent="create-pr",
             work_summaries=["# Summary"],
         )
@@ -1278,7 +1278,7 @@ class TestEventFieldInjection:
 class TestWorkflowAssetSignoffRouting:
     """Regression coverage for a real bug PR #99's human reviewer found: both shipped
     workflow assets let `reviewing --> handoff : approved` bypass `signoff` entirely on a
-    clean first-pass review, so a task that never needed a `fixing-pr` cycle skipped the
+    clean first-pass review, so a task that never needed a `fixing_pr` cycle skipped the
     signoff parallel checks (and, before this fix, the hand-off hooks tied to them) outright.
     `reviewing`'s only `approved` exit must be `signoff` — `signoff` is what may reach
     `handoff`, never `reviewing` directly."""

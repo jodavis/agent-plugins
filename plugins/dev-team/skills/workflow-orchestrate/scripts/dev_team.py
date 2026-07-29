@@ -602,7 +602,7 @@ class ValidateStep(Step):
 
 
 class CreatePrStep(Step):
-    handles = "creating-pr"
+    handles = "creating_pr"
     EVENT_NAME = "create-pr"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
@@ -955,7 +955,7 @@ class FixStep(Step):
 
 
 class FixPrStep(Step):
-    handles = "fixing-pr"
+    handles = "fixing_pr"
     EVENT_NAME = "fix"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
@@ -1093,10 +1093,10 @@ class DevTeamPipeline:
             "implementing": ImplementStep(ctx, context_path),
             "validating": ValidateStep(ctx, context_path, log_dir),
             "fixing": FixStep(ctx, context_path),
-            "creating-pr": CreatePrStep(ctx, context_path),
+            "creating_pr": CreatePrStep(ctx, context_path),
             "reviewing": ReviewStep(ctx, context_path),
             "signoff": SignoffStep(ctx, context_path, log_dir),
-            "fixing-pr": FixPrStep(ctx, context_path),
+            "fixing_pr": FixPrStep(ctx, context_path),
             "handoff": HandoffStep(ctx, context_path),
         }
 
