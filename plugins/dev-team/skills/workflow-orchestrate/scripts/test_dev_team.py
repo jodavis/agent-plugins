@@ -1105,3 +1105,167 @@ class TestCreatePrStep:
         assert actions[0]["action"] == "spawn_agent"
         assert actions[0]["write_section"] == "PR URL"
         assert "context_file" in actions[0]
+
+
+# ---------------------------------------------------------------------------
+# EVENT_NAME per Step
+# ---------------------------------------------------------------------------
+
+class TestEventNamePerStep:
+    """Every single-action Step declares a stable EVENT_NAME; spec-finding/signoff (and
+    signoff's own children) don't."""
+
+    @pytest.mark.parametrize("step_class_name,expected_event", [
+        ("DebugStep", "debug"),
+        ("ResearchStep", "research"),
+        ("ImplementStep", "implement"),
+        ("ValidateStep", "validate"),
+        ("CreatePrStep", "create-pr"),
+        ("ReviewStep", "review"),
+        ("FixStep", "fix"),
+        ("FixPrStep", "fix"),
+        ("HandoffStep", "hand-off"),
+    ])
+    def test_step_declares_expected_event_name(self, step_class_name, expected_event):
+        import dev_team
+        step_class = getattr(dev_team, step_class_name)
+        assert step_class.EVENT_NAME == expected_event
+
+    def test_find_spec_step_has_no_event_name(self):
+        from dev_team import FindSpecStep
+        assert FindSpecStep.EVENT_NAME is None
+
+    def test_signoff_step_has_no_event_name(self):
+        from dev_team import SignoffStep
+        assert SignoffStep.EVENT_NAME is None
+
+    @pytest.mark.parametrize("step_class_name", [
+        "ReviewerSignOffStep", "ResearcherSignOffStep", "BuildValidationStep",
+    ])
+    def test_signoff_child_step_has_no_event_name(self, step_class_name):
+        """SignoffStep's three children still dispatch via workflow-worker/workflow-script
+        exactly as today, just without any --event — the exclusion is about signoff as a
+        whole having no single wrappable agent session, not about these Steps individually."""
+        import dev_team
+        step_class = getattr(dev_team, step_class_name)
+        assert step_class.EVENT_NAME is None
+
+    def test_base_step_default_is_none(self):
+        from dev_team import Step
+        assert Step.EVENT_NAME is None
+
+
+# ---------------------------------------------------------------------------
+# "event" descriptor field injection (DevTeamPipeline._do_get_actions_and_exit)
+# ---------------------------------------------------------------------------
+
+class TestEventFieldInjection:
+    """_do_get_actions_and_exit() injects an 'event' key into each emitted descriptor
+    when the dispatched step declares EVENT_NAME, and omits it entirely otherwise."""
+
+    def _make_pipeline(self, ctx, context_path, step):
+        from dev_team import DevTeamPipeline, WorkflowDefinition, StateMachine
+        workflow = WorkflowDefinition(
+            transitions={
+                "init": {"start": "testing"},
+                "testing": {"done_ok": "done"},
+            },
+            terminal_states={"done"},
+            initial_state="init",
+        )
+        pipeline = DevTeamPipeline.__new__(DevTeamPipeline)
+        pipeline.ctx = ctx
+        pipeline.context_path = context_path
+        pipeline.log_dir = context_path.parent / "logs"
+        pipeline.workflow = workflow
+        pipeline.machine = StateMachine(workflow.transitions, initial="testing")
+        pipeline.step_handlers = {"testing": step}
+        return pipeline
+
+    def _expect_exit_with_actions_captures(self, monkeypatch, captured: dict) -> None:
+        import dev_team
+
+        def fake_exit(descriptors):
+            captured["descriptors"] = descriptors
+            raise SystemExit(0)
+
+        monkeypatch.setattr(dev_team, "exit_with_actions", fake_exit)
+
+    def test_injects_event_key_when_step_has_event_name(self, tmp_path, monkeypatch):
+        from dev_team import PipelineContext
+
+        captured: dict = {}
+        self._expect_exit_with_actions_captures(monkeypatch, captured)
+
+        ctx = PipelineContext(work_item_id="ADR-TEST", state="testing")
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+
+        action = {"action": "spawn_agent", "skill": "implement-task"}
+        step = _StubStep([action], "impl_done")
+        step.EVENT_NAME = "implement"
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        with pytest.raises(SystemExit):
+            pipeline._do_get_actions_and_exit(step)
+
+        assert captured["descriptors"][0]["event"] == "implement"
+
+    def test_no_event_key_when_step_has_no_event_name(self, tmp_path, monkeypatch):
+        from dev_team import PipelineContext
+
+        captured: dict = {}
+        self._expect_exit_with_actions_captures(monkeypatch, captured)
+
+        ctx = PipelineContext(work_item_id="ADR-TEST", state="testing")
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+
+        action = {"action": "spawn_agent", "skill": "review-sign-off"}
+        step = _StubStep([action], "approved")
+        # No EVENT_NAME attribute set on the stub — getattr(...) falls back to None,
+        # mirroring FindSpecStep/SignoffStep (and signoff's children).
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        with pytest.raises(SystemExit):
+            pipeline._do_get_actions_and_exit(step)
+
+        assert "event" not in captured["descriptors"][0]
+
+    def test_mutates_every_action_in_a_multi_item_list(self, tmp_path, monkeypatch):
+        from dev_team import PipelineContext
+
+        captured: dict = {}
+        self._expect_exit_with_actions_captures(monkeypatch, captured)
+
+        ctx = PipelineContext(work_item_id="ADR-TEST", state="testing")
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+
+        a1 = {"action": "spawn_agent", "skill": "reviewer-sign-off"}
+        a2 = {"action": "run_script", "command": "bash build.sh"}
+        step = _StubStep([a1, a2], "approved")
+        step.EVENT_NAME = "review"
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        with pytest.raises(SystemExit):
+            pipeline._do_get_actions_and_exit(step)
+
+        assert all(d["event"] == "review" for d in captured["descriptors"])
+
+    def test_inline_step_with_no_actions_is_unaffected(self, tmp_path):
+        """An inline step (get_actions() == []) never reaches exit_with_actions, so
+        there is nothing to inject — behavior identical to before this change."""
+        from dev_team import PipelineContext
+
+        ctx = PipelineContext(work_item_id="ADR-TEST", state="testing")
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+
+        step = _StubStep([], "done_ok")
+        step.EVENT_NAME = "implement"
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        trigger = pipeline._do_get_actions_and_exit(step)
+
+        assert trigger == "done_ok"
