@@ -27,7 +27,7 @@ of PRs in order, each one is already up to date.
   built upon (its PR is open); the new concurrent scheduler that spawns one `workflow-orchestrate`
   run per eligible task; per-task-work-item git worktree isolation so concurrent pipelines don't
   collide in one working directory; extending `ensure-working-branch`'s base-branch computation
-  to prefer a ready dependency's task branch (initial base selection only); the `dev-team:watch-pr`
+  to prefer a ready dependency's task branch (initial base selection only); the `dev-team:monitor-pr`
   PR monitor that owns the entire post-hand-off lifecycle — rebase-on-base-update,
   rebase-on-dependency-merge, review-comment fixes, CI-failure fixes, and halting on merge.
 - **Does not own:** the single-task pipeline's internal states (implementing, validating,
@@ -169,7 +169,7 @@ isn't actually clean. This is exactly the failure mode this decision exists to p
 project that spawns many worktree-isolated agents per overnight run (this feature's whole
 premise) is squarely the kind of usage where a collision eventually becomes likely. Mitigation:
 immediately after obtaining a worktree via `isolation: "worktree"` — both at the start of each
-task's `workflow-orchestrate` run and at the start of `dev-team:watch-pr` — verify it's actually
+task's `workflow-orchestrate` run and at the start of `dev-team:monitor-pr` — verify it's actually
 fresh before doing anything else: `git stash list` must be empty and `git status --short` must
 show no unexpected pre-existing modifications. If either check fails, treat it as a hard failure
 (stop and report) rather than silently proceeding on a potentially contaminated worktree.
@@ -191,7 +191,7 @@ below) pre-populates `base_branch` before a task's `workflow-orchestrate` run ev
 `dev_team.py`'s first `ctx.save()` call happens at pipeline boot, before `ensure-working-branch`
 ever runs, so it would silently wipe that pre-populated value, and the task would fall back to the
 ordinary feature branch instead of its dependency's branch with no error at all. The same problem
-hits `worktree_path`/`worktree_branch` (recorded right after spawn, needed by `dev-team:watch-pr`
+hits `worktree_path`/`worktree_branch` (recorded right after spawn, needed by `dev-team:monitor-pr`
 at hand-off) and every field the PR monitor decision introduces (`base_branch_sha`,
 `last_seen_review_comment_id`, `last_seen_ci_conclusion`, `watch_worktree_path`,
 `watch_worktree_branch`) — none of these are `PipelineContext` dataclass fields either.
@@ -247,7 +247,7 @@ is rejected immediately with a clear error naming the offending task and missing
 rather than silently polling forever.
 
 The concurrency cap counts only active task-pipeline spawns tracked in `concurrent_schedule.py`'s
-own data files; a `dev-team:watch-pr` monitor (started separately at hand-off, per the PR monitor
+own data files; a `dev-team:monitor-pr` monitor (started separately at hand-off, per the PR monitor
 decision below) is never counted against it. A monitor spends nearly all its time blocked inside
 `watch_pr_poll.py`, not consuming compute, and it's gated on hand-off having already happened, not
 on a scheduler decision — counting it the same as an active implement/validate/review pipeline
@@ -273,7 +273,7 @@ CI. Doing this reactively inside `ensure-working-branch`, mid-pipeline, was cons
 rejected: rebasing between the developer's and reviewer's turns risks derailing whatever either
 of them has in flight.
 
-_Decision:_ A new `dev-team:watch-pr` skill runs as a long-lived agent that repeatedly calls the
+_Decision:_ A new `dev-team:monitor-pr` skill runs as a long-lived agent that repeatedly calls the
 bounded, blocking `watch_pr_poll.py` (see Component Breakdown / Interfaces), re-checking five
 conditions each time and acting on whichever fired. It is itself spawned with the `Agent` tool's
 `isolation: "worktree"` support — a *fresh* worktree, not a reuse of the one from the task's
@@ -282,7 +282,7 @@ original `workflow-orchestrate` run — and its first action is `git fetch origi
 work directly from then on, no `git -C` needed, because the whole session's cwd already is that
 worktree. The original `workflow-orchestrate` run's worktree (recorded as `worktree_path` /
 `worktree_branch` in the context file) is no longer needed once hand-off happens, so
-`dev-team:watch-pr` removes it as one of its first actions, and instead records its own
+`dev-team:monitor-pr` removes it as one of its first actions, and instead records its own
 `watch_worktree_path` / `watch_worktree_branch` for its own eventual cleanup at halt.
 
 `concurrent-orchestrate` auto-starts one the moment a task's `workflow-orchestrate` run reaches
@@ -290,7 +290,7 @@ hand-off, spawning it as a **local background `Agent`** (`run_in_background: tru
 routine — reusing the same sandboxed environment. A new `/watch-pr <task-key>` command, parallel
 to `/implement`, covers the manual fallback for the case where the auto-start never happened (e.g.
 `concurrent-orchestrate`'s own session was interrupted before reaching hand-off for that task) —
-its entire job is spawning `dev-team:watch-pr` via the `Agent` tool with its own `isolation:
+its entire job is spawning `dev-team:monitor-pr` via the `Agent` tool with its own `isolation:
 "worktree"`, since a human invoking the skill bare from their own session would get no isolation
 at all.
 
@@ -301,7 +301,7 @@ that setup exists to eliminate. Its one advantage — surviving the local sessio
 closed, not just interrupted mid-run — isn't worth that cost; manual restart covers that gap.
 
 (a) a new review comment on the PR → spawn `fix-pr` (a nested `Agent`, no `isolation` of its own,
-    so it inherits `dev-team:watch-pr`'s isolated worktree cwd) to address it
+    so it inherits `dev-team:monitor-pr`'s isolated worktree cwd) to address it
 (b) a CI check failure → spawn `fix-pr` the same way, to debug and fix it
 (c) the recorded base branch has new commits → run the rebase mechanic
 (d) the dependency's own PR has merged → re-target the base to wherever it actually merged (see
@@ -320,7 +320,7 @@ a cwd the outer agent reached via a manual `cd` mid-session — a controlled tes
 nested spawn resets to the default cwd, and separately that cwd changes don't even persist across
 separate `Bash` calls within one agent's own session. Nested spawns only inherit cwd when the
 *outer* agent itself was spawned with `isolation: "worktree"` (confirmed separately, see the
-worktree decision above) — which is exactly why `dev-team:watch-pr` requests its own fresh
+worktree decision above) — which is exactly why `dev-team:monitor-pr` requests its own fresh
 isolated worktree here, rather than trying to operate against the original one via `git -C`.
 
 _Consequences:_ The pre-hand-off AI review/fix loop (`reviewing`/`fixing-pr`/`signoff`) is
@@ -329,12 +329,12 @@ mechanism for the epic's "review PRs in order" workflow: several tasks reach han
 autonomously, the user starts a monitor per PR, and as the user addresses the first PR's
 comments, its dependents' monitors pick up the resulting commits and rebase automatically — so
 by the time the user reaches the next PR, it's already up to date. A task now has two sequential
-(never overlapping) worktrees over its lifetime — the implement-phase one and `watch-pr`'s own —
+(never overlapping) worktrees over its lifetime — the implement-phase one and `monitor-pr`'s own —
 rather than one continuously reused worktree; each is cleaned up once its own phase ends.
 
 A rebase conflict is never resolved by guessing: the monitor spawns the developer agent (a
 nested, non-isolated `Agent`, inheriting the same worktree cwd) to run `resolve-rebase-conflict`
-(see Interfaces) first. On `"resolved"`, `dev-team:watch-pr` pushes with `--force-with-lease`
+(see Interfaces) first. On `"resolved"`, `dev-team:monitor-pr` pushes with `--force-with-lease`
 itself. On `"unresolved"`, it runs `git rebase --abort` — leaving a clean worktree, not a
 half-finished rebase for a human to find — since it cannot fall back to `AskUserQuestion` at that
 point; nothing spawned via the `Agent` tool can ask the user directly. Instead it stops itself,
@@ -353,11 +353,11 @@ own unrelated rebases) continues unaffected.
 The rebase mechanic force-pushes with lease immediately as part of `rebase_onto()` itself — no
 separate tracking is needed for this. `_commit_and_push()` in `dev_team.py` (the plugin's one
 other push call site, run during the main pipeline after validation passes and again before
-reviewer sign-off) never needs to change: rebasing only ever happens inside `watch-pr`, entirely
+reviewer sign-off) never needs to change: rebasing only ever happens inside `monitor-pr`, entirely
 after a task's own `dev_team.py` pipeline has already reached its terminal hand-off state, so
 that call site never encounters a branch that's been rebased. The rebase mechanic's own
 force-with-lease push is also what cascades the update onward: it moves the remote tip of this
-task's branch, which is precisely the "base updated" condition the *next* dependent's `watch-pr`
+task's branch, which is precisely the "base updated" condition the *next* dependent's `monitor-pr`
 monitor will detect on its own next wake — one rebase's push is what kicks off the next.
 
 ### Dependency completion re-targets the base to wherever it actually merged
@@ -369,7 +369,7 @@ review — another task's branch). Tracing this through also caught a conflation
 out explicitly: `dev_team.py`'s own terminal `done` state is reached right after **hand-off**
 (`handoff --> done : handoff_done`), well before a human actually clicks merge. It cannot be used
 to detect an actual merge — that requires polling the PR's real status on GitHub, which is
-exactly what the PR event detector (used only by `watch-pr`) is for. The `Task readiness
+exactly what the PR event detector (used only by `monitor-pr`) is for. The `Task readiness
 checker`'s own `"done"` value (based on context-file `state`) means "reached hand-off," and stays
 scoped to the scheduler's own eligibility computation — it is never used for merge detection.
 
@@ -380,7 +380,7 @@ branch is still open). This isn't a hazard to guard against; it falls out natura
 re-target rule is correct.
 
 _Decision:_ When the PR event detector observes (via GitHub) that a dependency's PR has actually
-merged, it also reads what branch it merged **into**. The dependent's `watch-pr` monitor
+merged, it also reads what branch it merged **into**. The dependent's `monitor-pr` monitor
 re-targets `base_branch` to that actual destination — usually the feature branch, but another
 task's still-open branch in a stacked/out-of-order case like the one above — then proceeds as an
 ordinary rebase onto that new base.
@@ -430,8 +430,8 @@ by this removal.
 | PR event detector | Testable | Given a task's context file and its PR's current GitHub/git state, determines which of the five monitor conditions have newly fired (possibly more than one at once) | `use-context-file` (existing) |
 | `watch_pr_poll.py` | Testable | Loops the PR event detector on an interval, self-bounded to under Bash's 10-minute timeout cap; exits early with whichever condition(s) fired, or `"no_change"` at the window's end | PR event detector |
 | `resolve-rebase-conflict` (new skill) | Testable | Given a rebase left in progress with conflicts, uses task context to resolve the conflicting hunks, stages them, and drives `git rebase --continue` to completion; reports resolved or unresolved, never pushes | — |
-| `dev-team:watch-pr` (PR monitor) | Orchestrator | User-started, long-lived per-task agent, spawned with its own fresh `isolation: "worktree"`; repeatedly calls `watch_pr_poll.py` (re-invoking on `"no_change"`) and reacts to whatever condition(s) it returns by spawning `fix-pr` (existing), spawning the developer agent (existing) to run `resolve-rebase-conflict`, running the rebase mechanic, or halting | `watch_pr_poll.py`, Rebase mechanic, `resolve-rebase-conflict`, `fix-pr` (existing), developer agent (existing) |
-| `/watch-pr` (new command) | Wrapper | Thin manual-invocation wrapper: spawns `dev-team:watch-pr` via the `Agent` tool with `isolation: "worktree"` — a bare skill invocation from the user's own session would get no isolation at all | `dev-team:watch-pr` |
+| `dev-team:monitor-pr` (PR monitor) | Orchestrator | User-started, long-lived per-task agent, spawned with its own fresh `isolation: "worktree"`; repeatedly calls `watch_pr_poll.py` (re-invoking on `"no_change"`) and reacts to whatever condition(s) it returns by spawning `fix-pr` (existing), spawning the developer agent (existing) to run `resolve-rebase-conflict`, running the rebase mechanic, or halting | `watch_pr_poll.py`, Rebase mechanic, `resolve-rebase-conflict`, `fix-pr` (existing), developer agent (existing) |
+| `/watch-pr` (new command) | Wrapper | Thin manual-invocation wrapper: spawns `dev-team:monitor-pr` via the `Agent` tool with `isolation: "worktree"` — a bare skill invocation from the user's own session would get no isolation at all | `dev-team:monitor-pr` |
 
 ## Planned Implementation
 
@@ -508,10 +508,10 @@ by this removal.
   conflicting hunks, resolves them, stages them (`git add`), and repeats `git rebase --continue`
   until either the rebase completes cleanly or it hits a conflict it can't resolve with confidence.
   Returns `"resolved"` (rebase complete, working tree clean, ready to push) or `"unresolved"`
-  (some conflict remains) — never pushes itself. On `"unresolved"`, `dev-team:watch-pr` runs
+  (some conflict remains) — never pushes itself. On `"unresolved"`, `dev-team:monitor-pr` runs
   `git rebase --abort` to return to a clean pre-rebase state before stopping — never leaves a
   half-finished rebase sitting in the worktree for a human to find. On `"resolved"`,
-  `dev-team:watch-pr` itself runs `git push --force-with-lease` directly — `rebase_onto()`'s own
+  `dev-team:monitor-pr` itself runs `git push --force-with-lease` directly — `rebase_onto()`'s own
   call already exited when it first detected the conflict, so completion isn't re-routed through
   it; `resolve-rebase-conflict` only gets the rebase itself to a clean, ready-to-push completion.
   Verification is an open implementation-time decision: this is agent-skill prose making judgment
@@ -532,17 +532,17 @@ by this removal.
   its corresponding `last_seen_*` field immediately, so an already-handled item never re-fires.
   When `dependency_merged` fires, it also reports the branch the dependency's PR actually merged
   into — usually the feature branch, but possibly another still-open task's branch — which
-  `watch-pr` uses as the new `base_branch` (see the base-re-target decision above).
+  `monitor-pr` uses as the new `base_branch` (see the base-re-target decision above).
 - **`watch_pr_poll.py`:** `poll(task_work_item_id: str, max_seconds: int = 480) -> list[Literal["review_comment", "ci_failure", "base_updated", "dependency_merged", "task_merged"]] | Literal["no_change"]`
   — loops the PR event detector on a fixed interval (e.g. every 30s) until it reports at least one
   fired event or `max_seconds` elapses, whichever comes first; `max_seconds` defaults comfortably
   under the `Bash` tool's 10-minute timeout cap. Both the sleep function and the elapsed-time check
   are injectable (defaulting to real `time.sleep`/`time.monotonic`), so tests can drive many
   simulated iterations without any real wall-clock delay. Returns the *whole* list `detect_pr_events` fired
-  in that check — never just one arbitrarily chosen event — so `dev-team:watch-pr` can react to
+  in that check — never just one arbitrarily chosen event — so `dev-team:monitor-pr` can react to
   everything that happened in this window; `last_seen_*` fields are only updated for events
   actually included in the returned list, so nothing gets silently marked "seen" without being
-  acted on. `dev-team:watch-pr` reacts to every event in the list (rebase-related events first,
+  acted on. `dev-team:monitor-pr` reacts to every event in the list (rebase-related events first,
   since a stale base can affect how a review comment should be addressed) before calling this
   again; it just calls this again immediately on `"no_change"` — a chain of bounded blocking calls
   covers arbitrarily long gaps between real events without any async monitor.
@@ -550,8 +550,8 @@ by this removal.
   / `last_seen_ci_conclusion` (what the PR event detector last saw, so an already-handled review
   comment or CI result never re-fires); `worktree_path` / `worktree_branch` (the *implement-phase*
   worktree, recorded by `concurrent-orchestrate` right after spawning, from the `Agent` tool's
-  result; removed by `dev-team:watch-pr` at start, since it uses its own instead — see the PR
-  monitor decision); `watch_worktree_path` / `watch_worktree_branch` (`dev-team:watch-pr`'s own
+  result; removed by `dev-team:monitor-pr` at start, since it uses its own instead — see the PR
+  monitor decision); `watch_worktree_path` / `watch_worktree_branch` (`dev-team:monitor-pr`'s own
   worktree, recorded by itself at start and removed by itself at halt). All tracked by the PR
   monitor and/or `concurrent-orchestrate` — never by `ensure-working-branch`.
 
@@ -603,7 +603,7 @@ by this removal.
 - **`watch_pr_poll.py`** (new script) — the bounded blocking poll loop described in Interfaces.
 - **`resolve-rebase-conflict`** (new skill) — the conflict-resolution contract described in
   Interfaces; invoked by the developer agent, never pushes, reports resolved/unresolved.
-- **`dev-team:watch-pr`** (new skill, always spawned with the `Agent` tool's `isolation:
+- **`dev-team:monitor-pr`** (new skill, always spawned with the `Agent` tool's `isolation:
   "worktree"` — either auto-started by `concurrent-orchestrate` at hand-off, or via the new
   `/watch-pr` command as a manual fallback, never invoked bare from a user's own session, which
   would get no isolation at all) — its first actions are the same worktree-freshness check
@@ -618,13 +618,13 @@ by this removal.
   base-update or dependency-merge event (re-targeting `base_branch` first in the dependency-merged
   case); on `task_merged`, removes its own worktree/branch and stops. A rebase conflict spawns the
   developer agent (same nested, non-isolated pattern) to run `resolve-rebase-conflict`. On
-  `"resolved"`, `dev-team:watch-pr` pushes with `--force-with-lease` itself. On `"unresolved"`, it
+  `"resolved"`, `dev-team:monitor-pr` pushes with `--force-with-lease` itself. On `"unresolved"`, it
   runs `git rebase --abort` to leave a clean worktree, then — since it cannot fall back to
   `AskUserQuestion` (confirmed unavailable to any `Agent`-spawned sub-agent — see the PR monitor
   decision) — stops itself, surfacing the conflict through the harness's background-task
   notification, resumable via `SendMessage` or by restarting `/watch-pr` fresh once resolved.
 - **`/watch-pr` (new command)** — the manual entry point, parallel to `/implement`: its entire job
-  is spawning `dev-team:watch-pr` via the `Agent` tool with `isolation: "worktree"`, so the manual
+  is spawning `dev-team:monitor-pr` via the `Agent` tool with `isolation: "worktree"`, so the manual
   fallback path gets the same isolation guarantee the auto-started path gets from
   `concurrent-orchestrate`.
 
@@ -676,7 +676,7 @@ by this removal.
    reached a terminal state, the script reports `"blocked"` with the specific stuck tasks named,
    and `concurrent-orchestrate` reports that to the user and stops rather than re-invoking
    forever. Otherwise it keeps re-invoking until the script reports `"complete"`.
-6. Once a task's pipeline reaches hand-off, `dev-team:watch-pr` is spawned — auto-started by
+6. Once a task's pipeline reaches hand-off, `dev-team:monitor-pr` is spawned — auto-started by
    `concurrent-orchestrate`, or via the manual `/watch-pr <task-key>` command as a fallback — with
    its own fresh `isolation: "worktree"` either way. It runs the same worktree-freshness check
    first (hard stop if it fails), then checks out the task's `working_branch` in that fresh
@@ -691,7 +691,7 @@ by this removal.
 7. The monitor reacts to every condition in that list (rebase-related ones first, since a stale
    base can affect how a review comment should be addressed) before polling again. A review
    comment or CI failure spawns `fix-pr` as a nested `Agent` (no `isolation` of its own, so it
-   inherits `dev-team:watch-pr`'s worktree cwd). A moved base (new commits, or a merged dependency
+   inherits `dev-team:monitor-pr`'s worktree cwd). A moved base (new commits, or a merged dependency
    re-targeting the base to wherever its PR actually merged — usually the feature branch, but
    possibly another still-open task's branch) runs the rebase mechanic and force-pushes the
    updated working branch.
@@ -699,13 +699,13 @@ by this removal.
    same nested, non-isolated pattern) to run `resolve-rebase-conflict` — using full task context
    to read and resolve the actual conflicting hunks, beyond what git's own mechanical merge
    strategies can do unassisted, then driving `git rebase --continue` to completion without
-   pushing. On `"resolved"`, `dev-team:watch-pr` pushes with `--force-with-lease` itself. On
+   pushing. On `"resolved"`, `dev-team:monitor-pr` pushes with `--force-with-lease` itself. On
    `"unresolved"`, it runs `git rebase --abort` first, leaving a clean worktree rather than a
    half-finished rebase — then, since `AskUserQuestion` isn't available to any `Agent`-spawned
    sub-agent, it stops itself instead of asking, surfacing the conflict through the harness's
    background-task notification. A human resolves it and resumes the same agent via `SendMessage`,
    or restarts via `/watch-pr` fresh.
-9. The task's own PR merging removes `dev-team:watch-pr`'s own worktree and branch
+9. The task's own PR merging removes `dev-team:monitor-pr`'s own worktree and branch
    (`watch_worktree_path`/`watch_worktree_branch`) and halts its monitor.
 
 ## Related Features
@@ -900,20 +900,20 @@ context and drives the rebase to completion — never pushes.
 
 ---
 
-### [ADR-313: `dev-team:watch-pr` and `/watch-pr`](https://jodasoft.atlassian.net/browse/ADR-313) 🤖
+### [ADR-313: `dev-team:monitor-pr` and `/watch-pr`](https://jodasoft.atlassian.net/browse/ADR-313) 🤖
 
 _Depends on [ADR-309](https://jodasoft.atlassian.net/browse/ADR-309), [ADR-311](https://jodasoft.atlassian.net/browse/ADR-311), [ADR-312](https://jodasoft.atlassian.net/browse/ADR-312), [ADR-335](https://jodasoft.atlassian.net/browse/ADR-335)._ The full post-hand-off PR monitor: owns the entire
 lifecycle from hand-off to merge, and the manual entry point that gives it the same isolation
 guarantee as the auto-started path.
 
-- [ ] `dev-team:watch-pr` is spawned with `isolation: "worktree"` (fresh, not a reuse of the
+- [ ] `dev-team:monitor-pr` is spawned with `isolation: "worktree"` (fresh, not a reuse of the
   implement-phase worktree); runs the worktree-freshness check first, then `git fetch origin &&
   git checkout <working_branch>`
 - [ ] Removes the now-unneeded implement-phase worktree/branch; records its own as
   `watch_worktree_path`/`watch_worktree_branch`
 - [ ] `concurrent-orchestrate` auto-starts one as a local background `Agent` the moment a task's
   `workflow-orchestrate` run reaches hand-off
-- [ ] `/watch-pr <task-key>` command spawns `dev-team:watch-pr` via the `Agent` tool with
+- [ ] `/watch-pr <task-key>` command spawns `dev-team:monitor-pr` via the `Agent` tool with
   `isolation: "worktree"`, as the manual fallback
 - [ ] Repeatedly calls `watch_pr_poll.py`, reacting to every event in the returned list
   (rebase-related events first): spawns `fix-pr` (nested, no isolation) for review-comment/CI

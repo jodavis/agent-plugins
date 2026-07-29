@@ -47,6 +47,19 @@ def dependency_status(task_work_item_id: str) -> Literal["ready", "in_progress",
     return status
 
 
+def task_snapshot(task_work_item_id: str) -> dict:
+    """A task's live status plus the fields a restarted orchestrator needs to judge whether a
+    "still active" task is genuinely stalled: when its context file was last written, and its
+    recorded worktree (if any) — sparing the caller a second file read per task."""
+    status, ctx = _dependency_status_and_context(task_work_item_id)
+    return {
+        "task_id": task_work_item_id,
+        "status": status,
+        "last_updated": ctx.last_updated.isoformat() if ctx else None,
+        "worktree_path": ctx.extra_frontmatter.get("worktree_path") if ctx else None,
+    }
+
+
 def is_task_eligible(task_work_item_id: str, dependency_ids: list[str]) -> tuple[Literal["eligible", "waiting", "blocked"], str | None]:
     if not dependency_ids:
         return ("eligible", None)

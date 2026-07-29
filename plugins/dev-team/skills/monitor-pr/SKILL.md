@@ -1,5 +1,5 @@
 ---
-name: watch-pr
+name: monitor-pr
 user-invocable: false
 description: >
   Long-lived, user-started post-hand-off PR monitor. Owns the entire lifecycle from hand-off to

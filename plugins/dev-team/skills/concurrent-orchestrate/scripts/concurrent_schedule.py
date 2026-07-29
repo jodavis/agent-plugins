@@ -4,9 +4,11 @@
 `compute_next_batch(target)` owns everything `concurrent-orchestrate`'s thin spawn loop needs
 computed for it: the "up to" target's dependency closure (or the explicit list taken as-is,
 with no closure expansion), each target task's cached status (via the Task readiness checker),
-and a repo-wide concurrency cap enforced across every target's own data file — never just this
-one. It never spawns anything itself; that's the `Agent` tool's job, driven by
-`concurrent-orchestrate`'s own prose.
+a repo-wide concurrency cap enforced across every target's own data file — never just this one —
+and a `running` reconciliation list (already-spawned, still-non-terminal tasks) so a restarted
+caller can tell what this script *believes* is active and go check whether that's still true. It
+never spawns anything itself; that's the `Agent` tool's job, driven by `concurrent-orchestrate`'s
+own prose.
 
 `poll_until_actionable(target)` wraps `compute_next_batch` with the blocking behavior the CLI
 exposes: rather than making the calling agent re-invoke this script itself every 30 seconds
@@ -49,7 +51,7 @@ sys.path.insert(0, str(_WORKFLOW_ORCHESTRATE_SCRIPTS))
 import dev_team  # noqa: E402 — referenced via module attribute so tests can monkeypatch dev_team.REPO_ROOT
 from get_context_path import get_repo_slug  # noqa: E402
 from task_dependencies import TaskDependencyError, parse_task_dependencies  # noqa: E402
-from task_readiness import dependency_status, is_task_eligible  # noqa: E402
+from task_readiness import dependency_status, is_task_eligible, task_snapshot  # noqa: E402
 
 _MERGE_CONFIG_SCRIPT = (
     Path(__file__).resolve().parent.parent.parent
@@ -201,8 +203,12 @@ def _load_or_initialize_data(target: TargetSpec, data_path: Path, graph: dict[st
 def compute_next_batch(target: TargetSpec) -> dict:
     """Compute the next batch of tasks to spawn for `target`.
 
-    Returns `{"status": "waiting" | "complete" | "blocked", "spawn": [...], "blocked_tasks": [...]}`.
-    Never spawns anything — deterministic computation only.
+    Returns `{"status": "waiting" | "complete" | "blocked", "spawn": [...], "blocked_tasks": [...],
+    "running": [...]}`. `running` is every already-spawned task this target's data file still
+    considers non-terminal (a `task_snapshot()` per task: status, `last_updated`, `worktree_path`)
+    — the caller's own reconciliation view onto what this script *believes* is still active, since
+    the script has no way to observe whether a spawned agent process has actually stalled or died.
+    Never spawns anything itself — deterministic computation only.
     """
     spec_path = dev_team.find_spec_file(target.tasks[0])
     graph = parse_task_dependencies(spec_path.read_text(encoding="utf-8"))
@@ -214,9 +220,12 @@ def compute_next_batch(target: TargetSpec) -> dict:
     tasks: list[str] = data["tasks"]
     spawned: set[str] = set(data.get("spawned", []))
     statuses = {task: dependency_status(task) for task in tasks}
+    running = [
+        task_snapshot(task) for task in sorted(spawned) if statuses[task] not in _TERMINAL_STATUSES
+    ]
 
     if all(statuses[task] == "done" for task in tasks):
-        return {"status": "complete", "spawn": [], "blocked_tasks": []}
+        return {"status": "complete", "spawn": [], "blocked_tasks": [], "running": running}
 
     not_yet_started = [
         task for task in tasks if task not in spawned and statuses[task] == "not_started"
@@ -228,7 +237,7 @@ def compute_next_batch(target: TargetSpec) -> dict:
 
     currently_spawned_terminal = all(statuses[task] in _TERMINAL_STATUSES for task in spawned)
     if blocked_tasks and currently_spawned_terminal:
-        return {"status": "blocked", "spawn": [], "blocked_tasks": blocked_tasks}
+        return {"status": "blocked", "spawn": [], "blocked_tasks": blocked_tasks, "running": running}
 
     eligible: list[tuple[str, str | None]] = []
     for task in not_yet_started:
@@ -251,7 +260,7 @@ def compute_next_batch(target: TargetSpec) -> dict:
         data["spawned"] = sorted(spawned | {entry["task_id"] for entry in spawn})
         data_path.write_text(json.dumps(data), encoding="utf-8")
 
-    return {"status": "waiting", "spawn": spawn, "blocked_tasks": []}
+    return {"status": "waiting", "spawn": spawn, "blocked_tasks": [], "running": running}
 
 
 def poll_until_actionable(

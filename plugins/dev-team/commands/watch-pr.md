@@ -19,8 +19,8 @@ Then stop.
 
 ### 2 — Spawn the monitor
 
-This command's only job is spawning `dev-team:watch-pr` in its own fresh, isolated worktree — the
-manual fallback for when `concurrent-orchestrate`'s auto-start never happened (e.g. its own
+This command's only job is spawning `dev-team:monitor-pr` in its own fresh, isolated worktree —
+the manual fallback for when `concurrent-orchestrate`'s auto-start never happened (e.g. its own
 session was interrupted before reaching hand-off for this task). A bare skill invocation from
 this session would get no isolation at all, so the spawn itself is what gives the monitor the
 same isolation guarantee the auto-started path has.
@@ -29,7 +29,7 @@ same isolation guarantee the auto-started path has.
 Agent(
   subagent_type: "claude",
   isolation: "worktree",
-  prompt: "Invoke the `watch-pr` skill with arguments:
+  prompt: "Invoke the `monitor-pr` skill with arguments:
 --work-item-id <work-item-id>"
 )
 ```

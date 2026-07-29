@@ -1,6 +1,7 @@
 """Tests for task_readiness.py — dependency_status() (a dependency task-work-item's own
-context file translated into a coarse status) and is_task_eligible() (whether a task is
-eligible to start given its declared dependencies' statuses).
+context file translated into a coarse status), is_task_eligible() (whether a task is eligible
+to start given its declared dependencies' statuses), and task_snapshot() (a task's status plus
+the `last_updated`/`worktree_path` fields a reconciliation caller needs).
 
 Covers:
 - dependency_status: no context file, terminal states (done/failed), pr_url-implies-ready,
@@ -8,6 +9,8 @@ Covers:
 - is_task_eligible: empty dependency list, single-dependency ready/not-ready, all-done,
   all-but-one-done (ready branch substitution and waiting), 2+ not-done, and failed dependency
   short-circuiting to blocked
+- task_snapshot: no context file returns nulled-out fields alongside "not_started"; an existing
+  context file surfaces its status, `last_updated`, and recorded `worktree_path`
 - main() CLI wrapper: one narrow integration test covering the primary happy-path — a single
   ready dependency prints its branch as JSON on stdout, exit 0 — the wiring `ensure-working-branch`
   relies on to call this script via `Bash`
@@ -122,6 +125,62 @@ class TestDependencyStatusInProgress:
 
         # Assert
         assert status == "in_progress"
+
+
+# ---------------------------------------------------------------------------
+# task_snapshot — no context file
+# ---------------------------------------------------------------------------
+
+class TestTaskSnapshotNoContextFile:
+    def test_task_snapshot_no_context_file_returns_not_started_with_null_fields(self, tmp_path, monkeypatch):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from task_readiness import task_snapshot
+
+        # Act
+        snapshot = task_snapshot("ADR-999")
+
+        # Assert
+        assert snapshot == {
+            "task_id": "ADR-999",
+            "status": "not_started",
+            "last_updated": None,
+            "worktree_path": None,
+        }
+
+
+# ---------------------------------------------------------------------------
+# task_snapshot — existing context file surfaces status, last_updated, worktree_path
+# ---------------------------------------------------------------------------
+
+class TestTaskSnapshotExistingContextFile:
+    def test_task_snapshot_existing_context_file_surfaces_status_and_worktree_path(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        from task_readiness import task_snapshot
+
+        path = compute_context_path("ADR-1", get_repo_slug())
+        PipelineContext(
+            work_item_id="ADR-1",
+            state="researching",
+            extra_frontmatter={"worktree_path": "/tmp/worktrees/ADR-1"},
+        ).save(path)
+
+        # Act
+        snapshot = task_snapshot("ADR-1")
+
+        # Assert
+        assert snapshot["task_id"] == "ADR-1"
+        assert snapshot["status"] == "in_progress"
+        assert snapshot["worktree_path"] == "/tmp/worktrees/ADR-1"
+        assert snapshot["last_updated"] is not None
 
 
 # ---------------------------------------------------------------------------

@@ -26,6 +26,13 @@ Use the `Skill` tool to invoke `<skill>` with `<skill-args>` as arguments. Follo
 instructions and complete all its steps. Capture the output — do not return it to the caller
 yet.
 
+**Note on nested "return" instructions:** `<skill>`'s own final step often says something like
+"Return the brief as prose" or "Return your findings." That wording is written for when the skill
+is invoked standalone, with no wrapping contract. It is not an instruction to end your turn here.
+When you are running under workflow-worker, treat that final instruction only as marking the
+content to capture — do not send it as your own final message, and do not stop. Always continue
+on to step 2 and step 3 below.
+
 ### 2 — Write output to the context file
 
 Write the captured output to the `<write-section>` section of `<context-file>`.

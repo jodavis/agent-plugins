@@ -214,7 +214,7 @@ class TestComputeNextBatchComplete:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "complete", "spawn": [], "blocked_tasks": []}
+        assert result == {"status": "complete", "spawn": [], "blocked_tasks": [], "running": []}
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +240,7 @@ class TestComputeNextBatchBlocked:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"]}
+        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": []}
 
     def test_compute_next_batch_failed_dependency_with_active_spawn_still_waiting(
         self, tmp_path, monkeypatch
@@ -294,7 +294,65 @@ class TestComputeNextBatchBlocked:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"]}
+        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": []}
+
+
+# ---------------------------------------------------------------------------
+# compute_next_batch — "running" reconciliation section
+# ---------------------------------------------------------------------------
+
+class TestComputeNextBatchRunning:
+    def test_compute_next_batch_running_includes_non_terminal_spawned_task_with_snapshot_fields(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — ADR-2 was already spawned by a prior call and is still in progress; a
+        # restarted caller needs enough per-task detail (status, last_updated, worktree_path)
+        # to judge whether it's genuinely still active without a second file read.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": [], "ADR-2": []})
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="list", tasks=("ADR-1", "ADR-2"))
+        first = compute_next_batch(target)
+        assert {entry["task_id"] for entry in first["spawn"]} == {"ADR-1", "ADR-2"}
+        assert first["running"] == []  # nothing was already spawned before this first call
+
+        _save_context(
+            "ADR-2", state="researching", extra_frontmatter={"worktree_path": "/tmp/worktrees/ADR-2"}
+        )
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert — ADR-1 has no context file yet (still "not_started", non-terminal) and ADR-2
+        # is "in_progress"; both were already spawned, so both surface in "running".
+        running_by_task = {entry["task_id"]: entry for entry in result["running"]}
+        assert set(running_by_task) == {"ADR-1", "ADR-2"}
+        assert running_by_task["ADR-1"]["status"] == "not_started"
+        assert running_by_task["ADR-1"]["last_updated"] is None
+        assert running_by_task["ADR-1"]["worktree_path"] is None
+        assert running_by_task["ADR-2"]["status"] == "in_progress"
+        assert running_by_task["ADR-2"]["worktree_path"] == "/tmp/worktrees/ADR-2"
+        assert running_by_task["ADR-2"]["last_updated"] is not None
+
+    def test_compute_next_batch_running_excludes_spawned_task_once_terminal(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+        compute_next_batch(target)
+        _save_context("ADR-1", state="done")
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["status"] == "complete"
+        assert result["running"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +598,7 @@ class TestMainCliWrapper:
             "status": "waiting",
             "spawn": [{"task_id": "ADR-1", "base_branch": None}],
             "blocked_tasks": [],
+            "running": [],
         }
 
     def test_main_list_dependency_outside_list_and_not_done_prints_error_and_exits_nonzero(
