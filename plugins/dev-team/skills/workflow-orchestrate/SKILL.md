@@ -97,7 +97,8 @@ results = await [
 --context-file <context_file>
 --write-section <item.write_section>
 --skill <item.skill>
---skill-args <item.args>"
+--skill-args <item.args>
+--event <item.event>"
   )  if item.action == "spawn_agent"  else
 
   Agent(
@@ -106,7 +107,8 @@ results = await [
 --context-file <context_file>
 --write-section <item.write_section>
 --command <item.command>
---log-file <item.log_file>"
+--log-file <item.log_file>
+--event <item.event>"
   )  if item.action == "run_script"
 
   for item in descriptors
@@ -115,6 +117,7 @@ results = await [
 
 Omit `--skill-args` for `spawn_agent` items where `item.args` is empty.
 Omit `--command` arguments that are empty.
+Omit `--event` entirely for either item type when `item.event` is absent.
 
 Log each result:
 ```
