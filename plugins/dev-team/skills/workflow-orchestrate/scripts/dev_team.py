@@ -381,6 +381,12 @@ class Step(ABC):
 
     handles: str
 
+    # Stable event name used by run-event-hooks to resolve before-<event>/after-<event>
+    # instructions. None means this Step has no single wrappable agent/script session
+    # (e.g. an inline step, or a ParallelSteps composite with no single action of its own)
+    # and no "event" key should be added to its emitted descriptors.
+    EVENT_NAME: str | None = None
+
     @abstractmethod
     def get_actions(self) -> list[dict]:
         """Return action descriptors to dispatch. Empty list means inline step."""
@@ -413,6 +419,7 @@ class FindSpecStep(Step):
 
 class DebugStep(Step):
     handles = "debugging"
+    EVENT_NAME = "debug"
 
     _PENDING_KEY = "debug"
 
@@ -458,6 +465,7 @@ class DebugStep(Step):
 
 class ResearchStep(Step):
     handles = "researching"
+    EVENT_NAME = "research"
 
     _PENDING_KEY = "research"
 
@@ -498,6 +506,7 @@ class ResearchStep(Step):
 
 class ImplementStep(Step):
     handles = "implementing"
+    EVENT_NAME = "implement"
 
     _PENDING_KEY = "implement"
 
@@ -536,6 +545,7 @@ class ImplementStep(Step):
 
 class ValidateStep(Step):
     handles = "validating"
+    EVENT_NAME = "validate"
 
     _PENDING_KEY = "validate"
 
@@ -591,6 +601,7 @@ class ValidateStep(Step):
 
 class CreatePrStep(Step):
     handles = "creating-pr"
+    EVENT_NAME = "create-pr"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -644,6 +655,7 @@ class CreatePrStep(Step):
 
 class ReviewStep(Step):
     handles = "reviewing"
+    EVENT_NAME = "review"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -884,6 +896,7 @@ class SignoffStep(ParallelSteps):
 
 class FixStep(Step):
     handles = "fixing"
+    EVENT_NAME = "fix"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -941,6 +954,7 @@ class FixStep(Step):
 
 class FixPrStep(Step):
     handles = "fixing-pr"
+    EVENT_NAME = "fix"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -1005,6 +1019,7 @@ class FixPrStep(Step):
 
 class HandoffStep(Step):
     handles = "handoff"
+    EVENT_NAME = "hand-off"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -1081,6 +1096,10 @@ class DevTeamPipeline:
         """Call get_actions(); exit if non-empty; otherwise call handle_results()."""
         actions = step.get_actions()
         if actions:
+            event_name = getattr(step, "EVENT_NAME", None)
+            if event_name:
+                for action in actions:
+                    action["event"] = event_name
             self.ctx.pending_agent = _step_pending_key(step)
             self.ctx.save(self.context_path)
             exit_with_actions(actions)
