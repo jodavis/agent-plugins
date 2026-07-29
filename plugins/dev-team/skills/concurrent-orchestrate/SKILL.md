@@ -151,6 +151,11 @@ For each `{task_id, base_branch}` in `spawn`:
    to record them into that task's context file as `worktree_path` / `worktree_branch` — the
    `Agent` tool only auto-cleans a worktree if the spawned agent made *no* changes, which never
    applies here, so this is what makes the worktree findable for cleanup later.
+4. Add `task_id` to this session's own in-session "live spawn handle" record — the same one
+   steps 1 and 2d check before treating a `running` entry as unclaimed. Keep it only in this
+   session's own memory, never written to any file, mirroring step 2e's own in-session record.
+   This is what makes steps 1 and 2d's "not already held" check meaningful instead of vacuously
+   true forever.
 
 #### 2d — Wait, then re-invoke
 
