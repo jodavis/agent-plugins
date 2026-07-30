@@ -57,10 +57,16 @@ mcp__plugin_github_github__pull_request_review_write(method="create", owner=<own
 mcp__plugin_github_github__add_comment_to_pending_review(owner=<owner>, repo=<repo>, pullNumber=<number>, path=<file>, line=<line>, side="RIGHT", subjectType="LINE", body=<comment>)
 ```
 
+Get the configured attribution line once (via the `message-attribution` skill) before gathering
+inline issues, then append it to each inline comment's `body` in this step — every inline
+comment carries it, not just the overall review summary.
+
 **3. Submit the pending review** — use `event: COMMENT`, not `APPROVE` or `REQUEST_CHANGES` (GitHub rejects those when reviewer and PR author share the same account):
 ```
 mcp__plugin_github_github__pull_request_review_write(method="submit_pending", owner=<owner>, repo=<repo>, pullNumber=<number>, body=<overall summary>, event="COMMENT")
 ```
+
+Append the same attribution line to step 3's `body` argument too.
 
 ## Responding to and resolving threads
 
@@ -68,6 +74,9 @@ mcp__plugin_github_github__pull_request_review_write(method="submit_pending", ow
 ```
 mcp__plugin_github_github__add_reply_to_pull_request_comment(owner=<owner>, repo=<repo>, pullNumber=<number>, commentId=<numeric id>, body=<reply>)
 ```
+
+Before this call, use the `message-attribution` skill to get the configured attribution line, if
+any, and append it to the `body` argument.
 
 **Resolve a thread** (use the node ID `PRRT_...`):
 ```

@@ -91,6 +91,7 @@ ask the user to clarify rather than guessing — do not silently pick the closes
 | "git user alias", "my alias" | `git-repo.user-alias` | |
 | "branch naming", "working branch template" | `git-repo.working-branches` | `task` and `feature` templates |
 | "commit/push/PR behavior", "when to push", "draft PRs", "auto-PR" | `git-repo.push` / `.create-pr` / `.promote-pr` | Each has `enabled` + `when`; `create-pr` also has `draft` |
+| "agent attribution", "written by line", "message signature" | `attribution.message` | Set to `null` explicitly to disable (default) |
 
 Once the config path is resolved, ask only the question(s) for that field/section (reuse the relevant
 sub-section under Step 4), then go to **Step 5 — Writing**.
@@ -183,6 +184,15 @@ Ask/confirm:
 
 If the user has no push/PR rights on this repo (e.g. contributing to another team's repo), set the
 relevant `enabled: false` rather than leaving `when` vague.
+
+### attribution
+
+Ask: should messages written on the user's behalf (commit messages, PR descriptions, PR/review
+comments, work-item comments and descriptions) carry a "Written by `<name>`" line? If yes, ask
+for the exact wording (e.g. `Claude Code`, `Cursor`, `GitHub Copilot`) and set
+`attribution.message` to it verbatim — that string is used as-is, with no separate built-in
+default. If no, leave `attribution.message` unset/`null`; this is the shipped default and needs
+no explicit write.
 
 ## Step 5 — Writing the file
 
