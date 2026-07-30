@@ -86,7 +86,7 @@ ask the user to clarify rather than guessing — do not silently pick the closes
 | "documentation location", "docs folder", "where docs live" | `documentation.architecture` | |
 | "spec location", "where specs live" | `documentation.specs` | |
 | "doc format" | `documentation.format` | |
-| "validation script", "build/test script", "how to validate" | `validation.script` | Set to `null` explicitly if the project has none |
+| "validation script", "build/test script", "how to validate" | `validation` | List of shell commands, run in order; set to `null` explicitly if the project has none |
 | "test file naming", "test file pattern" | `testing.test-file-patterns` | List of glob patterns |
 | "git user alias", "my alias" | `git-repo.user-alias` | |
 | "branch naming", "working branch template" | `git-repo.working-branches` | `task` and `feature` templates |
@@ -156,9 +156,10 @@ grep -l '"test"\|"build"' package.json 2>/dev/null
 ls Makefile pyproject.toml tox.ini 2>/dev/null
 ```
 
-Ask for the repo-root-relative path to the build/test validation script. If there isn't one, set
-`validation.script: null` explicitly — this is a deliberate, expected value (see
-`get-project-configuration`'s documented no-validation convention), not an omission.
+Ask for the list of shell commands that build/test this project (run in order from the repo
+root; stops at the first failing command). If there isn't one, set `validation: null` explicitly
+— this is a deliberate, expected value (see `get-project-configuration`'s documented
+no-validation convention), not an omission.
 
 ### testing
 

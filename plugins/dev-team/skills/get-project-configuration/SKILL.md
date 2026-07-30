@@ -105,22 +105,38 @@ All three categories are shaped the same way:
 
 A project that doesn't distinguish these categories can point them at the same `location`/`search`.
 
-### `validation` — map with a `script` field, or `null`
+### `validation` — list of shell command strings, or `null`
 
-`script` is a repo-root-relative path to the project's build/test validation script,
-run by the `validating` step of the `implement` pipeline. **If `validation` is `null`, or
-`validation.script` is `null` or absent, this project has no validation script — the
-`implement` pipeline skips the validation step outright** (treated as an immediate pass,
-same as the `work-tracking: null` convention above). This is the expected configuration
-for a repo you don't own and that has no `scripts/validate.sh` of its own: set
+A list of shell command strings, run in order from the repo root by the `validating` step of
+the `implement` pipeline (via `run_validation.py`). Each command runs through a shell, so
+operators like `&&`/`|` and environment variable expansion work same as they would in a
+terminal. Execution stops at the first failing command.
+
+**If `validation` is `null`, absent, or an empty list, this project has no validation
+configured — the `implement` pipeline skips the validation step outright** (treated as an
+immediate pass, same as the `work-tracking: null` convention above). This is the expected
+configuration for a repo you don't own and that has no build/test script of its own: set
 
 ```yaml
 validation:
-  script: null
 ```
 
-in that repo's `.dev-team/config.yaml` (or `.dev-team/config.local.yaml` if you don't want
-to commit the override).
+(equivalently `validation: null`) in that repo's `.dev-team/config.yaml` (or
+`.dev-team/config.local.yaml` if you don't want to commit the override). A project with a
+single wrapper script:
+
+```yaml
+validation:
+  - scripts/validate.sh
+```
+
+or with multiple discrete steps, run in order:
+
+```yaml
+validation:
+  - npm run build
+  - npm test
+```
 
 ### `testing.test-file-patterns` — list of glob patterns
 

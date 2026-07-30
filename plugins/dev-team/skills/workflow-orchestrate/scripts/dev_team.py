@@ -273,21 +273,19 @@ def _project_configuration(ctx: "PipelineContext") -> dict:
 
 
 def _resolve_validation_script(config: dict, repo_root: Path) -> str | None:
-    """Return the validation script command for this project, or None if unconfigured.
+    """Return the command line that runs this project's validation commands, or None if
+    unconfigured.
 
-    A project without a validation script (e.g. a repo the user doesn't own) opts out
-    by setting `validation: null` or `validation.script: null` in its .dev-team/config.yaml
-    — see get-project-configuration's null-value convention.
+    `validation` is a list of shell command strings, run in order from the repo root by
+    run_validation.py. A project without any validation commands (e.g. a repo the user
+    doesn't own) opts out by leaving `validation` null, absent, or an empty list in its
+    .dev-team/config.yaml — see get-project-configuration's null-value convention.
     """
     validation = config.get("validation")
     if not validation:
         return None
-    script = validation.get("script") if isinstance(validation, dict) else None
-    if not script:
-        return None
-    if script.startswith("~"):
-        return str(Path(script).expanduser())
-    return str(repo_root / script)
+    run_validation_script = Path(__file__).parent / "run_validation.py"
+    return f'python "{run_validation_script}" --repo-root "{repo_root}"'
 
 
 def parse_json_output(text: str) -> dict:
