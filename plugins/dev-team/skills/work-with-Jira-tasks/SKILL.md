@@ -45,6 +45,12 @@ Other skills should reference these operations by name (e.g. "the `editJiraIssue
 from `work-with-Jira-tasks`") rather than hardcoding a `mcp__<prefix>__<suffix>` tool name
 directly.
 
+### Attribution
+
+Before calling `addCommentToJiraIssue`, or `editJiraIssue` to write/replace a `description`
+field, use the `message-attribution` skill to get the configured attribution line, if any, and
+append it to the comment body or description text.
+
 ### Reading a Jira issue
 
 Use the `getJiraIssue` operation with the issue key (e.g. `PROJ-228`) to retrieve the issue

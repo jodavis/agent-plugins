@@ -37,6 +37,9 @@ Use `mcp__plugin_github_github__create_pull_request` with:
   - **Design decisions:** Any non-obvious choices made during implementation that a reviewer needs context for (omit if there are none)
   - If the work item ID matches `Issue-\d+` (a GitHub issue), append as the final line: `Closes #<number>` (e.g. `Issue-123` → `Closes #123`)
   - **Testing completed:** Any unit, automated, or agent-driven testing that was done as part of the development workflow.
+  - Use the `message-attribution` skill to get the configured attribution line, if any, and
+    append it as the final line of the body (after `Closes #<number>`, if that line is also
+    present).
 
 The PR title and body are read by human reviewers — write them clearly and precisely.
 
