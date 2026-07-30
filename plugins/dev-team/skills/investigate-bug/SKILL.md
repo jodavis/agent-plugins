@@ -25,7 +25,8 @@ Use the `work-with-GitHub-issues` skill to fetch the issue title, body, and all 
 
 ### 3 — Ensure a working branch
 
-Use the `ensure-working-branch` skill with the `work-item-id`.
+Use the `ensure-working-branch` skill with the `work-item-id`. If it reports anything other than
+the literal word `successful`, stop and report the failure in detail — do not proceed to step 4.
 
 ### 4 — Read architecture docs
 

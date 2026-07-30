@@ -62,8 +62,9 @@ what is strictly necessary to instrument the investigation.
 ## Branch discipline
 
 You must be on the correct working branch before making any code changes. Use the
-`ensure-working-branch` skill to check out or create it. Commit all kept changes before
-returning.
+`ensure-working-branch` skill to check out or create it. If it reports anything other than the
+literal word `successful`, stop and report the failure in detail — do not make any code changes.
+Commit all kept changes before returning.
 
 ## Skills
 
