@@ -1106,3 +1106,63 @@ class TestCreatePrStep:
         assert actions[0]["action"] == "spawn_agent"
         assert actions[0]["write_section"] == "PR URL"
         assert "context_file" in actions[0]
+
+
+# ---------------------------------------------------------------------------
+# _find_repo_root
+# ---------------------------------------------------------------------------
+
+class TestFindRepoRoot:
+    def test_worktree_git_file_recognized_as_root(self, tmp_path, monkeypatch):
+        from dev_team import _find_repo_root
+        root = tmp_path / "worktree"
+        root.mkdir()
+        (root / ".git").write_text(
+            "gitdir: ../main/.git/worktrees/worktree\n", encoding="utf-8"
+        )
+        monkeypatch.chdir(root)
+
+        result = _find_repo_root()
+
+        assert result == root.resolve()
+
+    def test_normal_repo_git_directory_recognized_as_root(self, tmp_path, monkeypatch):
+        from dev_team import _find_repo_root
+        root = tmp_path / "repo"
+        (root / ".git").mkdir(parents=True)
+        monkeypatch.chdir(root)
+
+        result = _find_repo_root()
+
+        assert result == root.resolve()
+
+    def test_claude_dir_only_recognized_as_root(self, tmp_path, monkeypatch):
+        from dev_team import _find_repo_root
+        root = tmp_path / "repo"
+        (root / ".claude").mkdir(parents=True)
+        monkeypatch.chdir(root)
+
+        result = _find_repo_root()
+
+        assert result == root.resolve()
+
+    def test_nested_cwd_walks_up_to_git_directory(self, tmp_path, monkeypatch):
+        from dev_team import _find_repo_root
+        root = tmp_path / "repo"
+        nested = root / "a" / "b" / "c"
+        nested.mkdir(parents=True)
+        (root / ".git").mkdir()
+        monkeypatch.chdir(nested)
+
+        result = _find_repo_root()
+
+        assert result == root.resolve()
+
+    def test_no_git_or_claude_in_any_ancestor_raises_runtime_error(self, tmp_path, monkeypatch):
+        from dev_team import _find_repo_root
+        cwd = tmp_path / "no_repo_here"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+
+        with pytest.raises(RuntimeError, match="Could not locate repo root"):
+            _find_repo_root()
