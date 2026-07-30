@@ -63,12 +63,16 @@ If you are about to read or write repository files (not just the context file it
 the working branch here:
 
 - If `working_branch` is empty: invoke the `ensure-working-branch` skill with the `work-item-id`
-  to compute, create, and check it out.
+  to compute, create, and check it out. If it reports anything other than the literal word
+  `successful`, stop and report the failure in detail — do not proceed to read or write any
+  other repository file.
 - If `working_branch` is set: cheaply confirm the repo is actually on it —
   `git rev-parse --abbrev-ref HEAD` and compare to `working_branch`. If they match, no further
   action is needed. If they don't match (or you need to confirm it's up to date with the remote),
   invoke `ensure-working-branch` — it re-checks the context file's already-known fields itself
-  and only recomputes what's actually missing.
+  and only recomputes what's actually missing. If it reports anything other than the literal
+  word `successful`, stop and report the failure in detail — do not proceed to read or write any
+  other repository file.
 
 Skip this whole check if you only need to read context-file fields and won't touch any other
 repository file this turn.
