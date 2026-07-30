@@ -29,8 +29,10 @@ For each human comment, determine:
 
 ## Step 3 — Ask clarifying questions
 
-For any comment that is ambiguous, post a reply in the PR thread via the GitHub MCP asking
-a specific, narrow question. For example:
+For any comment that is ambiguous, post a reply in the PR thread using the `work-with-pr` skill's
+"Responding to and resolving threads" reply mechanism (not a raw GitHub MCP call) — this also
+ensures the reply carries the configured attribution line, if any. Ask a specific, narrow
+question. For example:
 
 - "Is this a project-wide requirement, or specific to this service?"
 - "Should this pattern apply to all async methods, or only public APIs?"
