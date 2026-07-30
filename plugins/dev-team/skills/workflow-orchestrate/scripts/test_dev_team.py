@@ -1032,6 +1032,55 @@ class TestValidateStepGetActions:
         assert actions[0]["command"] == str(tmp_path / "scripts/validate.sh")
 
 
+class TestValidateStepHandleResults:
+    def _make_ctx(self, tmp_path, **kwargs):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-TEST", **kwargs)
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+        return ctx, context_path
+
+    def test_commits_and_pushes_when_no_validation_script_configured(self, tmp_path, monkeypatch):
+        """No-script path resolves entirely inline — it has no hook mechanism, so the
+        hardcoded push must still fire."""
+        import dev_team
+        from dev_team import ValidateStep
+        from unittest.mock import MagicMock
+
+        mock_commit_and_push = MagicMock(spec=dev_team._commit_and_push)
+        monkeypatch.setattr(dev_team, "_commit_and_push", mock_commit_and_push)
+        ctx, context_path = self._make_ctx(
+            tmp_path,
+            validate_result="Succeeded (no validation script configured for this project)",
+        )
+        step = ValidateStep(ctx, context_path, tmp_path / "logs")
+
+        trigger = step.handle_results()
+
+        assert trigger == "clean"
+        mock_commit_and_push.assert_called_once_with("ADR-TEST")
+
+    def test_skips_commit_and_push_when_validation_script_ran(self, tmp_path, monkeypatch):
+        """A real validation script already pushed via workflow-script's own
+        after-validate-success push hook — pushing again here would be redundant."""
+        import dev_team
+        from dev_team import ValidateStep
+        from unittest.mock import MagicMock
+
+        mock_commit_and_push = MagicMock(spec=dev_team._commit_and_push)
+        monkeypatch.setattr(dev_team, "_commit_and_push", mock_commit_and_push)
+        ctx, context_path = self._make_ctx(
+            tmp_path,
+            validate_result="Succeeded",
+        )
+        step = ValidateStep(ctx, context_path, tmp_path / "logs")
+
+        trigger = step.handle_results()
+
+        assert trigger == "clean"
+        mock_commit_and_push.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # CreatePrStep
 # ---------------------------------------------------------------------------

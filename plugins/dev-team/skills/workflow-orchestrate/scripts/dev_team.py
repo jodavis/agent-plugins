@@ -585,7 +585,8 @@ class ValidateStep(Step):
             ctx.pending_agent = ""
             if result.startswith("Succeeded"):
                 ctx.last_failure = ""
-                _commit_and_push(ctx.work_item_id)
+                if "(no validation script configured for this project)" in result:
+                    _commit_and_push(ctx.work_item_id)
                 return "clean"
             ctx.last_failure = (
                 f"Build or test failures.\n\n"
