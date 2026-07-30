@@ -1158,15 +1158,15 @@ def _step_pending_key(step: Step) -> str:
 # ---------------------------------------------------------------------------
 
 def _find_repo_root() -> Path:
-    """Walk up from cwd until a directory containing .git or .claude/ is found."""
+    """Walk up from cwd until a directory containing .claude/ or a .git file or directory is found."""
     current = Path(os.getcwd()).resolve()
     while True:
-        if (current / ".claude").is_dir() or (current / ".git").is_dir():
+        if (current / ".claude").is_dir() or (current / ".git").exists():
             return current
         parent = current.parent
         if parent == current:
             raise RuntimeError(
-                f"Could not locate repo root: no .claude/ or .git directory found "
+                f"Could not locate repo root: no .claude/ or .git file or directory found "
                 f"in any ancestor of {Path(os.getcwd()).resolve()}"
             )
         current = parent
