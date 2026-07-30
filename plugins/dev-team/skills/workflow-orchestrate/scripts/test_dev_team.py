@@ -944,32 +944,33 @@ class TestInlineStepDispatch:
 # ---------------------------------------------------------------------------
 
 class TestResolveValidationScript:
-    def test_default_config_resolves_to_repo_relative_path(self, tmp_path):
+    def test_validation_list_resolves_to_run_validation_command(self, tmp_path):
         from dev_team import _resolve_validation_script
-        config = {"validation": {"script": "scripts/validate.sh"}}
+        config = {"validation": ["scripts/validate.sh"]}
         result = _resolve_validation_script(config, tmp_path)
-        assert result == str(tmp_path / "scripts/validate.sh")
+        assert "run_validation.py" in result
+        assert f'--repo-root "{tmp_path}"' in result
+
+    def test_validation_multi_command_list_still_resolves_to_run_validation_command(self, tmp_path):
+        from dev_team import _resolve_validation_script
+        config = {"validation": ["npm run build", "npm test"]}
+        result = _resolve_validation_script(config, tmp_path)
+        assert "run_validation.py" in result
+        assert f'--repo-root "{tmp_path}"' in result
 
     def test_validation_null_returns_none(self, tmp_path):
         from dev_team import _resolve_validation_script
         config = {"validation": None}
         assert _resolve_validation_script(config, tmp_path) is None
 
-    def test_validation_script_null_returns_none(self, tmp_path):
+    def test_validation_empty_list_returns_none(self, tmp_path):
         from dev_team import _resolve_validation_script
-        config = {"validation": {"script": None}}
+        config = {"validation": []}
         assert _resolve_validation_script(config, tmp_path) is None
 
     def test_validation_key_absent_returns_none(self, tmp_path):
         from dev_team import _resolve_validation_script
         assert _resolve_validation_script({}, tmp_path) is None
-
-    def test_home_relative_script_is_expanded(self, tmp_path, monkeypatch):
-        from dev_team import _resolve_validation_script
-        monkeypatch.setenv("HOME", str(tmp_path))
-        config = {"validation": {"script": "~/bin/validate.sh"}}
-        result = _resolve_validation_script(config, tmp_path / "repo")
-        assert result == str(tmp_path / "bin" / "validate.sh")
 
 
 class TestValidateStepGetActions:
@@ -996,12 +997,12 @@ class TestValidateStepGetActions:
 
     def test_returns_run_script_action_when_configured(self, tmp_path, monkeypatch):
         import dev_team
-        from dev_team import ValidateStep
+        from dev_team import ValidateStep, _resolve_validation_script
 
         monkeypatch.setattr(dev_team, "REPO_ROOT", tmp_path)
+        config = {"validation": ["scripts/validate.sh"]}
         ctx, context_path = self._make_ctx(
-            tmp_path,
-            project_configuration=json.dumps({"validation": {"script": "scripts/validate.sh"}}),
+            tmp_path, project_configuration=json.dumps(config),
         )
         step = ValidateStep(ctx, context_path, tmp_path / "logs")
 
@@ -1009,27 +1010,27 @@ class TestValidateStepGetActions:
 
         assert len(actions) == 1
         assert actions[0]["action"] == "run_script"
-        assert actions[0]["command"] == str(tmp_path / "scripts/validate.sh")
+        assert actions[0]["command"] == _resolve_validation_script(config, tmp_path)
 
     def test_uses_cached_project_configuration_without_reloading(self, tmp_path, monkeypatch):
         import dev_team
-        from dev_team import ValidateStep
+        from dev_team import ValidateStep, _resolve_validation_script
 
         def _fail(repo_root):
             raise AssertionError("_load_project_config should not be called when cached")
 
         monkeypatch.setattr(dev_team, "_load_project_config", _fail)
         monkeypatch.setattr(dev_team, "REPO_ROOT", tmp_path)
+        config = {"validation": ["scripts/validate.sh"]}
         ctx, context_path = self._make_ctx(
-            tmp_path,
-            project_configuration=json.dumps({"validation": {"script": "scripts/validate.sh"}}),
+            tmp_path, project_configuration=json.dumps(config),
         )
         step = ValidateStep(ctx, context_path, tmp_path / "logs")
 
         actions = step.get_actions()
 
         assert len(actions) == 1
-        assert actions[0]["command"] == str(tmp_path / "scripts/validate.sh")
+        assert actions[0]["command"] == _resolve_validation_script(config, tmp_path)
 
 
 # ---------------------------------------------------------------------------

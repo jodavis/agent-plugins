@@ -41,6 +41,10 @@ documentation:
     name-format: "_spec_<slug>.md"
     search: grep -rl "<work-item-id>" . --include="_spec_*.md"
 
+validation:
+  - scripts/validate-build.sh
+  - scripts/validate-tests.sh
+
 git-repo:
   working-branches:
     task: dev/<user-alias>/<task-work-item-id>

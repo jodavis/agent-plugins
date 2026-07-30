@@ -30,7 +30,6 @@ documentation:
     search: grep -l "<work-item-id>" specs/*_Spec.md
 
 validation:
-  script: scripts/validate.sh
 
 testing:
   test-file-patterns:
@@ -49,7 +48,7 @@ git-repo:
     when: A task implementation is complete, or on each individual bug or code review comment addressed
   push:
     enabled: true
-    when: Only after the validation step passes (or is skipped, if the project has no validation.script configured)
+    when: Only after the validation step passes (or is skipped, if the project has no validation configured)
   create-pr:
     enabled: true
     draft: true
