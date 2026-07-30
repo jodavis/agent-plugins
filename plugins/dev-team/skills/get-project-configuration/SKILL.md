@@ -152,6 +152,22 @@ testing:
     - "*.spec.ts"
 ```
 
+### `attribution.message` — string, or `null`
+
+The wording used for the "Written by `<name>`" line that message-producing skills append to
+commit messages, PR descriptions, PR/review comments, and work-item descriptions/comments — see
+the `message-attribution` skill for the exact formatting rule and the list of channels it covers.
+**If `attribution.message` is `null` or absent (the shipped default), no attribution line is
+added anywhere.** Set an explicit value to opt in:
+
+```yaml
+attribution:
+  message: Written by <name>
+```
+
+The configured string is used verbatim as `<name>` in `Written by <name>` — there is no
+separate built-in default name to fall back to.
+
 ### `git-repo`
 
 `user-alias` — substituted for `<user-alias>` in the `working-branches.*` templates below.

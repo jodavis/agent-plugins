@@ -37,3 +37,10 @@ gh issue view <issue-number>
 ## Issue number
 
 GitHub issues use the `#42` notation on GitHub, but the canonical `work-item-id` for branches and file paths uses the `Issue-42` format. Strip the `Issue-` prefix and `#` to get the numeric ID for tool calls.
+
+## Attribution
+
+Before calling `add_issue_comment` or `issue_write` to create an issue or set/replace its
+`body` — or running `gh issue comment <n> --body "..."` — use the `message-attribution` skill
+to get the configured attribution line, if any, and append it to the comment or issue body.
+This applies to both the MCP tool path and the `gh` CLI path documented above.

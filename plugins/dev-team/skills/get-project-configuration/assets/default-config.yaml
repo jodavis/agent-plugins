@@ -39,6 +39,9 @@ testing:
 concurrency:
   max-parallel-tasks: 3
 
+attribution:
+  message: null
+
 git-repo:
   user-alias: claude
   working-branches:
