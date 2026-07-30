@@ -58,11 +58,43 @@ and stopping on `"complete"` or `"blocked"`.
 
 ## Steps
 
-### 1 — Orchestration loop
+### 1 — Reconcile against what's already running
+
+Run once before entering the main loop (step 2) — the first thing this session does whether
+it's a brand-new run or one resuming after a restart. A restart orphans whatever
+`workflow-orchestrate` spawns were in flight: this session has no memory of them, and nothing
+will ever notify it that they finished, so left unchecked they'd sit silently stalled forever.
+This step detects that and respawns.
+
+1. Take one non-blocking snapshot — `--max-poll-cycles 0` is a new invocation mode, distinct
+   from step 2a's default ~5-minute polling behavior, that returns after exactly one poll
+   instead of blocking until something becomes actionable:
+   ```bash
+   python "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>" --max-poll-cycles 0
+   ```
+   or the `--list` form, matching whichever target mode this run uses.
+2. For each `{task_id, status, last_updated, worktree_path}` entry in the returned `running`
+   list, check whether this session already holds a live spawn handle for it — i.e. whether this
+   session itself spawned it via step 2c, in this run or an earlier one before a restart. Keep
+   this record only in this session's own memory, never written to any file, mirroring step 2e's
+   own in-session record. A freshly started session holds none, so in practice every entry in
+   this first snapshot is unclaimed; only a session resuming mid-run (rather than after a
+   restart) would already track some.
+3. For each unclaimed entry, judge it by `last_updated`: if more than 15 minutes have elapsed
+   since it was last written, treat it as stalled — its `workflow-orchestrate` spawn silently
+   died or its session was lost — and respawn `workflow-orchestrate` for it exactly the way step
+   2c does. It's reentrant and resumes from the task's recorded `state`, so respawning a task
+   that's actually still healthy, or one that already reached hand-off, is harmless. Record the
+   respawn the same way step 2c does, so this session tracks it as its own from here on.
+   Otherwise, leave it alone — it's within its expected staleness window.
+
+Continue to step 2 once every entry in the snapshot has been checked.
+
+### 2 — Orchestration loop
 
 Repeat the following until the script reports `"complete"` or `"blocked"`.
 
-#### 1a — Run the scheduler script
+#### 2a — Run the scheduler script
 
 ```bash
 python "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>"
@@ -78,22 +110,23 @@ The script blocks internally rather than returning the instant it sees nothing t
 Invoke this `Bash` call with an explicit `timeout` of at least `330000`
 (5.5 minutes) — comfortably past the script's own ~5-minute default polling budget.
 
-Capture stdout — a single JSON object `{"status": ..., "spawn": [...], "blocked_tasks": [...]}`.
-If the script exits non-zero, it prints a clear `Error: ...` message to stderr instead — stop
-and report that error in detail (a dangling/cyclic spec, or an explicit-list task whose
-dependency is neither in the list nor already done); do not retry or fall back to guessing.
+Capture stdout — a single JSON object
+`{"status": ..., "spawn": [...], "blocked_tasks": [...], "running": [...]}`. If the script exits
+non-zero, it prints a clear `Error: ...` message to stderr instead — stop and report that error
+in detail (a dangling/cyclic spec, or an explicit-list task whose dependency is neither in the
+list nor already done); do not retry or fall back to guessing.
 
-#### 1b — Branch on status
+#### 2b — Branch on status
 
 - **`"complete"`** — every task in the target set has reached hand-off and `spawn` is empty.
-  Go to step 2 and stop.
+  Go to step 3 and stop.
 - **`"blocked"`** — every currently-spawned task has also reached a terminal state, but some
   not-yet-started task's dependency chain includes a task that ended in `failed`, so it can
-  never become eligible. Go to step 2 and stop — never keep polling once this fires.
-- **`"waiting"`** — continue to step 1c for each entry in `spawn` (possibly empty this cycle:
-  the cap is full, or nothing newly eligible), then to step 1d.
+  never become eligible. Go to step 3 and stop — never keep polling once this fires.
+- **`"waiting"`** — continue to step 2c for each entry in `spawn` (possibly empty this cycle:
+  the cap is full, or nothing newly eligible), then to step 2d.
 
-#### 1c — Spawn each newly eligible task
+#### 2c — Spawn each newly eligible task
 
 For each `{task_id, base_branch}` in `spawn`:
 
@@ -118,37 +151,47 @@ For each `{task_id, base_branch}` in `spawn`:
    to record them into that task's context file as `worktree_path` / `worktree_branch` — the
    `Agent` tool only auto-cleans a worktree if the spawned agent made *no* changes, which never
    applies here, so this is what makes the worktree findable for cleanup later.
+4. Add `task_id` to this session's own in-session "live spawn handle" record — the same one
+   steps 1 and 2d check before treating a `running` entry as unclaimed. Keep it only in this
+   session's own memory, never written to any file, mirroring step 2e's own in-session record.
+   This is what makes steps 1 and 2d's "not already held" check meaningful instead of vacuously
+   true forever.
 
-#### 1d — Wait, then re-invoke
+#### 2d — Wait, then re-invoke
 
-If step 1c just spawned anything, or a spawned pipeline's completion notification is already
-sitting in front of you, re-invoke the scheduler (step 1a) right away — no extra pause needed,
-since the script's own internal polling (step 1a) already paces repeat calls for you.
+If step 2c just spawned anything, or a spawned pipeline's completion notification is already
+sitting in front of you, re-invoke the scheduler (step 2a) right away — no extra pause needed,
+since the script's own internal polling (step 2a) already paces repeat calls for you.
 
-Otherwise — step 1a returned `"waiting"` with an empty `spawn`, meaning its own internal ~5
+Otherwise — step 2a returned `"waiting"` with an empty `spawn`, meaning its own internal ~5
 minutes of polling turned up nothing new — use this natural pause to sanity-check that
-previously spawned pipelines still look healthy (e.g. no unexplained silence from a spawn that
-should be active). If everything looks as expected, wait 30 seconds and re-invoke step 1a again.
-If something looks broken instead, invoke a troubleshooting step rather than continuing to poll
-blindly.
+previously spawned pipelines still look healthy. Apply the same staleness check step 1 uses: for
+each entry in the most recent poll's `running` list that this session holds a live spawn handle
+for, if more than 15 minutes have elapsed since its `last_updated`, treat it as a stall
+discovered mid-run — its `workflow-orchestrate` spawn died silently without ever reporting
+completion — and respawn `workflow-orchestrate` for it exactly the way step 2c does, catching the
+stall immediately rather than waiting for a restart to trigger step 1's own reconciliation. If
+everything else looks healthy, wait 30 seconds and re-invoke step 2a again. If something else
+looks broken (not covered by the staleness check), invoke a troubleshooting step rather than
+continuing to poll blindly.
 
-Either way, **any spawned pipeline from step 1c finishing** — reported to you as a background-
-agent completion notification, whether it arrives between cycles or while step 1a's `Bash` call
+Either way, **any spawned pipeline from step 2c finishing** — reported to you as a background-
+agent completion notification, whether it arrives between cycles or while step 2a's `Bash` call
 is still in flight (in which case you'll see it as soon as that call returns) — is always the
-trigger to run step 1e below for the task_id(s) it names, in addition to whatever re-invocation
+trigger to run step 2e below for the task_id(s) it names, in addition to whatever re-invocation
 timing applies above.
 
-#### 1e — Auto-start `dev-team:monitor-pr` for a task that just reached hand-off
+#### 2e — Auto-start `dev-team:monitor-pr` for a task that just reached hand-off
 
 Keep your own in-session record of which task_ids you've already spawned a `dev-team:monitor-pr`
 monitor for (start empty; this record lives only in this session's own memory, never written to
 any file — a restarted `concurrent-orchestrate` run has no spawned pipelines finishing anew for
 an already-handed-off task, so it never re-triggers this step for one).
 
-A spawned pipeline finishing successfully (step 1c's `workflow-orchestrate` `Agent` session
+A spawned pipeline finishing successfully (step 2c's `workflow-orchestrate` `Agent` session
 reporting success) means that task's own state machine transitioned `handoff → done` in one
 pass — there is no separately observable "reached hand-off" event apart from that session
-finishing successfully. For each task_id whose spawned pipeline the step 1d trigger just
+finishing successfully. For each task_id whose spawned pipeline the step 2d trigger just
 reported as finished *successfully*, and that isn't already in your in-session record:
 
 1. Use the `use-context-file` skill to read that task's context file and confirm `pr_url` is
@@ -158,7 +201,7 @@ reported as finished *successfully*, and that isn't already in your in-session r
    and add it to the in-session record anyway so a later poll doesn't repeatedly re-report the
    same inconsistency for it.
 2. Spawn `dev-team:monitor-pr` for it as a **local background `Agent`** (`run_in_background: true`,
-   not a cloud routine), mirroring the exact spawn pattern step 1c already uses for
+   not a cloud routine), mirroring the exact spawn pattern step 2c already uses for
    `workflow-orchestrate` itself:
    ```
    Agent(
@@ -175,7 +218,7 @@ reported as finished *successfully*, and that isn't already in your in-session r
 A pipeline that finished *unsuccessfully* (failed rather than handed off) never reaches this
 step — there is no PR to monitor, so no `dev-team:monitor-pr` is spawned for it.
 
-### 2 — Report
+### 3 — Report
 
 - **`"complete"`** — tell the user every task in the target set reached hand-off.
 - **`"blocked"`** — tell the user the run stopped, naming `blocked_tasks` and the reason (each
