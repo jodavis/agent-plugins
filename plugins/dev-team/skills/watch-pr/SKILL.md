@@ -62,11 +62,24 @@ against a confirmed upstream `isolation: "worktree"` bug (Claude Code issues #51
 #41010) that can silently reuse a stale worktree/branch on an 8-hex-char ID-prefix collision — a
 dirty worktree at this point means it isn't the fresh one this task expects.
 
-### 2 — Resolve the context file and check out the working branch
+### 2 — Resolve the context file, capture this worktree's identity, then check out the working branch
 
 Use the `use-context-file` skill with the `work-item-id` to locate and read the context file. Note
 `working_branch`, `base_branch`, `worktree_path`, and `worktree_branch` (the implement-phase
 worktree's own path/branch, recorded before hand-off).
+
+Before switching HEAD away from it, capture this freshly spawned worktree's own identity —
+`concurrent-orchestrate` step 1e.2 (or the manual `/watch-pr` command) already renamed this
+worktree's branch to a task-identifying name (e.g. `watch-<task_id>`) immediately after spawning
+it, so this is the last point at which reading `HEAD` returns that name rather than whatever this
+step is about to check out:
+
+```bash
+git rev-parse --show-toplevel   # -> watch_worktree_path
+git rev-parse --abbrev-ref HEAD # -> watch_worktree_branch
+```
+
+Then:
 
 ```bash
 git fetch origin
@@ -97,13 +110,9 @@ not get blocked by any stray state left behind by earlier spawned sub-agents. If
 exits non-zero, this is a **hard stop**: stop immediately and report the failure in detail — do
 not proceed to the recording step below or attempt any further recovery.
 
-Record this session's own worktree as `watch_worktree_path`/`watch_worktree_branch` via
-`use-context-file`:
-
-```bash
-git rev-parse --show-toplevel   # -> watch_worktree_path
-git rev-parse --abbrev-ref HEAD # -> watch_worktree_branch
-```
+Record this session's own worktree as `watch_worktree_path`/`watch_worktree_branch` — the values
+already captured in step 2, before this session's own `HEAD` moved to `<working_branch>` — via
+`use-context-file`.
 
 Also clear `worktree_path` and `worktree_branch` to empty via `use-context-file` — once removed,
 they no longer point to a valid worktree.

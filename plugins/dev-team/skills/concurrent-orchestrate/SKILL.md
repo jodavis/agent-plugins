@@ -128,6 +128,9 @@ For each `{task_id, base_branch}` in `spawn`:
    rename is purely a readability label — it never affects the branch name
    `ensure-working-branch` itself computes and creates later
    (`git-repo.working-branches.task`, e.g. `dev/claude/<task_id>`), which still runs unmodified.
+   If the rename fails for any other reason (git lock, unexpected error, etc.), this is a
+   **hard stop**: stop immediately and report the failure in detail rather than proceeding with
+   an unrenamed worktree.
 4. Use the `use-context-file` skill to record the worktree path and its (now task-identifying)
    branch into that task's context file as `worktree_path` / `worktree_branch` — the `Agent`
    tool only auto-cleans a worktree if the spawned agent made *no* changes, which never applies
@@ -182,9 +185,12 @@ reported as finished *successfully*, and that isn't already in your in-session r
    ```bash
    git branch -m <raw-branch-name> watch-<task_id>
    ```
-   (same stale-leftover fallback as step 1c.3 if that name is already taken). `watch-pr`'s own
-   step 3 records this renamed name as `watch_worktree_branch` by reading its own current branch
-   — no further action needed here.
+   (same stale-leftover fallback as step 1c.3 if that name is already taken, and the same hard
+   stop if the rename fails for any other reason). `watch-pr`'s own step 2 records this renamed
+   name as `watch_worktree_branch` by reading its own current branch *before* checking out
+   `working_branch` — reading it any later would return `working_branch` instead, once `watch-pr`
+   step 2's checkout has switched HEAD away from the renamed branch — no further action needed
+   here.
 3. Add `task_id` to your in-session record so this task never gets a second monitor spawned for
    it, even if a later poll re-notices its pipeline as finished.
 

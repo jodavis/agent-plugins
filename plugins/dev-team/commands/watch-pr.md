@@ -50,10 +50,14 @@ monitor for the same task that was never cleaned up), fall back to a disambiguat
 git branch -m <raw-branch-name> watch-<work-item-id>-<raw-branch-suffix>
 ```
 
-using the last segment of `<raw-branch-name>` (its 8-hex-char suffix) to disambiguate. This
-rename is run from your own (non-worktree) checkout, never from inside the spawned worktree —
-it only renames a ref, so it never touches the worktree's files. `watch-pr`'s own step 3 records
-this renamed name as `watch_worktree_branch` by reading its own current branch — no further
-action needed here.
+using the last segment of `<raw-branch-name>` (its 8-hex-char suffix) to disambiguate. If the
+rename fails for any other reason (git lock, unexpected error, etc.), this is a **hard stop**:
+stop immediately and report the failure in detail rather than proceeding with an unrenamed
+worktree. This rename is run from your own (non-worktree) checkout, never from inside the spawned
+worktree — it only renames a ref, so it never touches the worktree's files. `watch-pr`'s own
+step 2 records this renamed name as `watch_worktree_branch` by reading its own current branch
+*before* checking out `working_branch` — reading it any later would return `working_branch`
+instead, once `watch-pr` step 2's checkout has switched HEAD away from the renamed branch — no
+further action needed here.
 
 Then stop.
