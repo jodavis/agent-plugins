@@ -54,8 +54,6 @@ instructions:
   before-research:
   after-research:
   before-implement:
-    self-assign: Assign Jira work item to self
-    transition: Transition Jira work item to "In Progress"
   after-implement:
   before-fix:
   after-fix:
@@ -66,13 +64,8 @@ instructions:
   before-create-pr:
     ensure-pushed: If there are uncommitted changes, commit and push the branch
   after-create-pr:
-    self-assign: Assign Jira work item to self
-    transition: Transition Jira work item to "In Review"
   before-review:
   after-review:
   before-signoff:
   after-signoff-success:
-    promote: Promote GitHub PR to ready for review
-    request-review: Request a GitHub review from <default reviewer name>
-    assign-work-item: Assign work item to <default reviewer email>
   after-signoff-failure:

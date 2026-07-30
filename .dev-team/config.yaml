@@ -49,8 +49,3 @@ git-repo:
   working-branches:
     task: dev/<user-alias>/<task-work-item-id>
     feature: feature/<feature-work-item-id>-<slug>
-
-instructions:
-  after-signoff-success:
-    request-review: Request a GitHub review from jodavis
-    assign-work-item: Assign work item to jodasoft@outlook.com
