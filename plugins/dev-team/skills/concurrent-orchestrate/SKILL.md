@@ -110,10 +110,29 @@ For each `{task_id, base_branch}` in `spawn`:
    --work-item-id <task_id> --workflow implement-task-plan --research-skill plan-task"
    )
    ```
-3. Once the spawn call returns its worktree path and branch, use the `use-context-file` skill
-   to record them into that task's context file as `worktree_path` / `worktree_branch` — the
-   `Agent` tool only auto-cleans a worktree if the spawned agent made *no* changes, which never
-   applies here, so this is what makes the worktree findable for cleanup later.
+3. Once the spawn call returns its worktree path and branch, give the worktree's branch a
+   task-identifying name before recording anything, per **Worktree naming** below:
+   ```bash
+   git branch -m <raw-branch-name> worktree-<task_id>
+   ```
+   Run this from your own (non-worktree) checkout, never from inside the spawned worktree —
+   `git branch -m` only renames a ref, so it never touches the worktree's files and is safe
+   regardless of whether the spawned session has already started its own work in that directory.
+   If it fails because `worktree-<task_id>` already exists (a stale leftover from an earlier
+   dead spawn for the same task that was never cleaned up), fall back to a disambiguated name
+   instead of retrying indefinitely:
+   ```bash
+   git branch -m <raw-branch-name> worktree-<task_id>-<raw-branch-suffix>
+   ```
+   using the last segment of `<raw-branch-name>` (its 8-hex-char suffix) to disambiguate. This
+   rename is purely a readability label — it never affects the branch name
+   `ensure-working-branch` itself computes and creates later
+   (`git-repo.working-branches.task`, e.g. `dev/claude/<task_id>`), which still runs unmodified.
+4. Use the `use-context-file` skill to record the worktree path and its (now task-identifying)
+   branch into that task's context file as `worktree_path` / `worktree_branch` — the `Agent`
+   tool only auto-cleans a worktree if the spawned agent made *no* changes, which never applies
+   here, so this is what makes the worktree findable for cleanup later. See **Worktree naming**
+   below for why the branch is renamed instead of the directory.
 
 #### 1d — Wait, then re-invoke
 
@@ -157,6 +176,15 @@ reported as finished *successfully*, and that isn't already in your in-session r
    --work-item-id <task_id>"
    )
    ```
+   Once the spawn call returns its worktree branch, rename it the same way step 1c.3 does but
+   with a `watch-` prefix instead of `worktree-` — this worktree is a PR monitor, not an
+   implementation checkout, so the prefix itself communicates that at a glance:
+   ```bash
+   git branch -m <raw-branch-name> watch-<task_id>
+   ```
+   (same stale-leftover fallback as step 1c.3 if that name is already taken). `watch-pr`'s own
+   step 3 records this renamed name as `watch_worktree_branch` by reading its own current branch
+   — no further action needed here.
 3. Add `task_id` to your in-session record so this task never gets a second monitor spawned for
    it, even if a later poll re-notices its pipeline as finished.
 
@@ -169,6 +197,23 @@ step — there is no PR to monitor, so no `dev-team:watch-pr` is spawned for it.
 - **`"blocked"`** — tell the user the run stopped, naming `blocked_tasks` and the reason (each
   one's dependency chain includes a task that ended in `failed`, so it can never become
   eligible on its own).
+
+## Worktree naming
+
+`Agent(isolation: "worktree", ...)` always creates the worktree directory and branch under
+Claude Code's own opaque name (`.claude/worktrees/agent-<8-hex-chars>`, branch
+`worktree-agent-<8-hex-chars>`) — there is no supported spawn parameter to override either.
+Step 1c.3 and step 1e.2 rename only the **branch**, immediately after each spawn returns, to
+`worktree-<task_id>` (implementation runs) or `watch-<task_id>` (PR-monitor runs) — never the
+directory. This keeps `git worktree list`'s branch column identifying the task at a glance,
+including for a worktree that is still idle on its just-renamed branch because the spawned
+session hasn't reached `ensure-working-branch` yet (the "which ones are stale" case). The
+directory itself is deliberately left on its opaque name: renaming it would mean moving a path
+that may already be a live subagent's own working directory, and this fix does not need that
+risk to satisfy task-identifiability — the branch name alone is sufficient and is what
+`git worktree list` already surfaces per row. This is forward-looking only: worktrees created
+before this change was introduced keep their original opaque branch names. The manual
+`/watch-pr` entry point follows the same `watch-<task_id>` convention (see `commands/watch-pr.md`).
 
 ## Skills
 
