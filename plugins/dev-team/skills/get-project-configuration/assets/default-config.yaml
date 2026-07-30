@@ -47,15 +47,25 @@ git-repo:
   working-branches:
     task: dev/<user-alias>/<task-work-item-id>-<slug>
     feature: feature/<feature-work-item-id>-<slug>
-  commit:
-    when: A task implementation is complete, or on each individual bug or code review comment addressed
-  push:
-    enabled: true
-    when: Only after the validation step passes (or is skipped, if the project has no validation configured)
-  create-pr:
-    enabled: true
-    draft: true
-    when: the working branch has been pushed and a PR does not already exist
-  promote-pr:
-    enabled: true
-    when: All review comments are addressed and validation passes
+
+instructions:
+  before-debug:
+  after-debug:
+  before-research:
+  after-research:
+  before-implement:
+  after-implement:
+  before-fix:
+  after-fix:
+  before-validate:
+  after-validate-success:
+    push: Push git changes to remote
+  after-validate-failure:
+  before-create-pr:
+    ensure-pushed: If there are uncommitted changes, commit and push the branch
+  after-create-pr:
+  before-review:
+  after-review:
+  before-signoff:
+  after-signoff-success:
+  after-signoff-failure:

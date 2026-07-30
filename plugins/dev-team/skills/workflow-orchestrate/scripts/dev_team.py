@@ -381,6 +381,12 @@ class Step(ABC):
 
     handles: str
 
+    # Stable event name used by run-event-hooks to resolve before-<event>/after-<event>
+    # instructions. None means this Step has no single wrappable agent/script session
+    # (e.g. an inline step, or a ParallelSteps composite with no single action of its own)
+    # and no "event" key should be added to its emitted descriptors.
+    EVENT_NAME: str | None = None
+
     @abstractmethod
     def get_actions(self) -> list[dict]:
         """Return action descriptors to dispatch. Empty list means inline step."""
@@ -413,6 +419,7 @@ class FindSpecStep(Step):
 
 class DebugStep(Step):
     handles = "debugging"
+    EVENT_NAME = "debug"
 
     _PENDING_KEY = "debug"
 
@@ -458,6 +465,7 @@ class DebugStep(Step):
 
 class ResearchStep(Step):
     handles = "researching"
+    EVENT_NAME = "research"
 
     _PENDING_KEY = "research"
 
@@ -498,6 +506,7 @@ class ResearchStep(Step):
 
 class ImplementStep(Step):
     handles = "implementing"
+    EVENT_NAME = "implement"
 
     _PENDING_KEY = "implement"
 
@@ -536,6 +545,7 @@ class ImplementStep(Step):
 
 class ValidateStep(Step):
     handles = "validating"
+    EVENT_NAME = "validate"
 
     _PENDING_KEY = "validate"
 
@@ -573,7 +583,8 @@ class ValidateStep(Step):
             ctx.pending_agent = ""
             if result.startswith("Succeeded"):
                 ctx.last_failure = ""
-                _commit_and_push(ctx.work_item_id)
+                if "(no validation script configured for this project)" in result:
+                    _commit_and_push(ctx.work_item_id)
                 return "clean"
             ctx.last_failure = (
                 f"Build or test failures.\n\n"
@@ -590,7 +601,8 @@ class ValidateStep(Step):
 
 
 class CreatePrStep(Step):
-    handles = "creating-pr"
+    handles = "creating_pr"
+    EVENT_NAME = "create-pr"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -644,6 +656,7 @@ class CreatePrStep(Step):
 
 class ReviewStep(Step):
     handles = "reviewing"
+    EVENT_NAME = "review"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -884,6 +897,7 @@ class SignoffStep(ParallelSteps):
 
 class FixStep(Step):
     handles = "fixing"
+    EVENT_NAME = "fix"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -940,7 +954,8 @@ class FixStep(Step):
 
 
 class FixPrStep(Step):
-    handles = "fixing-pr"
+    handles = "fixing_pr"
+    EVENT_NAME = "fix"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -1004,7 +1019,18 @@ class FixPrStep(Step):
 
 
 class HandoffStep(Step):
+    """Runs only once `signoff` has approved — `reviewing`'s own `approved` trigger routes
+    to `signoff`, never here directly, so every hand-off is preceded by a full signoff pass.
+
+    Its event is named `signoff` (not `handoff`) because the pipeline event a project's
+    `instructions:` config customizes around this step is `before-signoff`/
+    `after-signoff-success`/`after-signoff-failure` — the hand-off work (promote PR, request
+    review, assign the work item) is configured as `after-signoff-success` instructions, run
+    generically by `run-event-hooks` around this near-no-op dispatch.
+    """
+
     handles = "handoff"
+    EVENT_NAME = "signoff"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
@@ -1016,7 +1042,7 @@ class HandoffStep(Step):
             return []
         return [{
             "action": "spawn_agent",
-            "message": "PR approved. Developer is handing off to a human reviewer.",
+            "message": "Signoff approved. Developer is handing off to a human reviewer.",
             "agent": "dev-team:developer",
             "skill": "final-sign-off",
             "args": f"{ctx.pr_url} {ctx.work_item_id}",
@@ -1066,10 +1092,10 @@ class DevTeamPipeline:
             "implementing": ImplementStep(ctx, context_path),
             "validating": ValidateStep(ctx, context_path, log_dir),
             "fixing": FixStep(ctx, context_path),
-            "creating-pr": CreatePrStep(ctx, context_path),
+            "creating_pr": CreatePrStep(ctx, context_path),
             "reviewing": ReviewStep(ctx, context_path),
             "signoff": SignoffStep(ctx, context_path, log_dir),
-            "fixing-pr": FixPrStep(ctx, context_path),
+            "fixing_pr": FixPrStep(ctx, context_path),
             "handoff": HandoffStep(ctx, context_path),
         }
 
@@ -1081,6 +1107,10 @@ class DevTeamPipeline:
         """Call get_actions(); exit if non-empty; otherwise call handle_results()."""
         actions = step.get_actions()
         if actions:
+            event_name = getattr(step, "EVENT_NAME", None)
+            if event_name:
+                for action in actions:
+                    action["event"] = event_name
             self.ctx.pending_agent = _step_pending_key(step)
             self.ctx.save(self.context_path)
             exit_with_actions(actions)

@@ -3,7 +3,9 @@ name: final-sign-off
 user-invocable: false
 description: >
   Use when handing off an approved PR to a human reviewer.
-  Converts the PR from draft to ready, assigns the Jira issue, and requests a GitHub review.
+  Reports the hand-off's readiness/status for `HandoffStep`; the actual promote/assign/
+  request-review work is performed afterward by this event's configured `after-signoff-success`
+  instructions (via `run-event-hooks`), not by this skill.
 argument-hint: <pr_url> <work-item-id>
 ---
 
@@ -11,40 +13,18 @@ Use this skill when:
 - A review has been approved and the PR is ready for human review
 - You need to hand off from agent review to human review
 
-You are working with an existing PR and updating the task work item to reflect the hand-off.
+This skill runs only once `signoff` itself has approved (`reviewing`'s own `approved` trigger
+routes to `signoff`, never here directly, so a hand-off is never reached without a full signoff
+pass). It does not itself promote the PR, assign the Jira issue, or request a review — that work
+is performed by this pipeline event's `after-signoff-success` instructions (run generically by
+`run-event-hooks`, dispatched around this skill by `workflow-worker` under the `signoff` event
+name). This skill's only job is to report that the hand-off point was reached.
 
 ## Steps
 
-### 1 — Convert PR to ready for review
+### 1 — Report completion
 
-Use the `work-with-pr` skill to convert the PR from draft to Ready for Review:
+Write a short, non-empty confirmation as this skill's own output — `workflow-worker` places it
+into the `Handoff Result` context section, e.g.:
 
-```
-mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullNumber=<number>, draft=false)
-```
-
-### 2 — Look up the human reviewer
-
-Use the `lookupJiraAccountId` operation from `work-with-Jira-tasks` with `$REVIEW_ASSIGNEE_EMAIL` to get the human reviewer's Jira account ID and GitHub username.
-
-### 3 — Assign the Jira issue
-
-Use the `editJiraIssue` operation from `work-with-Jira-tasks` to assign the Jira issue to the reviewer's account ID.
-
-### 4 — Request a GitHub review
-
-```
-mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullNumber=<number>, reviewers=["<github-username>"])
-```
-
-### 5 — Add a Jira comment
-
-Use the `addCommentToJiraIssue` operation from `work-with-Jira-tasks` with the message:
-
-> PR ready for human review — reviewer requested on GitHub.
-
-### 6 — Report completion
-
-Output a one-line confirmation as your final output, e.g.:
-
-> Handed off `<pr_url>` to `<github-username>` for human review; Jira issue assigned.
+> Hand-off acknowledged for `<pr_url>` (`<work-item-id>`); ready for hand-off instructions.

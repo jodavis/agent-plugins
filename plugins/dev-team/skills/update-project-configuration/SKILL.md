@@ -90,8 +90,8 @@ ask the user to clarify rather than guessing — do not silently pick the closes
 | "test file naming", "test file pattern" | `testing.test-file-patterns` | List of glob patterns |
 | "git user alias", "my alias" | `git-repo.user-alias` | |
 | "branch naming", "working branch template" | `git-repo.working-branches` | `task` and `feature` templates |
-| "commit/push/PR behavior", "when to push", "draft PRs", "auto-PR" | `git-repo.push` / `.create-pr` / `.promote-pr` | Each has `enabled` + `when`; `create-pr` also has `draft` |
 | "agent attribution", "written by line", "message signature" | `attribution.message` | Set to `null` explicitly to disable (default) |
+| "commit/push/PR behavior", "when to push", "draft PRs", "auto-PR", "hook instructions", "before/after instructions", "who gets assigned as reviewer" | `instructions` | Per-event, ordered `label: instruction` map; see Step 4's `instructions` subsection for the add/edit/disable walkthrough |
 
 Once the config path is resolved, ask only the question(s) for that field/section (reuse the relevant
 sub-section under Step 4), then go to **Step 5 — Writing**.
@@ -178,13 +178,39 @@ Ask/confirm:
 - `user-alias` — defaults to `claude`; ask if this user works under a different alias in this repo
 - `working-branches.task` / `.feature` — branch name templates (placeholders:
   `<user-alias>`, `<task-work-item-id>`, `<feature-work-item-id>`, `<slug>`)
-- `commit.when` — when to make a local commit
-- `push.enabled` / `.when`
-- `create-pr.enabled` / `.draft` / `.when`
-- `promote-pr.enabled` / `.when`
 
-If the user has no push/PR rights on this repo (e.g. contributing to another team's repo), set the
-relevant `enabled: false` rather than leaving `when` vague.
+### instructions
+
+Detect a hint first: run `merge_config.py` (already loaded in Step 2, or re-run here) and read the
+merged `instructions` map. Each key (`before-<event>` / `after-<event>` / `after-<event>-success` /
+`after-<event>-failure`) holds an ordered `label: instruction` map — see `run-event-hooks` for the
+full label/ordering/dispatch semantics; this subsection doesn't repeat those mechanics.
+
+Present the current merged instructions, leading with the events that ship non-empty defaults
+(`before-implement`, `after-validate-success`, `before-create-pr`, `after-create-pr`,
+`after-signoff-success`) and offering the remaining events on request rather than listing all of
+them unconditionally.
+
+For each event the user wants to change, ask which action applies:
+- **Add** a new labeled entry — ask for a label (an opaque key, only used to override this one
+  entry at a more specific tier — never interpreted by the hook mechanism) and the instruction
+  text in plain language (e.g. "Push git changes to remote").
+- **Edit** an existing labeled entry — show its current instruction text and ask for the
+  replacement.
+- **Disable** an existing labeled entry — write `label: ""` at the tier being edited. This
+  overrides just that one inherited label, leaving its siblings (and every other event's entries)
+  untouched. If the user has no push/PR rights on this repo (e.g. contributing to another team's
+  repo), disable the relevant labeled entries this way — there is no block-level `enabled: false`
+  under `instructions:`.
+
+Then ask specifically who should be assigned as PR/work-item reviewer once the hand-off/sign-off
+pipeline step approves the work: write the answer into `after-signoff-success`'s `request-review`
+label (a GitHub username, for requesting review on the PR) and `assign-work-item` label (an email
+or account identifier, for assigning the tracked work item) — ask for both forms if the user's
+single answer doesn't unambiguously give both. (`after-signoff-success` is this config schema's
+actual key for the pipeline's hand-off/sign-off step — its `EVENT_NAME` is `signoff` — even though
+some spec prose elsewhere still calls this step "hand-off".) This repo's own
+`.dev-team/config.yaml` has a worked example under `instructions.after-signoff-success`.
 
 ### attribution
 
