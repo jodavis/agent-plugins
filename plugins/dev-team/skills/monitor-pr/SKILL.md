@@ -1,5 +1,5 @@
 ---
-name: watch-pr
+name: monitor-pr
 user-invocable: false
 description: >
   Long-lived, user-started post-hand-off PR monitor. Owns the entire lifecycle from hand-off to
@@ -52,15 +52,14 @@ returns, and repeat, until the task's own PR merges or an unresolved rebase conf
 Run this first, unconditionally, before anything else — even before step 2:
 
 ```bash
-git stash list
 git status --short
 ```
 
-Both must be empty. If either produces any output, this is a **hard stop**: stop immediately and
-report the failure in detail (do not proceed to step 2 or attempt any recovery). This guards
-against a confirmed upstream `isolation: "worktree"` bug (Claude Code issues #51596, #37873,
-#41010) that can silently reuse a stale worktree/branch on an 8-hex-char ID-prefix collision — a
-dirty worktree at this point means it isn't the fresh one this task expects.
+Must be empty. If it produces any output, this is a **hard stop**: stop immediately and report
+the failure in detail (do not proceed to step 2 or attempt any recovery). This guards against a
+confirmed upstream `isolation: "worktree"` bug (Claude Code issues #51596, #37873, #41010) that
+can silently reuse a stale worktree/branch on an 8-hex-char ID-prefix collision — a dirty
+worktree at this point means it isn't the fresh one this task expects.
 
 ### 2 — Resolve the context file and check out the working branch
 

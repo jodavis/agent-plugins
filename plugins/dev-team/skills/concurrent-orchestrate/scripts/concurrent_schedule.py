@@ -8,9 +8,18 @@ and a repo-wide concurrency cap enforced across every target's own data file —
 one. It never spawns anything itself; that's the `Agent` tool's job, driven by
 `concurrent-orchestrate`'s own prose.
 
+`poll_until_actionable(target)` wraps `compute_next_batch` with the blocking behavior the CLI
+exposes: rather than making the calling agent re-invoke this script itself every 30 seconds
+(noisy — one turn per poll), it polls internally, sleeping between cycles, and only returns once
+there's something actionable to report (a non-"waiting" status, or a "waiting" status with a
+non-empty `spawn`) or `--max-poll-cycles` idle cycles have elapsed with nothing to do — at which
+point it returns the last "waiting"/empty result anyway, so the caller still gets a chance to
+check in periodically.
+
 Usage:
   concurrent_schedule.py --up-to <key>
   concurrent_schedule.py --list <key1,key2,...>
+  concurrent_schedule.py --up-to <key> --poll-interval-seconds 30 --max-poll-cycles 10
 
 Mirrors `compute_next_batch(target)`'s own single-argument contract: the spec file is never
 passed in — it's located via `dev_team.find_spec_file()`, keyed off the target's own task id,
@@ -18,7 +27,7 @@ exactly the way `dev_team.py` itself finds a task's spec.
 
 `main()` is a thin CLI wrapper so a prose skill (`concurrent-orchestrate`, which has no other
 way to call a Python function directly) can invoke this via `Bash`: it prints
-`compute_next_batch`'s result as JSON to stdout on success, or a clear `Error: ...` message to
+`poll_until_actionable`'s result as JSON to stdout on success, or a clear `Error: ...` message to
 stderr with a non-zero exit on a dangling/cyclic spec, an invalid explicit list, or any other
 failure.
 """
@@ -28,6 +37,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -49,6 +59,9 @@ _MERGE_CONFIG_SCRIPT = (
 _DEFAULT_MAX_PARALLEL_TASKS = 3
 
 _TERMINAL_STATUSES = ("done", "failed")
+
+_DEFAULT_POLL_INTERVAL_SECONDS = 30
+_DEFAULT_MAX_POLL_CYCLES = 10
 
 
 class ConcurrentScheduleError(ValueError):
@@ -241,6 +254,29 @@ def compute_next_batch(target: TargetSpec) -> dict:
     return {"status": "waiting", "spawn": spawn, "blocked_tasks": []}
 
 
+def poll_until_actionable(
+    target: TargetSpec,
+    poll_interval_seconds: float = _DEFAULT_POLL_INTERVAL_SECONDS,
+    max_poll_cycles: int = _DEFAULT_MAX_POLL_CYCLES,
+    sleep=time.sleep,
+) -> dict:
+    """Block until `compute_next_batch(target)` has something actionable to report, instead of
+    making the caller re-invoke this script itself every 30 seconds. Polls immediately; if that
+    poll comes back `"waiting"` with an empty `spawn` (nothing newly eligible and the cap isn't
+    the reason — there's simply nothing to do yet), sleeps `poll_interval_seconds` and polls
+    again, up to `max_poll_cycles` times. Returns as soon as any poll reports `"complete"`,
+    `"blocked"`, or `"waiting"` with a non-empty `spawn`. If every cycle stays idle, returns the
+    last (still "waiting", still empty) result anyway once `max_poll_cycles` is exhausted, so the
+    caller regains control periodically to sanity-check the run rather than blocking forever."""
+    result = compute_next_batch(target)
+    cycles = 0
+    while result["status"] == "waiting" and not result["spawn"] and cycles < max_poll_cycles:
+        sleep(poll_interval_seconds)
+        result = compute_next_batch(target)
+        cycles += 1
+    return result
+
+
 def _parse_target(args: argparse.Namespace) -> TargetSpec:
     if args.up_to:
         return TargetSpec(mode="up_to", tasks=(args.up_to,))
@@ -256,12 +292,27 @@ def main() -> None:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--up-to", metavar="key", help="Inclusive 'up to' target task key")
     group.add_argument("--list", metavar="key1,key2,...", help="Explicit comma-separated task list")
+    parser.add_argument(
+        "--poll-interval-seconds", type=float, default=_DEFAULT_POLL_INTERVAL_SECONDS,
+        help="Seconds to sleep between poll cycles while 'waiting' with nothing to spawn "
+             f"(default: {_DEFAULT_POLL_INTERVAL_SECONDS})",
+    )
+    parser.add_argument(
+        "--max-poll-cycles", type=int, default=_DEFAULT_MAX_POLL_CYCLES,
+        help="Max number of pause-poll cycles before returning control even while still "
+             f"'waiting' with nothing to spawn (default: {_DEFAULT_MAX_POLL_CYCLES}, i.e. "
+             f"{_DEFAULT_MAX_POLL_CYCLES * _DEFAULT_POLL_INTERVAL_SECONDS / 60:g} minutes total)",
+    )
     args = parser.parse_args()
 
     target = _parse_target(args)
 
     try:
-        result = compute_next_batch(target)
+        result = poll_until_actionable(
+            target,
+            poll_interval_seconds=args.poll_interval_seconds,
+            max_poll_cycles=args.max_poll_cycles,
+        )
     except (
         TaskDependencyError,
         ConcurrentScheduleError,

@@ -4,7 +4,7 @@ user-invocable: false
 description: >
   Orchestration loop for running several dependency-ordered task-work-items concurrently.
   Repeatedly invokes concurrent_schedule.py, spawns an isolated workflow-orchestrate run per
-  newly eligible task, auto-starts a dev-team:watch-pr monitor the moment each one reaches
+  newly eligible task, auto-starts a dev-team:monitor-pr monitor the moment each one reaches
   hand-off, and stops on "complete" or "blocked" instead of polling forever.
 argument-hint: --target-mode <up-to|list> --target <key, or comma-separated keys>
 ---
@@ -30,7 +30,7 @@ The repo-wide cap on concurrently active task-pipeline spawns, enforced internal
 `concurrent_schedule.py` (via `get-project-configuration`'s merged config) — never something
 this skill's own prose reads or reasons about directly. Counts only active (non-terminal)
 `workflow-orchestrate` spawns tracked across every `concurrent-<target-slug>.json` file under
-this repo's state directory — never a `dev-team:watch-pr` monitor, which is idle almost all the
+this repo's state directory — never a `dev-team:monitor-pr` monitor, which is idle almost all the
 time it's running. Defaults to `3`; override in `.dev-team/config.yaml` for a machine with more
 (or less) headroom for parallel agent sessions:
 
@@ -52,7 +52,7 @@ and stopping on `"complete"` or `"blocked"`.
   `concurrent_schedule.py` owns all of that
 - Fix build errors, test failures, or code review comments yourself
 - Invoke agent skills directly (other than spawning `workflow-orchestrate` itself, unmodified,
-  per task, and `dev-team:watch-pr` once that task reaches hand-off)
+  per task, and `dev-team:monitor-pr` once that task reaches hand-off)
 - Edit source files or test files
 - Take any action beyond what the script's JSON descriptor instructs
 
@@ -73,6 +73,10 @@ or, for the explicit-list form:
 ```bash
 python "<skill-dir>/scripts/concurrent_schedule.py" --list "<target>"
 ```
+
+The script blocks internally rather than returning the instant it sees nothing to do.
+Invoke this `Bash` call with an explicit `timeout` of at least `330000`
+(5.5 minutes) — comfortably past the script's own ~5-minute default polling budget.
 
 Capture stdout — a single JSON object `{"status": ..., "spawn": [...], "blocked_tasks": [...]}`.
 If the script exits non-zero, it prints a clear `Error: ...` message to stderr instead — stop
@@ -117,18 +121,26 @@ For each `{task_id, base_branch}` in `spawn`:
 
 #### 1d — Wait, then re-invoke
 
-Re-invoke the scheduler (step 1a) whenever either of these happens, whichever comes first:
-- **60 seconds elapse** — a dependency merely reaching "PR open" mid-pipeline (the actual
-  readiness gate for its dependents) is not a terminal event you're notified on, so periodic
-  re-invocation is the only way to catch it.
-- **Any spawned pipeline from step 1c finishes** — the harness notifies on background-agent
-  completion; treat that notification as an immediate trigger both to re-invoke rather than
-  waiting out the rest of the 60 seconds, and to run step 1e below for the task_id(s) that
-  notification names.
+If step 1c just spawned anything, or a spawned pipeline's completion notification is already
+sitting in front of you, re-invoke the scheduler (step 1a) right away — no extra pause needed,
+since the script's own internal polling (step 1a) already paces repeat calls for you.
 
-#### 1e — Auto-start `dev-team:watch-pr` for a task that just reached hand-off
+Otherwise — step 1a returned `"waiting"` with an empty `spawn`, meaning its own internal ~5
+minutes of polling turned up nothing new — use this natural pause to sanity-check that
+previously spawned pipelines still look healthy (e.g. no unexplained silence from a spawn that
+should be active). If everything looks as expected, wait 30 seconds and re-invoke step 1a again.
+If something looks broken instead, invoke a troubleshooting step rather than continuing to poll
+blindly.
 
-Keep your own in-session record of which task_ids you've already spawned a `dev-team:watch-pr`
+Either way, **any spawned pipeline from step 1c finishing** — reported to you as a background-
+agent completion notification, whether it arrives between cycles or while step 1a's `Bash` call
+is still in flight (in which case you'll see it as soon as that call returns) — is always the
+trigger to run step 1e below for the task_id(s) it names, in addition to whatever re-invocation
+timing applies above.
+
+#### 1e — Auto-start `dev-team:monitor-pr` for a task that just reached hand-off
+
+Keep your own in-session record of which task_ids you've already spawned a `dev-team:monitor-pr`
 monitor for (start empty; this record lives only in this session's own memory, never written to
 any file — a restarted `concurrent-orchestrate` run has no spawned pipelines finishing anew for
 an already-handed-off task, so it never re-triggers this step for one).
@@ -145,7 +157,7 @@ reported as finished *successfully*, and that isn't already in your in-session r
    inconsistency in detail (task_id and the fact that a successful hand-off left no `pr_url`),
    and add it to the in-session record anyway so a later poll doesn't repeatedly re-report the
    same inconsistency for it.
-2. Spawn `dev-team:watch-pr` for it as a **local background `Agent`** (`run_in_background: true`,
+2. Spawn `dev-team:monitor-pr` for it as a **local background `Agent`** (`run_in_background: true`,
    not a cloud routine), mirroring the exact spawn pattern step 1c already uses for
    `workflow-orchestrate` itself:
    ```
@@ -153,7 +165,7 @@ reported as finished *successfully*, and that isn't already in your in-session r
      subagent_type: "claude",
      isolation: "worktree",
      run_in_background: true,
-     prompt: "Invoke the `watch-pr` skill with arguments:
+     prompt: "Invoke the `monitor-pr` skill with arguments:
    --work-item-id <task_id>"
    )
    ```
@@ -161,7 +173,7 @@ reported as finished *successfully*, and that isn't already in your in-session r
    it, even if a later poll re-notices its pipeline as finished.
 
 A pipeline that finished *unsuccessfully* (failed rather than handed off) never reaches this
-step — there is no PR to monitor, so no `dev-team:watch-pr` is spawned for it.
+step — there is no PR to monitor, so no `dev-team:monitor-pr` is spawned for it.
 
 ### 2 — Report
 

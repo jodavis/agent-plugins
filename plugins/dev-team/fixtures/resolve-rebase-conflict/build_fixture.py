@@ -106,7 +106,7 @@ def _shared_initial_commit(work: Path) -> None:
 
 def _diverge_and_rebase(work: Path) -> str:
     """Push the working branch's commits, then the base branch's diverging commits, then
-    attempt the rebase exactly as `dev-team:watch-pr` would. Returns rebase_onto()'s result
+    attempt the rebase exactly as `dev-team:monitor-pr` would. Returns rebase_onto()'s result
     ("rebased" or "conflict") so callers can assert the scenario actually produced a
     conflict."""
     _run_git(["push", "-u", "origin", WORKING_BRANCH], cwd=work)
