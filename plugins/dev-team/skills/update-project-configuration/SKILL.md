@@ -68,7 +68,7 @@ Resolve `<repo-root>` the same way `merge_config.py` does: walk up from the curr
 
   > What would you like to configure?
   > - **Not yet configured**: <list sections/fields still equal to the shipped default or null>
-  > - Show everything (all six sections, including ones already set)
+  > - Show everything (all eight sections, including ones already set)
   > - Run the full guided walkthrough top-to-bottom
 
   Default the menu to the "not yet configured" list per the user's own framing — but always offer the
