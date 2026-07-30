@@ -146,7 +146,7 @@ added anywhere.** Set an explicit value to opt in:
 
 ```yaml
 attribution:
-  message: Claude Code
+  message: Written by <name>
 ```
 
 The configured string is used verbatim as `<name>` in `Written by <name>` — there is no

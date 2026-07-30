@@ -25,7 +25,7 @@ Read `attribution.message` from the result.
 are producing must be byte-for-byte the same as if this skill were never consulted. This is the
 shipped default (no project override); do not invent a fallback name.
 
-**Otherwise:** append the line `Written by <attribution.message>` to the message, as its own
+**Otherwise:** append the text in `attribution-message`, with <name> replaced by your name, as its own
 trailing line, separated from the rest of the content by one blank line. For a single-line
 message (e.g. a short Jira comment), still place it on its own line rather than appending it
 inline to the existing text.
@@ -33,7 +33,7 @@ inline to the existing text.
 This attribution line is independent of, and additional to, any other attribution mechanism a
 message channel already carries on its own (e.g. a `Co-Authored-By:` trailer added by the
 surrounding tool harness to git commits) — never remove or replace an existing trailer to make
-room for it; add the `Written by <name>` line alongside it.
+room for it; add the `attribution.message` line alongside it.
 
 ## Out of scope
 

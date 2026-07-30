@@ -188,8 +188,8 @@ relevant `enabled: false` rather than leaving `when` vague.
 ### attribution
 
 Ask: should messages written on the user's behalf (commit messages, PR descriptions, PR/review
-comments, work-item comments and descriptions) carry a "Written by `<name>`" line? If yes, ask
-for the exact wording (e.g. `Claude Code`, `Cursor`, `GitHub Copilot`) and set
+comments, work-item comments and descriptions) carry an attribution line? If yes, ask
+for the exact wording (e.g. "Written by <name>") and set
 `attribution.message` to it verbatim — that string is used as-is, with no separate built-in
 default. If no, leave `attribution.message` unset/`null`; this is the shipped default and needs
 no explicit write.
