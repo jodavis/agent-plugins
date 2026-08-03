@@ -58,6 +58,20 @@ and stopping on `"complete"` or `"blocked"`.
 
 ## Steps
 
+### 0 — Verify `python3` is available
+
+Every step below drives `concurrent_schedule.py` (and, transitively, every spawned
+`workflow-orchestrate` run) through `python3` — nothing in this pipeline works without it.
+Before running step 1 for the first time this session, confirm the interpreter is present:
+
+```bash
+command -v python3
+```
+
+If this reports nothing (a non-zero exit), stop immediately and report to the user that
+`python3` is required but was not found on this system, rather than proceeding and failing on
+the first script invocation with a less obvious "command not found" error.
+
 ### 1 — Reconcile against what's already running
 
 Run once before entering the main loop (step 2) — the first thing this session does whether
@@ -70,7 +84,7 @@ This step detects that and respawns.
    from step 2a's default ~5-minute polling behavior, that returns after exactly one poll
    instead of blocking until something becomes actionable:
    ```bash
-   python "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>" --max-poll-cycles 0
+   python3 "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>" --max-poll-cycles 0
    ```
    or the `--list` form, matching whichever target mode this run uses.
 2. For each `{task_id, status, last_updated, worktree_path}` entry in the returned `running`
@@ -97,13 +111,13 @@ Repeat the following until the script reports `"complete"` or `"blocked"`.
 #### 2a — Run the scheduler script
 
 ```bash
-python "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>"
+python3 "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>"
 ```
 
 or, for the explicit-list form:
 
 ```bash
-python "<skill-dir>/scripts/concurrent_schedule.py" --list "<target>"
+python3 "<skill-dir>/scripts/concurrent_schedule.py" --list "<target>"
 ```
 
 The script blocks internally rather than returning the instant it sees nothing to do.

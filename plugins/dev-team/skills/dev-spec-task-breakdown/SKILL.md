@@ -98,7 +98,7 @@ this way rather than assuming a particular repo layout or that the Bash tool's C
 root. Run it via `Bash`:
 
 ```bash
-python "<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py" "<path to spec file>"
+python3 "<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py" "<path to spec file>"
 ```
 
 If it exits non-zero, it printed a clear `Error: ...` message to stderr naming the offending task

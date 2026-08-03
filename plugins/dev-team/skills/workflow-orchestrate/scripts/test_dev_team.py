@@ -972,6 +972,14 @@ class TestResolveValidationScript:
         from dev_team import _resolve_validation_script
         assert _resolve_validation_script({}, tmp_path) is None
 
+    def test_validation_list_resolves_to_sys_executable_command(self, tmp_path):
+        """Must invoke the current interpreter (sys.executable), never a bare `python`,
+        since not every environment has a `python` command on PATH (only `python3`)."""
+        from dev_team import _resolve_validation_script
+        config = {"validation": ["scripts/validate.sh"]}
+        result = _resolve_validation_script(config, tmp_path)
+        assert result.startswith(f'{sys.executable} ')
+
 
 class TestValidateStepGetActions:
     def _make_ctx(self, tmp_path, **kwargs):
@@ -1031,6 +1039,28 @@ class TestValidateStepGetActions:
 
         assert len(actions) == 1
         assert actions[0]["command"] == _resolve_validation_script(config, tmp_path)
+
+
+class TestBuildValidationStepGetActions:
+    def _make_ctx(self, tmp_path, **kwargs):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-TEST", **kwargs)
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+        return ctx, context_path
+
+    def test_run_script_command_uses_sys_executable(self, tmp_path):
+        """Must invoke the current interpreter (sys.executable), never a bare `python`,
+        since not every environment has a `python` command on PATH (only `python3`)."""
+        from dev_team import BuildValidationStep
+
+        ctx, context_path = self._make_ctx(tmp_path, pr_url="https://github.com/org/repo/pull/1")
+        step = BuildValidationStep(ctx, context_path, tmp_path / "logs")
+
+        actions = step.get_actions()
+
+        assert len(actions) == 1
+        assert actions[0]["command"].startswith(f'{sys.executable} ')
 
 
 class TestValidateStepHandleResults:
