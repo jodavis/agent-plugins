@@ -43,30 +43,22 @@ Combine whatever context is available (debug report and/or issue title/body/comm
 a single issue context summary. This is the context you'll pass to the researcher agents
 and to the task brief.
 
-### 2 — Spawn parallel researcher agents
+### 2 — Research the issue from three angles
 
-Spawn three `dev-team:researcher` agents in parallel. Pass each one the issue context from
-step 1.
+**Do this yourself, in your own turn, using the `Skill` tool — do not spawn sub-agents for this
+step.** This skill runs as (or under) a `dev-team:researcher` agent, and that agent's own tool
+list has no `Agent`/`Task` tool, so it cannot spawn further agents of any kind, including more
+copies of itself. Invoke each of the following three skills in turn, passing the issue context
+from step 1 to each:
 
-**Agent 1 — Architecture docs:**
-> Use the `find-repo-documentation` skill to discover all architecture docs in the repo. Read the ones relevant to this issue and return a summary of what each says about the areas it will touch.
->
-> Issue context:
-> `<paste issue context here>`
+1. `find-repo-documentation` — discover all architecture docs in the repo. Read the ones
+   relevant to this issue and note a summary of what each says about the areas it will touch.
+2. `research-sources` — find and read the source files most relevant to this issue. Focus on
+   existing interfaces, utilities, and patterns the fix should use or extend.
+3. `research-learn` — research any frameworks, libraries, or patterns relevant to this issue
+   that are not fully covered by local docs. Note findings with source links.
 
-**Agent 2 — Source code patterns:**
-> Use the `research-sources` skill to find and read the source files most relevant to this issue. Focus on existing interfaces, utilities, and patterns the fix should use or extend.
->
-> Issue context:
-> `<paste issue context here>`
-
-**Agent 3 — External best practices:**
-> Use the `research-learn` skill to research any frameworks, libraries, or patterns relevant to this issue that are not fully covered by local docs. Return findings with source links.
->
-> Issue context:
-> `<paste issue context here>`
-
-Wait for all three agents to complete and collect their output.
+Collect all three outputs before moving on.
 
 ### 3 — Write the task brief
 
