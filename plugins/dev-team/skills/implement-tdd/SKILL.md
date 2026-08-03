@@ -42,17 +42,10 @@ whole thing:
 `<skill-dir>` refers to this skill's own base directory — the "Base directory for this skill"
 path shown when this skill was invoked. Resolve it to that literal path.
 
-Pass the component prompt on the script's stdin (e.g. a heredoc), not as a file:
-
-```bash
-python3 "<skill-dir>/scripts/tdd_cycle.py" \
-  --component-name "<Component>" \
-  --repo-root <repo-root> \
-  --work-item-id <work-item-id> \
-  --state-file <state-path> <<'EOF'
-<component prompt text>
-EOF
-```
+Pass the component prompt on the script's stdin (e.g. a heredoc), not as a file. Use the
+`run-python-script` skill with `--script "<skill-dir>/scripts/tdd_cycle.py" --args
+"--component-name \"<Component>\" --repo-root <repo-root> --work-item-id <work-item-id>
+--state-file <state-path>" --stdin "<component prompt text>"`.
 
 Use a `<state-path>` unique to this component (e.g. under a scratch directory) — it's how the
 script resumes a specific component's in-progress loop after you resolve an escalation. Every
@@ -129,3 +122,4 @@ builds/tests on their behalf.
   against
 - `implement-direct` — used for a `resolve_directly` Tier 2 escalation, before re-running the
   script
+- `run-python-script` — the `python3` availability check and the `tdd_cycle.py` invocation

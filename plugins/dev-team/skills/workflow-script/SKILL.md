@@ -11,7 +11,13 @@ argument-hint: --context-file <path> --write-section <section> --command <comman
 
 - `--context-file` — absolute path to the workflow context file (e.g. `~/.dev-team/org/repo/PROJ-123.md`)
 - `--write-section` — name of the section to write the log file path to (e.g. `Build Result`)
-- `--command` — the shell command to run (e.g. `python3 -u /path/to/validate.py PROJ-123`)
+- `--command` — the shell command to run (e.g. `python3 -u /path/to/validate.py PROJ-123`),
+  already fully resolved by the caller (sometimes literally `python3 ...`, sometimes built by
+  `dev_team.py` using `sys.executable`). This is a documented carve-out from the `run-python-script`
+  skill: `--command` is a pre-built shell string handed in by the caller, not a `python3 <script>`
+  invocation this skill constructs itself, so step 2 below keeps running it directly via `Bash`
+  rather than delegating to `run-python-script` — see `run-python-script/SKILL.md`'s
+  "Carve-outs" section.
 - `--log-file` — a full path to a location where the script's output should be logged
 - `--event` — (optional) the pipeline event name for this step (e.g. `validate`), matching a
   `dev_team.py` `Step`'s `EVENT_NAME`. When present, wraps the command run with the project's

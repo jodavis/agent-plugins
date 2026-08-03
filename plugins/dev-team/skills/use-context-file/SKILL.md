@@ -26,17 +26,14 @@ If no argument was given at all, use the `identify-project-work-items` skill to 
 this skill" path shown when this skill was invoked. Resolve it to that literal path; it
 is not an environment variable.
 
-```bash
-python3 "<skill-dir>/scripts/compute-context-file.py" "<work-item-id>"
-```
+Use the `run-python-script` skill with `--script "<skill-dir>/scripts/compute-context-file.py"
+--args "<work-item-id>"`.
 
 If the script exits non-zero, stop and report the error.
 
-Ensure the file exists (creates it with default frontmatter if missing):
-
-```bash
-python3 "<skill-dir>/scripts/init-context-file.py" "<work-item-id>" "<context-file>"
-```
+Ensure the file exists (creates it with default frontmatter if missing): use the
+`run-python-script` skill with `--script "<skill-dir>/scripts/init-context-file.py" --args
+"<work-item-id> <context-file>"`.
 
 If the script exits non-zero, stop and report the error.
 

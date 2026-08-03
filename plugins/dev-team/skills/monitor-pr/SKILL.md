@@ -114,9 +114,8 @@ Repeat the following indefinitely, until step 4b's `task_merged` case stops you,
 
 #### 4a — Poll
 
-```bash
-python3 "<skill-dir>/../workflow-orchestrate/scripts/watch_pr_poll.py" <work-item-id>
-```
+Use the `run-python-script` skill with `--script
+"<skill-dir>/../workflow-orchestrate/scripts/watch_pr_poll.py" --args "<work-item-id>"`.
 
 Parse stdout as JSON. If it is the literal string `"no_change"`, go straight back to step 4a —
 `watch_pr_poll.py` already blocked internally for its own bounded window; no additional wait is
@@ -250,3 +249,6 @@ the spawn's generic `successful` status:
   argument
 - `workflow-worker` — the mediated spawn pattern (`--context-file`/`--write-section`/`--skill`/
   `--skill-args`) for nested `fix-pr` and `resolve-rebase-conflict` calls
+- `run-python-script` — the `python3` availability check and the `watch_pr_poll.py` invocation
+  (step 4a); the rebase mechanic's inline `python3 -c` block (step 4c) is a documented carve-out,
+  not migrated — see `run-python-script/SKILL.md`'s "Carve-outs" section

@@ -95,11 +95,8 @@ environment variable. `task_dependencies.py` lives in the sibling `workflow-orch
 `scripts/` directory, reachable relative to `<skill-dir>` — this skill may run in a repo other
 than the one containing these plugin files (e.g. as an installed plugin), so resolve the path
 this way rather than assuming a particular repo layout or that the Bash tool's CWD is the repo
-root. Run it via `Bash`:
-
-```bash
-python3 "<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py" "<path to spec file>"
-```
+root. Use the `run-python-script` skill with `--script
+"<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py" --args "<path to spec file>"`.
 
 If it exits non-zero, it printed a clear `Error: ...` message to stderr naming the offending task
 and reference (a dangling reference or a dependency cycle). Surface that error to the user and

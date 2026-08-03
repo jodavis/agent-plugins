@@ -17,9 +17,7 @@ Use this skill when:
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is
 not an environment variable.
 
-```bash
-python3 "<skill-dir>/scripts/merge_config.py"
-```
+Use the `run-python-script` skill with `--script "<skill-dir>/scripts/merge_config.py"`.
 
 Prints the merged configuration as JSON to stdout and exits 0. On failure (malformed YAML,
 no repo root found) it prints `Error: ...` to stderr and exits non-zero — stop and report the

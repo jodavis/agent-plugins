@@ -43,25 +43,10 @@ compress your own report of a genuinely unexpected failure down to one line.
 
 ## Steps
 
-### 0 — Verify `python3` is available
-
-Every step below drives `dev_team.py` (and every script it delegates to) through `python3` —
-nothing in this workflow works without it. Before running step 1 for the first time this
-session, confirm the interpreter is present:
-
-```bash
-command -v python3
-```
-
-If this reports nothing (a non-zero exit), stop immediately and report to the user that
-`python3` is required but was not found on this system, rather than proceeding and failing on
-the first script invocation with a less obvious "command not found" error.
-
 ### 1 — Compute context file path
 
-```bash
-python3 "<skill-dir>/scripts/get_context_path.py" "<work-item-id>"
-```
+Use the `run-python-script` skill with `--script "<skill-dir>/scripts/get_context_path.py"
+--args "<work-item-id>"`.
 
 ### 2 — Orchestration loop
 
@@ -69,12 +54,9 @@ Repeat the following until `action == "done"` or a terminal condition is reached
 
 #### 2a — Run the step machine
 
-```bash
-python3 -u <skill-dir>/scripts/dev_team.py <work-item-id> \
-  --workflow <skill-dir>/assets/<workflow>.md \
-  --research-skill <research-skill> \
-  --context-file <context_file>
-```
+Use the `run-python-script` skill with `--script "<skill-dir>/scripts/dev_team.py"
+--python-flags "-u" --args "<work-item-id> --workflow <skill-dir>/assets/<workflow>.md
+--research-skill <research-skill> --context-file <context_file>"`.
 
 Capture all stdout. The last JSON array on stdout is the action descriptor list.
 
