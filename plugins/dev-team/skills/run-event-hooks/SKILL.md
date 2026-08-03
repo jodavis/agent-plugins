@@ -97,25 +97,16 @@ whatever tool/skill plausibly fits its literal text, and only counted as a failu
 actually executed it. Reporting a false `completed` for an instruction nothing actually performed
 defeats the entire mechanism.
 
-### Retrying a Jira/Atlassian instruction after an auth failure
+### Jira/Atlassian instructions already retry once after an auth failure
 
-This applies only to an entry dispatched through `work-with-Jira-tasks` (the Jira-routed rows in
-"Dispatching an instruction" below, or anything else this step resolves to a `work-with-Jira-tasks`
-operation) — it never changes behavior for git/GitHub-routed instructions.
-
-If attempting the operation fails with a result indicating authentication needs to be
-established or refreshed (per `work-with-Jira-tasks`'s own "Retrying after an authentication
-failure" section — match this case-insensitively against the failure text rather than one exact
-string, since the wording varies by MCP server), perform the environment's authentication-recovery
-step (`mcp_auth`, per the environments that expose one) and retry the same operation exactly once
-before falling back to this step's ordinary failure handling. Cap the retry at one attempt per
-entry — never loop.
-
-- If the retry succeeds, treat the entry as succeeded and move on to the next entry as normal.
-- If the retry still fails — whether with the same auth failure or a different one — record the
-  entry as a failure exactly as step 3 already does for any other failed entry, and continue to
-  the next entry in the same map. A retry that still fails is an ordinary failed entry, not a
-  silent no-op and not a reason to stop the rest of the map.
+For any entry this step resolves to a `work-with-Jira-tasks` operation (the Jira-routed rows in
+"Dispatching an instruction" below), the auth-recovery retry already happens one level down,
+inside `work-with-Jira-tasks`'s own "Retrying after an authentication failure" section — this
+step does not duplicate that retry logic. If `work-with-Jira-tasks` still reports failure after
+its own single retry (whether from the same auth issue or a different one), that surfaces here
+exactly like any other failed tool call: record the entry as a failure and continue to the next
+entry in the same map, per this step's existing contract. Git/GitHub-routed instructions are
+unaffected — they were never routed through `work-with-Jira-tasks` and have no auth-retry step.
 
 ### 4 — Report the result
 
@@ -148,8 +139,8 @@ skipped because this step reported `completed`.
 Labels (`self-assign`, `push`, `promote`, ...) are never interpreted by this skill — only the
 instruction text matters. This table lists the shipped-default instructions and the operation
 that fits each, plus the general pattern for anything else. The `work-with-Jira-tasks`-routed
-rows below are also subject to step 3's "Retrying a Jira/Atlassian instruction after an auth
-failure" behavior:
+rows below already get one auth-recovery retry inside `work-with-Jira-tasks` itself — see step
+3's "Jira/Atlassian instructions already retry once after an auth failure":
 
 | Instruction (typical wording) | Operation |
 |---|---|
@@ -210,8 +201,9 @@ script the fixture setup and the final-state assertion, not the reasoning in bet
 See `plugins/dev-team/fixtures/run-event-hooks/RUN.md` for the fixture contents and the
 materialize → run → grade dry-run procedure.
 
-The "Retrying a Jira/Atlassian instruction after an auth failure" behavior does not yet have its
-own fixture scenario: it depends on a real MCP server surfacing an auth-not-established/expired
-failure and an environment-provided recovery step (`mcp_auth`), neither of which this repo's
-fixture harness can fabricate meaningfully today. Add a scenario here once the exact failure
-signal and recovery mechanism are confirmed against a live session.
+`work-with-Jira-tasks`'s auth-recovery retry (see its "Retrying after an authentication failure"
+section) does not yet have its own fixture scenario here: it depends on a real MCP server
+surfacing an auth-not-established/expired failure and an environment-provided recovery step
+(`mcp_auth`), neither of which this repo's fixture harness can fabricate meaningfully today. Add
+a scenario once the exact failure signal and recovery mechanism are confirmed against a live
+session.
