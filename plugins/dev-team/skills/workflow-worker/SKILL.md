@@ -28,8 +28,13 @@ path; it is not an environment variable.
 
 If `--event` was given, invoke the `run-event-hooks` skill with
 `--event <event> --phase before --context-file <context-file>` (no `--outcome` — nothing has run
-yet). Record whichever of `completed`/`failed: ...` it returns; do not let a `failed` result stop
-you from proceeding to step 2 — carry it forward to fold into step 5's return.
+yet). Record whichever of `completed`/`failed: ...` it returns — this value is only a note to
+carry forward into step 5's return; it is never itself a result to report, and **this is true for
+`completed` exactly as much as for `failed: ...`.** Regardless of which one comes back, step 1 is
+now finished and you must continue in the same turn to step 2, then 3, then 4, then 5 — a
+`completed`/no-op hook result (e.g. the working tree was already clean, so there was nothing to
+push) is not a stopping point and not an answer to return on its own. It means only that step 1
+raised no objection; `<skill>` itself has not been invoked yet, so the task is not done.
 
 If `--event` was not given, skip this step entirely. Do not invoke `run-event-hooks` with an
 empty event.
@@ -69,6 +74,12 @@ whichever of `completed`/`failed: ...` it returns.
 If `--event` was not given, skip this step entirely.
 
 ### 5 — Return status
+
+This is the *only* step that returns a result. Steps 1 and 4 each invoke `run-event-hooks` and get
+back `completed`/`failed: ...`, but that is `run-event-hooks`' own internal return value to you,
+the caller — not your answer to whoever invoked `workflow-worker`. Reaching step 1 or step 4's
+`completed` is never a reason to stop and report; only step 5, after steps 2 and 3 have actually
+happened, produces the status this skill hands back.
 
 Return exactly one of:
 - `successful` — if `<skill>` completed and its output was written to the context file, and (only

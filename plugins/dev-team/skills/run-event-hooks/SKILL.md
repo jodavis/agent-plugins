@@ -115,6 +115,14 @@ failed: <one-line summary of every failed entry and why>
 The caller folds a `failed` result into its own overall outcome — the same as if the wrapped
 skill/command itself had failed.
 
+**This return value is internal.** It goes back to whichever skill invoked you (`workflow-worker`
+or `workflow-script`) for it to record and carry forward — it is not a report on the overall
+pipeline step, and getting `completed` back is not a signal that the calling skill's own task is
+finished. In particular, a `completed` result from a `before-<event>` call (step 1 of the caller)
+means only that the hook phase raised no objection; the caller's own remaining steps — most
+importantly actually invoking the wrapped pipeline skill — still have not happened and must not be
+skipped because this step reported `completed`.
+
 ## Dispatching an instruction
 
 Labels (`self-assign`, `push`, `promote`, ...) are never interpreted by this skill — only the
