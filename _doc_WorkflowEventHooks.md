@@ -90,6 +90,22 @@ contract.
   project (e.g. `push`, `ensure-pushed`); this repo's own reviewer identity (`jodavis` /
   `jodasoft@outlook.com`) lives in the machine-tier `~/.dev-team/config.yaml`, merged in via
   `merge_config.py`'s existing tier order — not committed to the repo.
+- **Any event hook instruction that depends on an authenticated connection gets one
+  recovery retry, owned by the connection's own operation, not duplicated in
+  `run-event-hooks`.** Jira/Atlassian is not special here — it was simply the first connection
+  type to hit an auth problem. If the underlying call reports that authentication needs to be
+  established or refreshed — reported for Cursor's Atlassian MCP connector, per Cursor's own
+  community forum, not yet confirmed against a live session in this repo — `work-with-Jira-tasks`
+  performs the environment's recovery step (`mcp_auth`) and retries the same call exactly once
+  before reporting failure to its caller. `run-event-hooks`'s dispatch loop (step 3) never
+  re-implements a connection's own retry logic, for Jira/Atlassian or any other authenticated
+  connection: an operation that still fails after its own retry surfaces as an ordinary failed
+  entry under the existing record-failure-and-continue contract. Git/GitHub instructions route
+  through `work-with-pr`/`work-with-GitHub-issues`, which do not yet define a retry of their own —
+  nothing about this design prevents adding one there the same way, if and when that connection
+  type needs it. `work-with-Jira-tasks` also documents a fallback `GetMcpTools`/`CallMcpTool`
+  discovery path and a third tool-name prefix (`mcp__plugin-atlassian-atlassian__*`) for
+  environments where `ToolSearch` doesn't surface individually-named Jira tools.
 
 ## Key Classes / Interfaces
 

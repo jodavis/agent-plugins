@@ -15,9 +15,10 @@ Use this skill when:
 
 The exact MCP tool name for each Jira operation depends on which Atlassian/Jira MCP server
 happens to be connected in the current environment — for example a server literally named
-`jira` exposes tools as `mcp__jira__<suffix>`, while the `claude.ai Atlassian Rovo` connector
-exposes the same operations as `mcp__claude_ai_Atlassian_Rovo__<suffix>`. Never hardcode a
-specific prefix. Instead, every time you need one of the operations below:
+`jira` exposes tools as `mcp__jira__<suffix>`, the `claude.ai Atlassian Rovo` connector exposes
+the same operations as `mcp__claude_ai_Atlassian_Rovo__<suffix>`, and Cursor's Atlassian MCP
+connector exposes them as `mcp__plugin-atlassian-atlassian__<suffix>`. Never hardcode a specific
+prefix. Instead, every time you need one of the operations below:
 
 1. Call `ToolSearch` with the operation's suffix (from the table below) as the query, e.g.
    `ToolSearch(query="editJiraIssue")`.
@@ -25,8 +26,34 @@ specific prefix. Instead, every time you need one of the operations below:
    before calling it — this guards against an unrelated tool that happens to share a suffix.
 3. Call the matched tool with the arguments described for that operation.
 
-If no tool matches, no Jira/Atlassian MCP server is connected in this environment — stop and
-report that rather than guessing a tool name.
+### Fallback discovery when `ToolSearch` finds nothing
+
+Some environments — reported for Cursor's Atlassian MCP connector via Cursor's own community
+forum, not yet confirmed against a live session in this repo — do not flatten each MCP operation
+into its own individually-named tool, so `ToolSearch` can come back empty even though a
+Jira/Atlassian MCP server is genuinely connected. Before concluding no server is connected, try
+this fallback:
+
+1. Call `GetMcpTools` to enumerate the tools every currently connected MCP server exposes.
+2. From the returned list, find the entry whose full name contains `Jira` or `Atlassian`
+   (case-insensitive) and whose description matches the operation's suffix (the same suffix used
+   in the `ToolSearch` query above, e.g. `editJiraIssue`).
+3. Call `CallMcpTool` with that entry's tool name and the arguments described for the operation.
+
+If neither `ToolSearch` nor the `GetMcpTools`/`CallMcpTool` fallback surfaces a match, no
+Jira/Atlassian MCP server is connected in this environment — stop and report that rather than
+guessing a tool name.
+
+### Retrying after an authentication failure
+
+If calling the matched tool (via either discovery path above) fails with a result indicating
+authentication needs to be established or refreshed (for example an error mentioning
+re-authentication, an expired or missing token, or a similar auth-not-established message —
+match this case-insensitively rather than against one exact string, since the wording varies by
+MCP server), perform the environment's authentication-recovery step (referred to as `mcp_auth` in
+the environments that expose one) and retry the same call exactly once. If the retry still fails
+— whether with the same auth error or a different one — treat the operation as failed per the
+caller's own failure contract; do not retry a second time.
 
 ## Operations
 
