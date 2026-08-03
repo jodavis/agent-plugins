@@ -28,10 +28,11 @@ prefix. Instead, every time you need one of the operations below:
 
 ### Fallback discovery when `ToolSearch` finds nothing
 
-Some environments (observed with Cursor's Atlassian MCP connector) do not flatten each MCP
-operation into its own individually-named tool, so `ToolSearch` can come back empty even though
-a Jira/Atlassian MCP server is genuinely connected. Before concluding no server is connected,
-try this fallback:
+Some environments — reported for Cursor's Atlassian MCP connector via Cursor's own community
+forum, not yet confirmed against a live session in this repo — do not flatten each MCP operation
+into its own individually-named tool, so `ToolSearch` can come back empty even though a
+Jira/Atlassian MCP server is genuinely connected. Before concluding no server is connected, try
+this fallback:
 
 1. Call `GetMcpTools` to enumerate the tools every currently connected MCP server exposes.
 2. From the returned list, find the entry whose full name contains `Jira` or `Atlassian`
