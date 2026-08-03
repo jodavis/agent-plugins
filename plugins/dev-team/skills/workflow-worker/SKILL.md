@@ -36,6 +36,16 @@ now finished and you must continue in the same turn to step 2, then 3, then 4, t
 push) is not a stopping point and not an answer to return on its own. It means only that step 1
 raised no objection; `<skill>` itself has not been invoked yet, so the task is not done.
 
+This applies with **no less force** when step 1's `completed` came from the trivial case —
+`before-<event>` is `null`/unconfigured in this project, so `run-event-hooks` made zero tool
+calls and concluded immediately. That shape (a same-turn "nothing is configured, so this is a
+no-op" observation with no intervening action) reads like a natural, final-sounding place to
+stop, but it is the *most common* case across this pipeline's events, not a rare one — most
+`before-<event>` keys are `null` by default, only a handful of events carry a real instruction.
+Whether step 1's `completed` followed real work (a git check, a Jira call) or nothing at all
+(the key was simply absent), the rule is identical: it is one note among several to fold into
+step 5, and step 2 — actually invoking `<skill>` — still has not happened.
+
 If `--event` was not given, skip this step entirely. Do not invoke `run-event-hooks` with an
 empty event.
 
