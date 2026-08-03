@@ -49,6 +49,14 @@ step 5, and step 2 — actually invoking `<skill>` — still has not happened.
 If `--event` was not given, skip this step entirely. Do not invoke `run-event-hooks` with an
 empty event.
 
+**Mechanical rule, not a judgment call:** the instant `run-event-hooks` returns — `completed` or
+`failed: ...`, following real work or following nothing because the hook was `null` — your very
+next tool call, in the same turn, is step 2's `Skill` invocation below. No sentence describes what
+step 1 concluded; no summary comes first; nothing is written between the two tool calls. A
+one-line "`before-<event>` is null, nothing to follow" observation, on its own, is never a valid
+output of this skill at any point in the flow — noticing you are about to write one is exactly the
+signal to make the step 2 tool call instead of writing it.
+
 ### 2 — Invoke the skill
 
 Use the `Skill` tool to invoke `<skill>` with `<skill-args>` as arguments. Follow the skill's
