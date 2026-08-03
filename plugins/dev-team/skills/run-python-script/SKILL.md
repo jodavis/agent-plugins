@@ -93,8 +93,7 @@ by routing the invocation through this skill.
   already established in-session by the time either inline block runs — no separate preflight is
   needed at these two call sites.
 - **`dev_team.py`'s two generated command strings** (`_resolve_validation_script()`,
-  `BuildValidationStep.get_actions()`, and the PR-wait command build in `HandoffStep`) — these
-  already use `sys.executable`, not a literal `python3` invocation, because that code path is real
-  Python building a command string for a later shell invocation, not agent-facing skill prose
-  constructing a `python3 <script>` call itself. This skill only wraps the latter; no change is
-  needed here.
+  `BuildValidationStep.get_actions()`) — these already use `sys.executable`, not a literal
+  `python3` invocation, because that code path is real Python building a command string for a
+  later shell invocation, not agent-facing skill prose constructing a `python3 <script>` call
+  itself. This skill only wraps the latter; no change is needed here.
