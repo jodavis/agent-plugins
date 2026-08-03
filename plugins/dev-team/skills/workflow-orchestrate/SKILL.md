@@ -46,7 +46,7 @@ compress your own report of a genuinely unexpected failure down to one line.
 ### 1 — Compute context file path
 
 ```bash
-python "<skill-dir>/scripts/get_context_path.py" "<work-item-id>"
+python3 "<skill-dir>/scripts/get_context_path.py" "<work-item-id>"
 ```
 
 ### 2 — Orchestration loop
@@ -56,7 +56,7 @@ Repeat the following until `action == "done"` or a terminal condition is reached
 #### 2a — Run the step machine
 
 ```bash
-python -u <skill-dir>/scripts/dev_team.py <work-item-id> \
+python3 -u <skill-dir>/scripts/dev_team.py <work-item-id> \
   --workflow <skill-dir>/assets/<workflow>.md \
   --research-skill <research-skill> \
   --context-file <context_file>
@@ -158,7 +158,7 @@ Handle the outcome (a JSON object with `action` field):
   2. Write the user's answer to the `troubleshooter_input` frontmatter key in the
      context file by passing the answer via stdin:
      ```bash
-     python -c "
+     python3 -c "
      from pathlib import Path; import re, sys
      path = Path('<context_file>')
      answer = sys.stdin.read().strip()

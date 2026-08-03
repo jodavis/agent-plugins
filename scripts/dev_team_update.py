@@ -2,7 +2,7 @@
 dev_team_update.py — SessionStart auto-update script for the dev-team Claude Code plugin.
 
 Usage:
-    python dev_team_update.py --data-dir <path> --threshold-hours <n>
+    python3 dev_team_update.py --data-dir <path> --threshold-hours <n>
 
 Reads <data-dir>/last_update (ISO 8601 timestamp). If the file is absent or older
 than --threshold-hours, runs `git pull --ff-only --quiet` in the plugin root.

@@ -70,7 +70,7 @@ This step detects that and respawns.
    from step 2a's default ~5-minute polling behavior, that returns after exactly one poll
    instead of blocking until something becomes actionable:
    ```bash
-   python "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>" --max-poll-cycles 0
+   python3 "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>" --max-poll-cycles 0
    ```
    or the `--list` form, matching whichever target mode this run uses.
 2. For each `{task_id, status, last_updated, worktree_path}` entry in the returned `running`
@@ -97,13 +97,13 @@ Repeat the following until the script reports `"complete"` or `"blocked"`.
 #### 2a — Run the scheduler script
 
 ```bash
-python "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>"
+python3 "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>"
 ```
 
 or, for the explicit-list form:
 
 ```bash
-python "<skill-dir>/scripts/concurrent_schedule.py" --list "<target>"
+python3 "<skill-dir>/scripts/concurrent_schedule.py" --list "<target>"
 ```
 
 The script blocks internally rather than returning the instant it sees nothing to do.

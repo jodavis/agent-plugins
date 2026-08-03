@@ -52,7 +52,7 @@ Resolve `<repo-root>` the same way `merge_config.py` does: walk up from the curr
 - Otherwise, load the current merged config for context:
 
   ```bash
-  python "<get-project-configuration-skill-dir>/scripts/merge_config.py" --repo-root "<repo-root>"
+  python3 "<get-project-configuration-skill-dir>/scripts/merge_config.py" --repo-root "<repo-root>"
   ```
 
   `<get-project-configuration-skill-dir>` is that skill's own base directory — a sibling of this
@@ -244,7 +244,7 @@ After writing, re-run `merge_config.py` against the same repo root and show the 
 of the merged result, confirming the change took effect as intended:
 
 ```bash
-python "<get-project-configuration-skill-dir>/scripts/merge_config.py" --repo-root "<repo-root>"
+python3 "<get-project-configuration-skill-dir>/scripts/merge_config.py" --repo-root "<repo-root>"
 ```
 
 If it exits non-zero (malformed YAML), report the exact error — the edit introduced a syntax problem

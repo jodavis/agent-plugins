@@ -115,7 +115,7 @@ Repeat the following indefinitely, until step 4b's `task_merged` case stops you,
 #### 4a — Poll
 
 ```bash
-python "<skill-dir>/../workflow-orchestrate/scripts/watch_pr_poll.py" <work-item-id>
+python3 "<skill-dir>/../workflow-orchestrate/scripts/watch_pr_poll.py" <work-item-id>
 ```
 
 Parse stdout as JSON. If it is the literal string `"no_change"`, go straight back to step 4a —
@@ -191,7 +191,7 @@ Once every event in this pass has been handled, return to step 4a.
 #### 4c — Run the rebase mechanic
 
 ```bash
-python -c "
+python3 -c "
 import sys
 sys.path.insert(0, '<skill-dir>/../workflow-orchestrate/scripts')
 from pathlib import Path

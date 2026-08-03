@@ -45,7 +45,7 @@ path shown when this skill was invoked. Resolve it to that literal path.
 Pass the component prompt on the script's stdin (e.g. a heredoc), not as a file:
 
 ```bash
-python "<skill-dir>/scripts/tdd_cycle.py" \
+python3 "<skill-dir>/scripts/tdd_cycle.py" \
   --component-name "<Component>" \
   --repo-root <repo-root> \
   --work-item-id <work-item-id> \

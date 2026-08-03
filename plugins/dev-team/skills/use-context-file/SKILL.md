@@ -27,7 +27,7 @@ this skill" path shown when this skill was invoked. Resolve it to that literal p
 is not an environment variable.
 
 ```bash
-python "<skill-dir>/scripts/compute-context-file.py" "<work-item-id>"
+python3 "<skill-dir>/scripts/compute-context-file.py" "<work-item-id>"
 ```
 
 If the script exits non-zero, stop and report the error.
@@ -35,7 +35,7 @@ If the script exits non-zero, stop and report the error.
 Ensure the file exists (creates it with default frontmatter if missing):
 
 ```bash
-python "<skill-dir>/scripts/init-context-file.py" "<work-item-id>" "<context-file>"
+python3 "<skill-dir>/scripts/init-context-file.py" "<work-item-id>" "<context-file>"
 ```
 
 If the script exits non-zero, stop and report the error.
