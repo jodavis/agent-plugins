@@ -285,7 +285,7 @@ def _resolve_validation_script(config: dict, repo_root: Path) -> str | None:
     if not validation:
         return None
     run_validation_script = Path(__file__).parent / "run_validation.py"
-    return f'python "{run_validation_script}" --repo-root "{repo_root}"'
+    return f'{sys.executable} "{run_validation_script}" --repo-root "{repo_root}"'
 
 
 def parse_json_output(text: str) -> dict:
@@ -810,7 +810,7 @@ class BuildValidationStep(Step):
         ctx.build_log = str(log_path)
         scripts_dir = Path(__file__).parent
         wait_script = scripts_dir / "wait_pr_checks.py"
-        command = f'python "{wait_script}" "{ctx.pr_url}"'
+        command = f'{sys.executable} "{wait_script}" "{ctx.pr_url}"'
         return [{
             "action": "run_script",
             "command": command,
