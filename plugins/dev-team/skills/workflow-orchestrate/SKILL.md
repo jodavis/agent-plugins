@@ -43,6 +43,20 @@ compress your own report of a genuinely unexpected failure down to one line.
 
 ## Steps
 
+### 0 — Verify `python3` is available
+
+Every step below drives `dev_team.py` (and every script it delegates to) through `python3` —
+nothing in this workflow works without it. Before running step 1 for the first time this
+session, confirm the interpreter is present:
+
+```bash
+command -v python3
+```
+
+If this reports nothing (a non-zero exit), stop immediately and report to the user that
+`python3` is required but was not found on this system, rather than proceeding and failing on
+the first script invocation with a less obvious "command not found" error.
+
 ### 1 — Compute context file path
 
 ```bash
