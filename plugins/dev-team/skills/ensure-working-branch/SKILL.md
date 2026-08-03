@@ -96,9 +96,9 @@ task's own dependencies from.
 
 Otherwise:
 
-1. Read this task's own dependency ids: invoke
-   `python3 "<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py" "<spec_path>"` via
-   `Bash`. It prints the whole spec's `{task_key: [dependency_ids]}` graph as JSON on success.
+1. Read this task's own dependency ids: use the `run-python-script` skill with `--script
+   "<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py" --args "<spec_path>"`. It
+   prints the whole spec's `{task_key: [dependency_ids]}` graph as JSON on success.
    Look up this task's own work-item-id key in that graph — that list is this task's own
    dependency ids (an empty list if the task declares `— none —` or has no `Depends on:` line at
    all). If the command exits non-zero, it prints a clear `Error: ...` message to stderr instead
@@ -107,12 +107,12 @@ Otherwise:
 2. If that list is empty, skip the rest of this sub-step and fall through to 4c unchanged (no
    dependencies means nothing for this step to override).
 
-3. Otherwise, invoke
-   `python3 "<skill-dir>/../workflow-orchestrate/scripts/task_readiness.py" "<work-item-id>" "<dep1>,<dep2>,..."`
-   via `Bash`, passing this task's own dependency ids as a comma-separated list. It prints
-   `{"status": "eligible" | "waiting" | "blocked", "base_branch": <branch-name-or-null>}` as JSON
-   on success. If the command exits non-zero, it prints a clear `Error: ...` message to stderr
-   instead of JSON — stop and report that error in detail; do not fall through to 4c.
+3. Otherwise, use the `run-python-script` skill with `--script
+   "<skill-dir>/../workflow-orchestrate/scripts/task_readiness.py" --args "<work-item-id>
+   <dep1>,<dep2>,..."`, passing this task's own dependency ids as a comma-separated list. It
+   prints `{"status": "eligible" | "waiting" | "blocked", "base_branch": <branch-name-or-null>}`
+   as JSON on success. If the command exits non-zero, it prints a clear `Error: ...` message to
+   stderr instead of JSON — stop and report that error in detail; do not fall through to 4c.
 
 4. If `status` is `"eligible"` and `base_branch` is a real (non-null) branch name: write it to
    the context file's `base_branch` field via `use-context-file`, then skip the rest of step 4

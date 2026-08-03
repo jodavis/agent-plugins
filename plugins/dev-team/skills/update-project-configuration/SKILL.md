@@ -49,11 +49,9 @@ Resolve `<repo-root>` the same way `merge_config.py` does: walk up from the curr
 
 - If a setting phrase was given (or is clear from conversation), go to **Step 3 — Single setting**.
 - If the user explicitly asked for a full walkthrough/initialization, go to **Step 4 — Full walkthrough**.
-- Otherwise, load the current merged config for context:
-
-  ```bash
-  python3 "<get-project-configuration-skill-dir>/scripts/merge_config.py" --repo-root "<repo-root>"
-  ```
+- Otherwise, load the current merged config for context: use the `run-python-script` skill with
+  `--script "<get-project-configuration-skill-dir>/scripts/merge_config.py" --args "--repo-root
+  \"<repo-root>\""`.
 
   `<get-project-configuration-skill-dir>` is that skill's own base directory — a sibling of this
   skill's directory (both live directly under `plugins/dev-team/skills/`). Resolve it to the literal
@@ -241,11 +239,9 @@ existing formatting:
 ## Verifying a write
 
 After writing, re-run `merge_config.py` against the same repo root and show the user the relevant part
-of the merged result, confirming the change took effect as intended:
-
-```bash
-python3 "<get-project-configuration-skill-dir>/scripts/merge_config.py" --repo-root "<repo-root>"
-```
+of the merged result, confirming the change took effect as intended: use the `run-python-script`
+skill with `--script "<get-project-configuration-skill-dir>/scripts/merge_config.py" --args
+"--repo-root \"<repo-root>\""`.
 
 If it exits non-zero (malformed YAML), report the exact error — the edit introduced a syntax problem
 that must be fixed before the write can be considered done.

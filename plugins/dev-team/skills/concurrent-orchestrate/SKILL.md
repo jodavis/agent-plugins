@@ -58,20 +58,6 @@ and stopping on `"complete"` or `"blocked"`.
 
 ## Steps
 
-### 0 — Verify `python3` is available
-
-Every step below drives `concurrent_schedule.py` (and, transitively, every spawned
-`workflow-orchestrate` run) through `python3` — nothing in this pipeline works without it.
-Before running step 1 for the first time this session, confirm the interpreter is present:
-
-```bash
-command -v python3
-```
-
-If this reports nothing (a non-zero exit), stop immediately and report to the user that
-`python3` is required but was not found on this system, rather than proceeding and failing on
-the first script invocation with a less obvious "command not found" error.
-
 ### 1 — Reconcile against what's already running
 
 Run once before entering the main loop (step 2) — the first thing this session does whether
@@ -82,11 +68,9 @@ This step detects that and respawns.
 
 1. Take one non-blocking snapshot — `--max-poll-cycles 0` is a new invocation mode, distinct
    from step 2a's default ~5-minute polling behavior, that returns after exactly one poll
-   instead of blocking until something becomes actionable:
-   ```bash
-   python3 "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>" --max-poll-cycles 0
-   ```
-   or the `--list` form, matching whichever target mode this run uses.
+   instead of blocking until something becomes actionable. Use the `run-python-script` skill with
+   `--script "<skill-dir>/scripts/concurrent_schedule.py" --args '--up-to "<target>"
+   --max-poll-cycles 0'` (or the `--list` form, matching whichever target mode this run uses).
 2. For each `{task_id, status, last_updated, worktree_path}` entry in the returned `running`
    list, check whether this session already holds a live spawn handle for it — i.e. whether this
    session itself spawned it via step 2c, in this run or an earlier one before a restart. Keep
@@ -110,19 +94,12 @@ Repeat the following until the script reports `"complete"` or `"blocked"`.
 
 #### 2a — Run the scheduler script
 
-```bash
-python3 "<skill-dir>/scripts/concurrent_schedule.py" --up-to "<target>"
-```
+Use the `run-python-script` skill with `--script "<skill-dir>/scripts/concurrent_schedule.py"
+--args '--up-to "<target>"'` (or `--args '--list "<target>"'` for the explicit-list form).
 
-or, for the explicit-list form:
-
-```bash
-python3 "<skill-dir>/scripts/concurrent_schedule.py" --list "<target>"
-```
-
-The script blocks internally rather than returning the instant it sees nothing to do.
-Invoke this `Bash` call with an explicit `timeout` of at least `330000`
-(5.5 minutes) — comfortably past the script's own ~5-minute default polling budget.
+The script blocks internally rather than returning the instant it sees nothing to do. Pass
+`--timeout 330000` (5.5 minutes) to `run-python-script` — comfortably past the script's own
+~5-minute default polling budget.
 
 Capture stdout — a single JSON object
 `{"status": ..., "spawn": [...], "blocked_tasks": [...], "running": [...]}`. If the script exits
@@ -243,3 +220,5 @@ step — there is no PR to monitor, so no `dev-team:monitor-pr` is spawned for i
 
 - `use-context-file` — pre-populating `base_branch`, and recording `worktree_path` /
   `worktree_branch`, on a spawned task's context file
+- `run-python-script` — the `python3` availability check and every `concurrent_schedule.py`
+  invocation
