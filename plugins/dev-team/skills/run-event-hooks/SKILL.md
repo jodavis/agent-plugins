@@ -97,17 +97,6 @@ whatever tool/skill plausibly fits its literal text, and only counted as a failu
 actually executed it. Reporting a false `completed` for an instruction nothing actually performed
 defeats the entire mechanism.
 
-### Jira/Atlassian instructions already retry once after an auth failure
-
-For any entry this step resolves to a `work-with-Jira-tasks` operation (the Jira-routed rows in
-"Dispatching an instruction" below), the auth-recovery retry already happens one level down,
-inside `work-with-Jira-tasks`'s own "Retrying after an authentication failure" section — this
-step does not duplicate that retry logic. If `work-with-Jira-tasks` still reports failure after
-its own single retry (whether from the same auth issue or a different one), that surfaces here
-exactly like any other failed tool call: record the entry as a failure and continue to the next
-entry in the same map, per this step's existing contract. Git/GitHub-routed instructions are
-unaffected — they were never routed through `work-with-Jira-tasks` and have no auth-retry step.
-
 ### 4 — Report the result
 
 If every followed entry across every resolved map succeeded (including the trivial case of zero
@@ -138,9 +127,7 @@ skipped because this step reported `completed`.
 
 Labels (`self-assign`, `push`, `promote`, ...) are never interpreted by this skill — only the
 instruction text matters. This table lists the shipped-default instructions and the operation
-that fits each, plus the general pattern for anything else. The `work-with-Jira-tasks`-routed
-rows below already get one auth-recovery retry inside `work-with-Jira-tasks` itself — see step
-3's "Jira/Atlassian instructions already retry once after an auth failure":
+that fits each, plus the general pattern for anything else:
 
 | Instruction (typical wording) | Operation |
 |---|---|
@@ -200,10 +187,3 @@ script the fixture setup and the final-state assertion, not the reasoning in bet
 
 See `plugins/dev-team/fixtures/run-event-hooks/RUN.md` for the fixture contents and the
 materialize → run → grade dry-run procedure.
-
-`work-with-Jira-tasks`'s auth-recovery retry (see its "Retrying after an authentication failure"
-section) does not yet have its own fixture scenario here: it depends on a real MCP server
-surfacing an auth-not-established/expired failure and an environment-provided recovery step
-(`mcp_auth`), neither of which this repo's fixture harness can fabricate meaningfully today. Add
-a scenario once the exact failure signal and recovery mechanism are confirmed against a live
-session.
