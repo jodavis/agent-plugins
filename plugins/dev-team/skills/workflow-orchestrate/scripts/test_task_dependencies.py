@@ -165,3 +165,111 @@ class TestParseTaskDependenciesCycles:
         assert "ADR-1" in str(exc_info.value)
         assert "ADR-2" in str(exc_info.value)
         assert "ADR-3" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# validate_stack_order — valid order
+# ---------------------------------------------------------------------------
+
+class TestValidateStackOrder:
+    def test_validate_stack_order_valid_order_returns_same_order_unchanged(self):
+        # Arrange
+        from task_dependencies import validate_stack_order
+        spec_text = (
+            "### [ADR-1: First task](https://jodasoft.atlassian.net/browse/ADR-1) 🤖\n\n"
+            "**Depends on:** — none —\n\n"
+            "### [ADR-2: Second task](https://jodasoft.atlassian.net/browse/ADR-2) 🤖\n\n"
+            "**Depends on:** ADR-1\n\n"
+            "### [ADR-3: Third task](https://jodasoft.atlassian.net/browse/ADR-3) 🤖\n\n"
+            "**Depends on:** ADR-1, ADR-2\n\n"
+        )
+
+        # Act
+        order = validate_stack_order(spec_text)
+
+        # Assert
+        assert order == ["ADR-1", "ADR-2", "ADR-3"]
+
+
+# ---------------------------------------------------------------------------
+# validate_stack_order — out-of-order pair
+# ---------------------------------------------------------------------------
+
+class TestValidateStackOrderOutOfOrder:
+    def test_validate_stack_order_task_listed_before_its_dependency_raises_error_naming_both_tasks(self):
+        # Arrange
+        from task_dependencies import TaskDependencyError, validate_stack_order
+        spec_text = (
+            "### [ADR-2: Second task](https://jodasoft.atlassian.net/browse/ADR-2) 🤖\n\n"
+            "**Depends on:** ADR-1\n\n"
+            "### [ADR-1: First task](https://jodasoft.atlassian.net/browse/ADR-1) 🤖\n\n"
+            "**Depends on:** — none —\n\n"
+        )
+
+        # Act / Assert
+        with pytest.raises(TaskDependencyError) as exc_info:
+            validate_stack_order(spec_text)
+        assert "ADR-2" in str(exc_info.value)
+        assert "ADR-1" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# validate_stack_order — dangling reference (re-tested through the new entry point)
+# ---------------------------------------------------------------------------
+
+class TestValidateStackOrderDanglingReference:
+    def test_validate_stack_order_dangling_reference_raises_error_naming_task_and_reference(self):
+        # Arrange
+        from task_dependencies import TaskDependencyError, validate_stack_order
+        spec_text = (
+            "### [ADR-1: Only task](https://jodasoft.atlassian.net/browse/ADR-1) 🤖\n\n"
+            "**Depends on:** ADR-999\n\n"
+            "Depends on a task that does not exist in this spec.\n"
+        )
+
+        # Act / Assert
+        with pytest.raises(TaskDependencyError) as exc_info:
+            validate_stack_order(spec_text)
+        assert "ADR-1" in str(exc_info.value)
+        assert "ADR-999" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# validate_stack_order — dependency cycles (re-tested through the new entry point)
+# ---------------------------------------------------------------------------
+
+class TestValidateStackOrderCycles:
+    def test_validate_stack_order_two_task_cycle_raises_error_naming_cyclic_tasks(self):
+        # Arrange
+        from task_dependencies import TaskDependencyError, validate_stack_order
+        spec_text = (
+            "### [ADR-1: First task](https://jodasoft.atlassian.net/browse/ADR-1) 🤖\n\n"
+            "**Depends on:** ADR-2\n\n"
+            "### [ADR-2: Second task](https://jodasoft.atlassian.net/browse/ADR-2) 🤖\n\n"
+            "**Depends on:** ADR-1\n\n"
+        )
+
+        # Act / Assert
+        with pytest.raises(TaskDependencyError) as exc_info:
+            validate_stack_order(spec_text)
+        assert "ADR-1" in str(exc_info.value)
+        assert "ADR-2" in str(exc_info.value)
+
+    def test_validate_stack_order_three_task_cycle_raises_error_naming_cyclic_tasks(self):
+        # Arrange
+        from task_dependencies import TaskDependencyError, validate_stack_order
+        spec_text = (
+            "### [ADR-1: First task](https://jodasoft.atlassian.net/browse/ADR-1) 🤖\n\n"
+            "**Depends on:** ADR-3\n\n"
+            "### [ADR-2: Second task](https://jodasoft.atlassian.net/browse/ADR-2) 🤖\n\n"
+            "**Depends on:** ADR-1\n\n"
+            "### [ADR-3: Third task](https://jodasoft.atlassian.net/browse/ADR-3) 🤖\n\n"
+            "**Depends on:** ADR-2\n\n"
+        )
+
+        # Act / Assert
+        with pytest.raises(TaskDependencyError) as exc_info:
+            validate_stack_order(spec_text)
+        assert "ADR-1" in str(exc_info.value)
+        assert "ADR-2" in str(exc_info.value)
+        assert "ADR-3" in str(exc_info.value)
