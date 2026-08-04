@@ -120,8 +120,19 @@ this worktree — proceed:
 
 ### 4 — Step 3: check whether a stack is already anchored to this trunk; init it if not
 
-With `<feature-branch>` checked out locally, run `work-with-stacked-prs`'s Preflight check if it
-hasn't already run earlier this session.
+Unconditionally check out `<feature-branch>` at the start of this step, regardless of which path
+through steps 2 and 3 got here — step 2's "match found" branch and step 3's two skip branches
+("no spec file found locally" and "spec already committed on the feature branch") never perform a
+checkout themselves, so this step cannot assume one already happened:
+
+```bash
+git fetch origin
+git checkout <feature-branch>
+git pull origin <feature-branch>
+```
+
+With `<feature-branch>` now checked out locally, run `work-with-stacked-prs`'s Preflight check if
+it hasn't already run earlier this session.
 
 Use `work-with-stacked-prs`'s `view` operation (`gh_stack.py`'s `view()`, or the `gh stack view
 --json` CLI form) to check current stack membership.
