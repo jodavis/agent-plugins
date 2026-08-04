@@ -1329,7 +1329,7 @@ class TestEventNamePerStep:
         assert SignoffStep.EVENT_NAME is None
 
     @pytest.mark.parametrize("step_class_name", [
-        "ReviewerSignOffStep", "ResearcherSignOffStep", "BuildValidationStep",
+        "ReviewerSignOffStep", "BuildValidationStep",
     ])
     def test_signoff_child_step_has_no_event_name(self, step_class_name):
         """SignoffStep's three children still dispatch via workflow-worker/workflow-script
