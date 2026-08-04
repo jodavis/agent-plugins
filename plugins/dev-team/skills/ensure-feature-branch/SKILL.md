@@ -108,8 +108,15 @@ this worktree — proceed:
    ```bash
    git ls-remote --heads origin docs/<epic-id>-spec
    ```
-   If it already exists, skip the rest of this step — a prior run already committed the spec and
-   opened its PR.
+   If it exists, don't assume its PR was actually opened — a prior run could have pushed the
+   branch and then crashed or failed before reaching the `create-pr` call. Also check whether an
+   open PR already targets `<feature-branch>` from that branch:
+   ```bash
+   gh pr list --head docs/<epic-id>-spec --base <feature-branch> --state open
+   ```
+   If that also finds an open PR, skip the rest of this step — a prior run already committed the
+   spec and opened its PR. If the branch exists but no open PR is found, skip straight to
+   sub-step 5 below and open the PR against the existing branch (no need to recommit or re-push).
 2. Otherwise, check out `<feature-branch>` and create the dedicated branch from it:
    ```bash
    git checkout <feature-branch>
