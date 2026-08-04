@@ -59,7 +59,7 @@ the presence check itself (step 1) is scriptable, via `gh_stack.py`.
 
 **Scope boundary for the decline hard-stop (step 3):** this skill and `gh_stack.py` have no
 "calling flow" of their own to exercise end-to-end — they are consumed by other skills
-(`ensure-working-branch` in ADR-373, `ensure-feature-branch` in ADR-375, and others across the
+(`ensure-feature-branch` in ADR-373, `ensure-working-branch` in ADR-375, and others across the
 epic), and it is those callers' own runtime flow that actually halts on a decline. The only piece
 of this decision that lives in this task's own scope is the absent/present signal
 `check_gh_stack_extension_installed()` returns, which is covered by
