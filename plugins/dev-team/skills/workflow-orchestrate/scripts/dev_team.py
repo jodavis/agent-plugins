@@ -755,43 +755,6 @@ class ReviewerSignOffStep(Step):
         return "changes_requested"
 
 
-class ResearcherSignOffStep(Step):
-    """Wraps the researcher-validate spawn for use inside ParallelSteps."""
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.signoff_research:
-            return []
-        read_sections = ["Researcher Brief", "Implementation Summary"]
-        for i in range(1, len(ctx.work_summaries)):
-            read_sections.append(f"Fix {i}")
-        return [{
-            "action": "spawn_agent",
-            "agent": "dev-team:researcher",
-            "skill": "researcher-validate",
-            "context_file": str(self._context_path),
-            "read_sections": read_sections,
-            "write_section": "Signoff Research",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.signoff_research:
-            _handle_agent_success(ctx)
-            return "approved" if _researcher_validated(ctx.signoff_research) else "failed"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "failed"
-
-
 class BuildValidationStep(Step):
     """Wraps the wait-pr-checks run_script for use inside ParallelSteps."""
 
@@ -842,7 +805,6 @@ class SignoffStep(ParallelSteps):
         self._log_dir = log_dir
         super().__init__([
             ReviewerSignOffStep(ctx, context_path),
-            ResearcherSignOffStep(ctx, context_path),
             BuildValidationStep(ctx, context_path, log_dir),
         ])
 
