@@ -60,8 +60,15 @@ to build on top of), this skill constructs and treats one specific branch as *th
 feature branch for the epic, so an unanchored match risking a false hit against a numerically
 adjacent epic id (e.g. `ADR-369` matching `feature/ADR-3699-...`) has bigger consequences here.
 
-**If one or more matching branches are found:** take the most recently pushed match, strip the
-`origin/` prefix, and use it as `<feature-branch>`. This step is done — skip straight to step 3.
+**If one or more matching branches are found:** take the most recently pushed match — plain
+`grep` output isn't sorted by push recency, so sort explicitly first:
+
+```bash
+git branch -r --sort=-committerdate | grep -E "<feature-prefix><epic-id>(-|$)"
+```
+
+Take the first line of that sorted output, strip the `origin/` prefix, and use it as
+`<feature-branch>`. This step is done — skip straight to step 3.
 
 **If no match is found**, this is a fresh epic:
 
