@@ -48,13 +48,17 @@ this `<feature-prefix>`.
 
 ```bash
 git fetch origin
-git branch -r | grep "<feature-prefix><epic-id>"
+git branch -r | grep -E "<feature-prefix><epic-id>(-|$)"
 ```
 
 This is a prefix match — tolerant of a missing or different slug, the same convention
 `ensure-working-branch` step 4d already uses to search this same template. Some of this repo's
 real feature branches predate any slug convention and have none at all, so an exact-name match
-would miss them.
+would miss them. The match is anchored so `<epic-id>` must end at a `-` or the branch name's end
+— unlike `ensure-working-branch` step 4d's unanchored search (which only looks for a base branch
+to build on top of), this skill constructs and treats one specific branch as *the* canonical
+feature branch for the epic, so an unanchored match risking a false hit against a numerically
+adjacent epic id (e.g. `ADR-369` matching `feature/ADR-3699-...`) has bigger consequences here.
 
 **If one or more matching branches are found:** take the most recently pushed match, strip the
 `origin/` prefix, and use it as `<feature-branch>`. This step is done — skip straight to step 3.
