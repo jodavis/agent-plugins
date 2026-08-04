@@ -55,6 +55,16 @@ Use the `Skill` tool to invoke `<skill>` with `<skill-args>` as arguments. Follo
 instructions and complete all its steps. Capture the output — do not return it to the caller
 yet.
 
+**This is the single most common place this whole skill goes wrong.** Many invoked skills end
+with their own closing instruction — "return the brief as prose," "respond with the review,"
+"report the result" — addressed to whoever is running them. That instruction is real, but its
+audience is `workflow-worker` (you, right now, mid-procedure), not whoever originally invoked
+`workflow-worker`. Producing that prose as your own final message the moment `<skill>` finishes
+is the exact failure this note exists to block: it reads as a natural, complete-sounding answer,
+but steps 3, 4, and 5 have not happened yet, and skipping them is not a smaller version of doing
+the job — it is not doing the job. Whatever `<skill>` hands back is an intermediate value for you
+to carry into step 3, never a message to send.
+
 ### 3 — Write output to the context file
 
 Write the captured output to the `<write-section>` section of `<context-file>`.
@@ -73,13 +83,24 @@ content between the sentinel and the next `<!-- section:` marker or end of file.
 **If the sentinel does not exist:** use `Edit` to append the sentinel and content after the last
 line of the file.
 
+**Verify the write landed before continuing** — do not simply trust that the `Edit` call
+succeeded. Read `<context-file>` back (or `grep -c` for the literal sentinel string) and confirm
+`<!-- section:<write-section> -->` is now present with `<content>` under it. If it is missing,
+the `Edit` did not do what you intended — retry it. Do not proceed to step 4 until this check
+passes; a `workflow-worker` run that reports success without a confirmed write-back is the
+single most disruptive failure mode in this pipeline, since nothing downstream detects it except
+an orchestrator that happens to double-check your work.
+
 ### 4 — Run the after-event hook (only when `--event` is present)
 
 If `--event` was given, determine `<outcome>` from the same judgment step 5 already makes about
 `<skill>` itself: `success` if `<skill>` completed all its steps and its output was written in
 step 3, `failure` otherwise. Invoke the `run-event-hooks` skill with
 `--event <event> --phase after --outcome <outcome> --context-file <context-file>`. Record
-whichever of `completed`/`failed: ...` it returns.
+whichever of `completed`/`failed: ...` it returns — this is, again, only a note to carry into
+step 5, not an answer to return on its own, for exactly the same reason step 1 gave: a trivial
+`completed` from an unconfigured `after-<event>` hook is the common case, reads as final, and is
+not one. Step 4 finishing is never itself a reason to stop — continue in the same turn to step 5.
 
 If `--event` was not given, skip this step entirely.
 
@@ -100,3 +121,17 @@ Return exactly one of:
   failure summary into the description, even when `<skill>` itself succeeded
 
 **Never return intermediate messages, skill output, or anything else.** All output goes to the context file only.
+
+### Before you send that message
+
+Confirm all of these are true. If any is not, you are not at step 5 yet — go back and finish the
+missing step instead of sending a message:
+
+- [ ] Step 2 happened: `<skill>` was actually invoked via the `Skill` tool this turn, not skipped.
+- [ ] Step 3 happened, including its verification: you read/grepped `<context-file>` back and saw
+      `<!-- section:<write-section> -->` with real content under it.
+- [ ] Step 4 happened, if `--event` was given: `run-event-hooks` was invoked with `--phase after`,
+      not just `--phase before` from step 1.
+- [ ] The message you are about to send is exactly `successful` or a detailed failure description
+      — not the invoked skill's own output, not a hook's `completed`/`failed` note, not a status
+      update about "what I'm about to do next."

@@ -15,6 +15,9 @@ tools:
   - WebFetch
   - TodoWrite
   - Skill
+  - mcp__jira__*
+  - mcp__claude_ai_Atlassian_Rovo__*
+  - mcp__plugin-atlassian-atlassian__*
   - mcp__microsoft-learn__microsoft_docs_search
   - mcp__microsoft-learn__microsoft_docs_fetch
   - mcp__microsoft-learn__microsoft_code_sample_search
