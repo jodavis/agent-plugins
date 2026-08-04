@@ -57,6 +57,17 @@ Before any stacked-PR operation runs for the first time in a session, verify the
 This preflight is agent-driven (an `AskUserQuestion`-style interaction), not a pure script — only
 the presence check itself (step 1) is scriptable, via `gh_stack.py`.
 
+**Scope boundary for the decline hard-stop (step 3):** this skill and `gh_stack.py` have no
+"calling flow" of their own to exercise end-to-end — they are consumed by other skills
+(`ensure-working-branch` in ADR-373, `ensure-feature-branch` in ADR-375, and others across the
+epic), and it is those callers' own runtime flow that actually halts on a decline. The only piece
+of this decision that lives in this task's own scope is the absent/present signal
+`check_gh_stack_extension_installed()` returns, which is covered by
+`TestCheckGhStackExtensionInstalled`'s `no_extensions_installed`/`gh_extension_list_command_fails`
+cases; the hard-stop behavior itself — reporting clearly and halting all further work when the
+user declines — is a contract this document states for downstream callers to implement and verify
+against their own calling flow when they consume this preflight.
+
 ## Operations
 
 ### init
