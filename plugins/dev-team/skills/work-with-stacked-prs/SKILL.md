@@ -122,7 +122,12 @@ gh stack sync [--prune] [--remote <name>]
   state → link open PRs into a stack object on GitHub.
 - **Aborts cleanly, with no changes and exit 0, on non-interactive divergence** (confirmed by
   ADR-370) — a clean exit does not always mean something changed.
-- On a genuine rebase conflict, exits non-zero (observed as exit code 3 in ADR-370's spike);
+- On a genuine rebase conflict, exits non-zero — **confirmed as exit code 3 for `gh stack rebase`
+  run standalone** in ADR-370's spike; `sync` delegates its own cascade-rebase step to `rebase`
+  internally (per `gh stack sync --help`), so the same exit code is *inferred*, not directly
+  observed, when the conflict is reached via `sync`'s cascade rather than a standalone `rebase`
+  call (see `_findings_GhStackSpike.md` section 3 — the spike's own `sync` attempt hit an
+  unrelated non-interactive-divergence abort with exit 0 before `rebase` was run directly).
   `.git/rebase-merge` is left in place with standard git conflict markers — `resolve-rebase-
   conflict`'s existing plain-git contract handles the currently-conflicted branch unchanged, but
   a multi-branch stack needs a follow-up `gh stack rebase --continue` call afterward to resume the
