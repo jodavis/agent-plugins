@@ -1,9 +1,9 @@
 ---
 name: researcher
 description: >
-  Research agent for this codebase. Spawns when an orchestrator or user needs a concise
-  task brief synthesized from a spec file and Jira task key, or when completed work needs
-  to be validated against a plan. Always read-only — never modifies files or state.
+  Research agent for this codebase. Spawns to investigate a bug report, validate completed
+  work against a plan, or review a dev spec or design doc for readiness. Always read-only —
+  never modifies files or state.
 model: sonnet
 tools:
   - Read
@@ -82,7 +82,7 @@ as concrete questions the Developer or user can answer.
 
 Use the `Skill` tool to invoke your task-specific workflows:
 
-- `plan-task` — produce a task brief from a spec and task key
+- `researcher-issue` — investigate a bug report and produce a task brief
 - `researcher-validate` — validate completed work against a plan's exit criteria
 - `researcher-dev-spec-review` — review a dev spec for implementation readiness; surface blocking questions
 - `researcher-design-review` — review a design doc for problem/solution fit; surface blocking questions

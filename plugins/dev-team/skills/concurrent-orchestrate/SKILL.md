@@ -158,7 +158,7 @@ For each `{task_id, base_branch}` in `spawn`:
      isolation: "worktree",
      run_in_background: true,
      prompt: "Invoke the `workflow-orchestrate` skill with arguments:
-   --work-item-id <task_id> --workflow implement-task-plan --research-skill plan-task"
+   --work-item-id <task_id> --workflow implement-task-plan"
    )
    ```
 3. Once the spawn call returns its worktree path and branch, use the `use-context-file` skill

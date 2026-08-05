@@ -464,13 +464,16 @@ class DebugStep(Step):
 
 
 class ResearchStep(Step):
+    """Runs the `/fix` pipeline's `researching` state — investigates a bug report via the
+    `dev-team:researcher` agent's `researcher-issue` skill. See `PlanStep` for the `/implement`
+    pipeline's counterpart, which hardcodes a different agent+skill pair for spec-driven tasks."""
+
     handles = "researching"
     EVENT_NAME = "research"
 
     _PENDING_KEY = "research"
 
-    def __init__(self, skill: str, ctx: "PipelineContext", context_path: Path) -> None:
-        self._skill = skill
+    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
         self._context_path = context_path
 
@@ -483,7 +486,7 @@ class ResearchStep(Step):
             "action": "spawn_agent",
             "message": f"Researcher is planning work for {ctx.work_item_id}.",
             "agent": "dev-team:researcher",
-            "skill": self._skill,
+            "skill": "researcher-issue",
             "context_file": str(self._context_path),
             "args": f"{ctx.work_item_id} {ctx.spec_path}",
             "read_sections": read_sections,
@@ -504,6 +507,53 @@ class ResearchStep(Step):
         return "research_done"
 
 
+class PlanStep(Step):
+    """Runs the `/implement` pipeline's `planning` state — turns a spec section into a task
+    brief via the `dev-team:planner` agent's `plan-task` skill, restricted to the spec and the
+    local codebase (no external research). See `ResearchStep` for the `/fix` pipeline's
+    counterpart.
+
+    `handle_results()` always returns `"ready"` today — there is no `research_needed` branch
+    wired up yet; this is the fork point a future research loop would use."""
+
+    handles = "planning"
+    EVENT_NAME = "plan"
+
+    _PENDING_KEY = "planning"
+
+    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
+        self._ctx = ctx
+        self._context_path = context_path
+
+    def get_actions(self) -> list[dict]:
+        ctx = self._ctx
+        if ctx.brief:
+            return []
+        return [{
+            "action": "spawn_agent",
+            "message": f"Planner is planning work for {ctx.work_item_id}.",
+            "agent": "dev-team:planner",
+            "skill": "plan-task",
+            "context_file": str(self._context_path),
+            "args": f"{ctx.work_item_id} {ctx.spec_path}",
+            "read_sections": [],
+            "write_section": "Researcher Brief",
+            "result_format": "success | failed",
+        }]
+
+    def handle_results(self) -> str:
+        ctx = self._ctx
+        if ctx.brief:
+            _handle_agent_success(ctx)
+            return "ready"
+        _handle_agent_failure(ctx)
+        _check_and_trigger_troubleshooter(
+            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
+            ctx.consecutive_failures, ctx, self._context_path,
+        )
+        return "ready"
+
+
 class ImplementStep(Step):
     handles = "implementing"
     EVENT_NAME = "implement"
@@ -520,7 +570,7 @@ class ImplementStep(Step):
             return []
         return [{
             "action": "spawn_agent",
-            "message": "Researcher has written the task brief. Developer is now implementing.",
+            "message": "Task brief is ready. Developer is now implementing.",
             "agent": "dev-team:developer",
             "skill": "implement-task",
             "args": ctx.work_item_id,
@@ -1040,7 +1090,6 @@ class DevTeamPipeline:
         context_path: Path,
         log_dir: Path,
         workflow: WorkflowDefinition,
-        research_skill: str,
     ) -> None:
         self.ctx = ctx
         self.context_path = context_path
@@ -1050,7 +1099,8 @@ class DevTeamPipeline:
         self.step_handlers: dict[str, Step] = {
             "spec-finding": FindSpecStep(ctx),
             "debugging": DebugStep(ctx, context_path),
-            "researching": ResearchStep(research_skill, ctx, context_path),
+            "researching": ResearchStep(ctx, context_path),
+            "planning": PlanStep(ctx, context_path),
             "implementing": ImplementStep(ctx, context_path),
             "validating": ValidateStep(ctx, context_path, log_dir),
             "fixing": FixStep(ctx, context_path),
@@ -1262,8 +1312,6 @@ def main() -> None:
                         help="Work item ID (e.g. ADR-172 or Issue-444)")
     parser.add_argument("--workflow", metavar="path", default=None,
                         help="Path to a Mermaid stateDiagram-v2 workflow file")
-    parser.add_argument("--research-skill", metavar="skill", default=None,
-                        help="Researcher skill to use (e.g. plan-task or researcher-issue)")
     parser.add_argument("--plugin-root", metavar="path", default=None,
                         help="Plugin installation root (agents/ and commands/ resolved here)")
     parser.add_argument("--context-file", metavar="path", default=None,
@@ -1277,11 +1325,9 @@ def main() -> None:
         print(compute_context_path(args.work_item_id, args.print_context_path), flush=True)
         sys.exit(0)
 
-    # Normal pipeline mode requires --workflow, --research-skill, and --context-file.
+    # Normal pipeline mode requires --workflow and --context-file.
     if not args.workflow:
         parser.error("--workflow is required")
-    if not args.research_skill:
-        parser.error("--research-skill is required")
     if not args.context_file:
         parser.error("--context-file is required")
 
@@ -1315,10 +1361,7 @@ def main() -> None:
         ctx.project_configuration = json.dumps(_load_project_config(REPO_ROOT), indent=2)
         ctx.save(context_path)
 
-    DevTeamPipeline(
-        ctx, context_path, log_dir, workflow,
-        research_skill=args.research_skill,
-    ).run()
+    DevTeamPipeline(ctx, context_path, log_dir, workflow).run()
 
 
 if __name__ == "__main__":

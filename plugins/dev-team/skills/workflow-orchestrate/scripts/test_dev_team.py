@@ -1237,6 +1237,78 @@ class TestCreatePrStep:
 
 
 # ---------------------------------------------------------------------------
+# PlanStep / ResearchStep — /implement's `planning` state vs /fix's `researching` state
+# ---------------------------------------------------------------------------
+
+class TestPlanStep:
+    """`/implement`'s planning state: hardcodes the Planner agent and plan-task skill."""
+
+    def _make_ctx(self, tmp_path, **kwargs):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-TEST", **kwargs)
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+        return ctx, context_path
+
+    def test_get_actions_spawns_planner_agent_with_plan_task_skill(self, tmp_path):
+        from dev_team import PlanStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        step = PlanStep(ctx, context_path)
+        actions = step.get_actions()
+        assert len(actions) == 1
+        assert actions[0]["agent"] == "dev-team:planner"
+        assert actions[0]["skill"] == "plan-task"
+        assert actions[0]["write_section"] == "Researcher Brief"
+
+    def test_get_actions_returns_empty_when_brief_already_set(self, tmp_path):
+        from dev_team import PlanStep
+        ctx, context_path = self._make_ctx(tmp_path, brief="# Implementation plan")
+        step = PlanStep(ctx, context_path)
+        assert step.get_actions() == []
+
+    def test_handle_results_returns_ready_when_brief_present(self, tmp_path):
+        from dev_team import PlanStep
+        ctx, context_path = self._make_ctx(tmp_path, brief="# Implementation plan")
+        step = PlanStep(ctx, context_path)
+        assert step.handle_results() == "ready"
+
+    def test_handle_results_returns_ready_and_counts_failure_when_brief_missing(self, tmp_path):
+        from dev_team import PlanStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        step = PlanStep(ctx, context_path)
+        trigger = step.handle_results()
+        assert trigger == "ready"
+        assert ctx.consecutive_failures == 1
+
+
+class TestResearchStep:
+    """`/fix`'s researching state: hardcodes the Researcher agent and researcher-issue skill."""
+
+    def _make_ctx(self, tmp_path, **kwargs):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(work_item_id="Issue-TEST", **kwargs)
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+        return ctx, context_path
+
+    def test_get_actions_spawns_researcher_agent_with_researcher_issue_skill(self, tmp_path):
+        from dev_team import ResearchStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        step = ResearchStep(ctx, context_path)
+        actions = step.get_actions()
+        assert len(actions) == 1
+        assert actions[0]["agent"] == "dev-team:researcher"
+        assert actions[0]["skill"] == "researcher-issue"
+        assert actions[0]["write_section"] == "Researcher Brief"
+
+    def test_handle_results_returns_research_done_when_brief_present(self, tmp_path):
+        from dev_team import ResearchStep
+        ctx, context_path = self._make_ctx(tmp_path, brief="# Root-cause plan")
+        step = ResearchStep(ctx, context_path)
+        assert step.handle_results() == "research_done"
+
+
+# ---------------------------------------------------------------------------
 # _find_repo_root
 # ---------------------------------------------------------------------------
 
@@ -1307,6 +1379,7 @@ class TestEventNamePerStep:
     @pytest.mark.parametrize("step_class_name,expected_event", [
         ("DebugStep", "debug"),
         ("ResearchStep", "research"),
+        ("PlanStep", "plan"),
         ("ImplementStep", "implement"),
         ("ValidateStep", "validate"),
         ("CreatePrStep", "create-pr"),

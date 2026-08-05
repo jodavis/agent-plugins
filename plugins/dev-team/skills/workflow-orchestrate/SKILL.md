@@ -5,14 +5,13 @@ description: >
   Orchestration loop for the dev-team pipeline. Drives the step machine by repeatedly
   invoking dev_team.py, parsing its JSON descriptor, and spawning the appropriate
   agent for each step. Replaces dev-team.md.
-argument-hint: --work-item-id <id> --workflow <pipeline> --research-skill <skill>
+argument-hint: --work-item-id <id> --workflow <pipeline>
 ---
 
 ## Arguments
 
 - `--work-item-id` — the resolved work item identifier (e.g. `PROJ-123` or `Issue-444`)
 - `--workflow` — the pipeline filename stem (e.g. `implement-task-plan` or `fix-issue-plan`)
-- `--research-skill` — the researcher skill name (e.g. `plan-task` or `researcher-issue`)
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory
 for this skill" path shown when this skill was invoked. Resolve it to that literal
@@ -72,7 +71,6 @@ Repeat the following until `action == "done"` or a terminal condition is reached
 ```bash
 python3 -u <skill-dir>/scripts/dev_team.py <work-item-id> \
   --workflow <skill-dir>/assets/<workflow>.md \
-  --research-skill <research-skill> \
   --context-file <context_file>
 ```
 
