@@ -21,5 +21,5 @@ Then stop.
 
 ### 2 — Run the workflow
 
-Invoke the `dev-team` skill with arguments:
-`<work-item-id> fix-issue-plan researcher-issue`
+Invoke the `workflow-orchestrate` skill with arguments:
+`--work-item-id <work-item-id> --workflow fix-issue-plan`

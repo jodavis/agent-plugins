@@ -32,7 +32,7 @@ Check the arguments, in order:
 ### 2 — Run the single-task workflow
 
 Invoke the `workflow-orchestrate` skill with arguments:
-`--work-item-id <work-item-id> --workflow implement-task-plan --research-skill plan-task`
+`--work-item-id <work-item-id> --workflow implement-task-plan`
 
 Then stop.
 
