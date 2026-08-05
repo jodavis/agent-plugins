@@ -1538,6 +1538,57 @@ class TestHookPhaseGating:
             pipeline._do_get_actions_and_exit(step)
 
         assert captured["descriptors"] == [action]
+        # Not "" — "" is the top-of-function's "before-hooks not yet dispatched" signal, and
+        # resetting back to it here would make the next re-entry (e.g. once the spawned agent
+        # this action dispatches actually finishes) misread it as a fresh step and re-dispatch
+        # the before-hook a second time. See test_before_hook_is_not_redispatched_while_main_action_is_still_pending.
+        assert ctx.hook_phase == "main"
+
+    def test_before_hook_is_not_redispatched_while_main_action_is_still_pending(self, tmp_path, monkeypatch):
+        """Regression for a real bug: once a before-hook has been dispatched and completes,
+        ctx.hook_phase used to reset straight back to "" in the same call that then dispatches
+        the step's main action. If that main action needs more than one re-entry of this
+        function to resolve (e.g. a spawned developer agent whose result the orchestrator
+        fetches via a separate invocation), the very next re-entry would see hook_phase == ""
+        again and re-run the before-hook resolution — re-dispatching the same before-<event>
+        hooks a second time before the main action ever got a chance to complete or even be
+        checked via get_actions() again."""
+        captured: dict = {}
+        self._expect_exit_with_actions_captures(monkeypatch, captured)
+        ctx, context_path = self._make_ctx(
+            tmp_path, {"before-implement": {"self-assign": "Assign Jira work item to self"}},
+        )
+        ctx.hook_phase = "main"  # before-hook already ran; main action still pending
+
+        action = {"action": "spawn_agent", "skill": "implement-task"}
+        step = _StubStep([action], "impl_done")
+        step.EVENT_NAME = "implement"
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        with pytest.raises(SystemExit):
+            pipeline._do_get_actions_and_exit(step)
+
+        # The main action is re-dispatched, not a second "hooks" action for before-implement.
+        assert captured["descriptors"] == [action]
+        assert ctx.hook_phase == "main"
+
+    def test_main_phase_clears_when_main_action_completes_with_no_after_hooks(self, tmp_path):
+        """Once the main action finally resolves (get_actions() returns []), hook_phase must be
+        cleared back to "" even when no after-hooks are configured — otherwise "main" would leak
+        into whatever different EVENT_NAME step runs next, and that step's own before-hooks
+        (gated on hook_phase == "") would silently never fire."""
+        ctx, context_path = self._make_ctx(
+            tmp_path, {"before-implement": {"self-assign": "Assign Jira work item to self"}},
+        )
+        ctx.hook_phase = "main"  # before-hook already ran; no after-implement configured
+
+        step = _StubStep([], "impl_done")  # main action now resolved
+        step.EVENT_NAME = "implement"
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        trigger = pipeline._do_get_actions_and_exit(step)
+
+        assert trigger == "impl_done"
         assert ctx.hook_phase == ""
 
     def test_after_hook_dispatches_based_on_trigger(self, tmp_path, monkeypatch):

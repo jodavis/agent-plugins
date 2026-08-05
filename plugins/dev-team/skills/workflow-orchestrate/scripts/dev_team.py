@@ -1106,6 +1106,18 @@ class DevTeamPipeline:
         or "after" again, that hook dispatch has already finished — nothing about its outcome is
         inspected here; a failed hook surfaces through the orchestrator's own per-item result
         logging, the same as any other failed dispatch item.
+
+        ctx.hook_phase == "" is reserved for "before-hooks haven't been resolved for this step
+        yet" — the one signal the top-of-function check uses to decide whether to dispatch them.
+        Once a before-hook has actually been dispatched and completes, this must NOT go back to
+        "" — the main action's own get_actions()/handle_results() cycle can legitimately take
+        several more re-entries of this function to resolve (e.g. a spawned agent needing a
+        retry), and resetting to "" here would make the very next re-entry misread "" as "fresh
+        step, haven't dispatched before-hooks yet" and re-dispatch them a second time before the
+        main action ever gets a chance to complete. Instead it moves to the intermediate "main"
+        phase, which the after-hook check below also treats as "ready" (alongside "" itself, for
+        steps whose before-hooks were never configured), so a step whose main action takes
+        multiple re-entries to resolve never re-fires either hook.
         """
         ctx = self.ctx
         event_name = getattr(step, "EVENT_NAME", None)
@@ -1124,7 +1136,7 @@ class DevTeamPipeline:
                         "context_file": str(self.context_path),
                     }])
             elif ctx.hook_phase == "before":
-                ctx.hook_phase = ""
+                ctx.hook_phase = "main"
                 ctx.save(self.context_path)
 
         if not ctx.pending_trigger:
@@ -1150,7 +1162,7 @@ class DevTeamPipeline:
             ctx.pending_trigger = trigger
             ctx.save(self.context_path)
 
-        if ctx.hook_phase == "":
+        if ctx.hook_phase in ("", "main"):
             after = _resolve_hook_map(config, f"after-{event_name}-{trigger}")
             after_unconditional = _resolve_hook_map(config, f"after-{event_name}")
             merged = {**after, **after_unconditional}
@@ -1163,6 +1175,12 @@ class DevTeamPipeline:
                     "instructions": list(merged.values()),
                     "context_file": str(self.context_path),
                 }])
+            elif ctx.hook_phase == "main":
+                # No after-hooks configured: clear the "main" marker now, rather than let it
+                # leak into the next step (a different EVENT_NAME) and be mistaken there for
+                # "before-hooks already handled" when they never were for that step.
+                ctx.hook_phase = ""
+                ctx.save(self.context_path)
         elif ctx.hook_phase == "after":
             ctx.hook_phase = ""
             ctx.save(self.context_path)
