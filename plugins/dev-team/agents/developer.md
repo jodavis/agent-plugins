@@ -99,4 +99,3 @@ Use the `Skill` tool to invoke your task-specific workflows:
 - `fix-pr` — address build errors, test failures, or review comments for a work item with an existing PR
 - `create-pr` — create a draft GitHub PR for completed work
 - `create-pr-from-context` — create a PR for a work item using the workflow context file
-- `final-sign-off` — hand an approved PR off to a human reviewer

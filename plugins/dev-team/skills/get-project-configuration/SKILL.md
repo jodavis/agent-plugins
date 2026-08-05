@@ -186,14 +186,21 @@ substitution; this skill only returns the raw template.
 
 ### `instructions` — map of event name → ordered map of label → instruction
 
-Each key is an `EVENT_NAME` (e.g. `before-implement`, `after-signoff-success`) and its value is an
-ordered map of `label: instruction` pairs — a short, stable label and a plain-language
-instruction describing what to do at that point in the pipeline. Setting a label's value to
-`""` or `null` at a more specific tier (e.g. `.dev-team/config.local.yaml`) disables just that
-one inherited entry; every other label already present in that event's map is left untouched.
-Labels themselves are never interpreted by this skill or the hook mechanism — they exist only
-so a more specific tier has something stable to key an override against.
+Each key is either `before-<event>` or `after-<event>-<trigger>`/`after-<event>` (e.g.
+`before-implement`, `after-signoff-approved`), and its value is an ordered map of
+`label: instruction` pairs — a short, stable label and a plain-language instruction describing
+what to do at that point in the pipeline. Setting a label's value to `""` or `null` at a more
+specific tier (e.g. `.dev-team/config.local.yaml`) disables just that one inherited entry; every
+other label already present in that event's map is left untouched. Labels themselves are never
+interpreted — they exist only so a more specific tier has something stable to key an override
+against.
 
-The deeper mechanics — the ordering guarantee across tiers, and the full
-before/after-success/after-failure/after lookup sequence for a given event — belong to
-`run-event-hooks`, the skill that actually consumes this section; see its own `SKILL.md`.
+The `<trigger>` in an `after-<event>-<trigger>` key is the pipeline step's own actual trigger
+string (e.g. `clean`/`build_failed` for `validate`, `approved`/`changes_requested` for
+`signoff`/`review`) — see `update-project-configuration/SKILL.md`'s `instructions` section for
+the full table of triggers per event. The deeper mechanics — the ordering guarantee across
+tiers, resolution of which key(s) apply for a given event/phase, and merging the trigger-specific
+map ahead of the unconditional `after-<event>` map — are owned by `dev_team.py` itself; only the
+per-instruction dispatch (matching a label's plain-language instruction to the real tool call
+that performs it) belongs to `run-hook-instructions`, the skill that follows an already-resolved
+map. See both skills' own docs for their respective halves.
