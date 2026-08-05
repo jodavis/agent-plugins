@@ -3,16 +3,16 @@ name: implement-direct
 user-invocable: false
 description: >
   Use when implementing one Wrapper or Orchestrator component from a task brief's Components
-  in scope list directly, with no pairing. Also used by the parked TDD trio's driver script,
-  if re-enabled, for a Tier 2 resolve_directly escalation to implement a disputed piece itself.
+  in scope list directly, with no pairing. Also used by implement-tdd's Tier 2
+  resolve_directly escalation to implement a disputed piece itself.
 argument-hint: <component-row> <task-brief-path> <spec-path> [skip-commit]
 ---
 
 Use this skill when:
 - You (Developer) are implementing one component classified `Wrapper` or `Orchestrator` in a
   task brief's Components in scope list
-- The parked TDD trio's driver script (`tdd_cycle.py`), if re-enabled, escalates with
-  `resolve_directly` and you need to implement the disputed piece yourself
+- `implement-tdd`'s Tier 2 escalation resolves to `resolve_directly` and you need to implement
+  the disputed piece yourself
 
 Do NOT use this skill when:
 - The component is `Testable` — use `implement-tdd` instead
@@ -22,11 +22,10 @@ Do NOT use this skill when:
 - **Standalone** — invoked directly by `implement-task`'s dispatcher for a Wrapper or
   Orchestrator component. Follow steps 1–3 below, then commit in step 4 — one commit for this
   component.
-- **Tier 2 `resolve_directly`** — invoked from the parked TDD trio's driver script
-  (`tdd_cycle.py`), if re-enabled, while resolving an escalation for a Testable component.
-  Follow steps 1–3 below, then pass the optional `skip-commit` argument so step 4 stages
-  instead of committing. The driver script still owns the single commit for that component
-  once `tdd-tester` reports `done`.
+- **Tier 2 `resolve_directly`** — invoked from `implement-tdd`'s step 4 while resolving an
+  escalation for a Testable component. Follow steps 1–3 below, then pass the optional
+  `skip-commit` argument so step 4 stages instead of committing. `implement-tdd` still owns the
+  single commit for that component once `tdd-tester` reports `done`.
 
 ## Steps
 
@@ -64,11 +63,11 @@ component that doesn't build cleanly or pass its own test(s).
 
 - **No `skip-commit` argument** (standalone dispatcher call): use `commit-changes` with message
   `<work-item-id>: <short description>`.
-- **`skip-commit` argument present** (Tier 2 `resolve_directly` reuse from the parked TDD
-  trio's driver script): stage the change (`git add -A`, or the target project's VCS
-  equivalent) and stop — do not commit. Control returns to the driver script, which stages the
-  resolution as a real green, routes to a `tdd-refactorer` turn, and continues the loop; the
-  single commit for that component still happens later, once `tdd-tester` reports `done`.
+- **`skip-commit` argument present** (Tier 2 `resolve_directly` reuse from `implement-tdd`):
+  stage the change (`git add -A`, or the target project's VCS equivalent) and stop — do not
+  commit. Control returns to `implement-tdd`'s step 4, which continues the loop from its own
+  step 6 (refactor turn) itself; the single commit for that component still happens later, in
+  `implement-tdd`'s step 7.
 
 ## Self-review notes for the holistic review
 
