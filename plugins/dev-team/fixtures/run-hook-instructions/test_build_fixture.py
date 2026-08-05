@@ -1,5 +1,5 @@
-"""Tests for build_fixture.py — confirms each of the three named dry-run scenarios for the
-run-hook-instructions harness actually produces the fixture git repo and `instructions` map
+"""Tests for build_fixture.py — confirms each of the two named dry-run scenarios for the
+run-hook-instructions harness actually produces the fixture git repo and instructions-list
 state it claims to, so a dry run of the skill always starts from a trustworthy, reproducible
 starting state.
 """
@@ -12,7 +12,6 @@ import pytest
 from build_fixture import (
     SCENARIOS,
     build_commit_entry_scenario,
-    build_disabled_entry_scenario,
     build_scenario,
     build_unrecognized_instruction_scenario,
 )
@@ -51,12 +50,12 @@ class TestBuildCommitEntryScenario:
         # Assert
         assert _commit_count(fixture.worktree) == 1
 
-    def test_build_commit_entry_scenario_instruction_is_non_empty(self, tmp_path):
+    def test_build_commit_entry_scenario_instructions_list_is_correct(self, tmp_path):
         # Arrange / Act
         fixture = build_commit_entry_scenario(tmp_path)
 
         # Assert
-        assert fixture.instructions["commit-uncommitted"] == "Commit any uncommitted changes"
+        assert fixture.instructions == ["Commit any uncommitted changes"]
 
     def test_build_commit_entry_scenario_expects_successful_with_new_commit(self, tmp_path):
         # Arrange / Act
@@ -68,46 +67,16 @@ class TestBuildCommitEntryScenario:
 
 
 # ---------------------------------------------------------------------------
-# build_disabled_entry_scenario
-# ---------------------------------------------------------------------------
-
-class TestBuildDisabledEntryScenario:
-    def test_build_disabled_entry_scenario_leaves_uncommitted_changes(self, tmp_path):
-        # Arrange / Act
-        fixture = build_disabled_entry_scenario(tmp_path)
-
-        # Assert
-        assert _has_uncommitted_changes(fixture.worktree)
-
-    def test_build_disabled_entry_scenario_instruction_is_disabled(self, tmp_path):
-        # Arrange / Act
-        fixture = build_disabled_entry_scenario(tmp_path)
-
-        # Assert
-        assert fixture.instructions["commit-uncommitted"] == ""
-
-    def test_build_disabled_entry_scenario_expects_successful_with_no_new_commit(self, tmp_path):
-        # Arrange / Act
-        fixture = build_disabled_entry_scenario(tmp_path)
-
-        # Assert
-        assert fixture.expected_outcome == "successful"
-        assert fixture.expected_commit_created is False
-
-
-# ---------------------------------------------------------------------------
 # build_unrecognized_instruction_scenario
 # ---------------------------------------------------------------------------
 
 class TestBuildUnrecognizedInstructionScenario:
-    def test_build_unrecognized_instruction_scenario_instruction_has_no_obvious_operation(
-        self, tmp_path
-    ):
+    def test_build_unrecognized_instruction_scenario_instructions_list_is_correct(self, tmp_path):
         # Arrange / Act
         fixture = build_unrecognized_instruction_scenario(tmp_path)
 
         # Assert
-        assert fixture.instructions["recite-hamlet"] == "Recite three lines from Hamlet"
+        assert fixture.instructions == ["Recite three lines from Hamlet"]
 
     def test_build_unrecognized_instruction_scenario_expects_failed_outcome(self, tmp_path):
         # Arrange / Act

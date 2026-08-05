@@ -1,19 +1,19 @@
 """Fixture builder for the run-hook-instructions skill's dry-run harness.
 
-Builds one of three named scenarios: a throwaway git repo with an uncommitted change, plus a
+Builds one of two named scenarios: a throwaway git repo with an uncommitted change, plus a
 throwaway workflow context file (following `use-context-file`'s section-sentinel format) and an
-already-resolved `instructions` map to pass directly as `--instructions` — the skill no longer
-looks this map up from the context file itself (dev_team.py resolves it before ever spawning the
-agent that calls this skill), so the fixture hands it over pre-resolved, exactly like a real
-"hooks" action descriptor would. Each scenario uses a local commit (not a push) as its observable
-action, so no fixture remote is needed.
+already-resolved, bare list of instruction strings to pass directly as `--instructions` —
+dev_team.py resolves config, applies the per-label disable convention, and strips labels down to
+a bare list before ever spawning the agent that calls this skill, so there is no "disabled entry"
+scenario to build here; that filtering is covered at the dev_team.py level
+(`test_dev_team.py::TestHookPhaseGating::test_disabled_entry_is_filtered_out`), not this skill's.
+Each scenario uses a local commit (not a push) as its observable action, so no fixture remote is
+needed.
 
 Scenarios:
 - "commit-entry": one commit-producing instruction ("Commit any uncommitted changes") run
   against a repo with uncommitted changes — the skill should create a new local commit and
   return "successful".
-- "disabled-entry": the same instruction overridden to "" (disabled) — the skill should create
-  no new commit and still return "successful" (a no-op is not a failure).
 - "unrecognized-instruction": one genuinely unrecognized instruction ("Recite three lines from
   Hamlet") with no plausible matching operation — the skill must attempt it rather than
   silently no-op'ing, and its return must not be "successful" since nothing actually fits.
@@ -25,19 +25,20 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-SCENARIOS = ("commit-entry", "disabled-entry", "unrecognized-instruction")
+SCENARIOS = ("commit-entry", "unrecognized-instruction")
 
 
 @dataclass
 class ScenarioFixture:
     """Everything a dry run of `run-hook-instructions` needs: the fixture git repo the
-    instruction should act on, the throwaway context file, the already-resolved `instructions`
-    map to pass via `--instructions`, and the outcomes the harness expects: whether the skill's
-    own return value is "successful", and whether a new local commit should exist afterward."""
+    instruction should act on, the throwaway context file, the already-resolved list of
+    instruction strings to pass via `--instructions`, and the outcomes the harness expects:
+    whether the skill's own return value is "successful", and whether a new local commit
+    should exist afterward."""
 
     worktree: Path
     context_file: Path
-    instructions: dict
+    instructions: list
     expected_outcome: str  # "successful" | "failed" -- categorical, not the literal return text
     expected_commit_created: bool  # mechanical check: did a new local commit appear?
 
@@ -92,27 +93,19 @@ def _write_context_file(dest: Path) -> Path:
 def build_commit_entry_scenario(dest: Path) -> ScenarioFixture:
     work = _init_repo_with_uncommitted_change(dest)
     context_file = _write_context_file(dest)
-    instructions = {"commit-uncommitted": "Commit any uncommitted changes"}
+    instructions = ["Commit any uncommitted changes"]
     return ScenarioFixture(work, context_file, instructions, "successful", True)
-
-
-def build_disabled_entry_scenario(dest: Path) -> ScenarioFixture:
-    work = _init_repo_with_uncommitted_change(dest)
-    context_file = _write_context_file(dest)
-    instructions = {"commit-uncommitted": ""}
-    return ScenarioFixture(work, context_file, instructions, "successful", False)
 
 
 def build_unrecognized_instruction_scenario(dest: Path) -> ScenarioFixture:
     work = _init_repo_with_uncommitted_change(dest)
     context_file = _write_context_file(dest)
-    instructions = {"recite-hamlet": "Recite three lines from Hamlet"}
+    instructions = ["Recite three lines from Hamlet"]
     return ScenarioFixture(work, context_file, instructions, "failed", False)
 
 
 _BUILDERS = {
     "commit-entry": build_commit_entry_scenario,
-    "disabled-entry": build_disabled_entry_scenario,
     "unrecognized-instruction": build_unrecognized_instruction_scenario,
 }
 

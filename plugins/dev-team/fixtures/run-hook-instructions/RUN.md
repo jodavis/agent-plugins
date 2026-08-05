@@ -1,5 +1,5 @@
 Summary: Run procedure for the run-hook-instructions skill's dry-run harness — how to materialize
-each instructions-map scenario and grade the skill's output against expected git/return-value
+each instructions-list scenario and grade the skill's output against expected git/return-value
 state.
 
 # run-hook-instructions: skill dry-run harness
@@ -9,36 +9,37 @@ This directory is the fixture set and run procedure for verifying `run-hook-inst
 per `component-taxonomy` — it makes judgment calls about which real operation fits a freeform
 instruction string, so it doesn't fit AAA unit tests. Per the taxonomy, it's verified by
 "whatever mechanism actually fits": here, a scripted fixture-scenario harness that builds a real
-git repo and an already-resolved `instructions` map, runs the skill against it, and asserts the
-resulting git state and the skill's own reported outcome.
+git repo and an already-resolved list of instruction strings, runs the skill against it, and
+asserts the resulting git state and the skill's own reported outcome.
 
-`dev_team.py` owns resolving which config keys apply and in what order (see
-`get-project-configuration/SKILL.md`'s `instructions` section) — this skill only dispatches an
-already-resolved map, so this harness hands one over directly rather than building a
-`Project Configuration` section for the skill to parse itself.
+`dev_team.py` owns resolving which config keys apply, in what order, and filtering out disabled
+entries (see `get-project-configuration/SKILL.md`'s `instructions` section) — labels exist only
+for that resolution step and are stripped before this skill ever sees the result. So this skill
+only dispatches a bare list of instruction strings, and this harness hands one over directly
+rather than building a labeled `Project Configuration` section for the skill to parse itself.
+There is no "disabled entry" scenario here for the same reason — a disabled entry never survives
+resolution to reach this skill at all; that filtering is covered at the `dev_team.py` level
+(`test_dev_team.py::TestHookPhaseGating::test_disabled_entry_is_filtered_out`).
 
 ## Fixture contents
 
 | Path | Purpose |
 |---|---|
-| `build_fixture.py` | Builds one of three named scenarios: a throwaway git repo with an uncommitted change, a throwaway context file, and an already-resolved `instructions` map to pass via `--instructions` |
-| `test_build_fixture.py` | Unit tests confirming each scenario actually produces the repo/instructions-map state it claims to, so a dry run always starts from a trustworthy, reproducible state |
+| `build_fixture.py` | Builds one of two named scenarios: a throwaway git repo with an uncommitted change, a throwaway context file, and an already-resolved list of instruction strings to pass via `--instructions` |
+| `test_build_fixture.py` | Unit tests confirming each scenario actually produces the repo/instructions-list state it claims to, so a dry run always starts from a trustworthy, reproducible state |
 
 Every scenario uses a local commit (not a push) as its observable action, so no fixture remote is
 needed.
 
 ## Scenarios
 
-| Name | `--instructions` map | Expected `run-hook-instructions` return | Expected new local commit? |
+| Name | `--instructions` list | Expected `run-hook-instructions` return | Expected new local commit? |
 |---|---|---|---|
-| `commit-entry` | `commit-uncommitted: "Commit any uncommitted changes"` | `successful` | Yes |
-| `disabled-entry` | `commit-uncommitted: ""` | `successful` | No |
-| `unrecognized-instruction` | `recite-hamlet: "Recite three lines from Hamlet"` | anything other than `successful` | No |
+| `commit-entry` | `["Commit any uncommitted changes"]` | `successful` | Yes |
+| `unrecognized-instruction` | `["Recite three lines from Hamlet"]` | anything other than `successful` | No |
 
-`disabled-entry` proves the skip-empty-value behavior is externally observable, not just
-internal logic: the same label used in `commit-entry`, overridden to `""`, must produce no
-commit. `unrecognized-instruction` proves the skill doesn't silently no-op an instruction it
-doesn't recognize — it must attempt something and report failure, not a false success.
+`unrecognized-instruction` proves the skill doesn't silently no-op an instruction it doesn't
+recognize — it must attempt something and report failure, not a false success.
 
 ## Invocation model: on-demand, not CI
 
@@ -56,10 +57,10 @@ python3 plugins/dev-team/fixtures/run-hook-instructions/build_fixture.py \
   commit-entry /tmp/dry-run/run-hook-instructions/commit-entry
 ```
 
-Replace `commit-entry` with `disabled-entry` or `unrecognized-instruction` for the other two
-scenarios. Each invocation is idempotent given a fresh destination directory — always
-materialize into a location outside version control (e.g. under `/tmp/dry-run/`), and use a
-fresh destination directory per run rather than reusing one from a previous dry run.
+Replace `commit-entry` with `unrecognized-instruction` for the other scenario. Each invocation is
+idempotent given a fresh destination directory — always materialize into a location outside
+version control (e.g. under `/tmp/dry-run/`), and use a fresh destination directory per run
+rather than reusing one from a previous dry run.
 
 The command prints the fixture git repo's path, the throwaway context file's path, the
 `--instructions` JSON to pass the skill, and the expected return value and commit outcome.
@@ -94,8 +95,6 @@ git -C <worktree> status --porcelain
 - **`commit-entry`:** the skill must return exactly `successful`; commit count must be `2` (one
   new commit beyond the fixture's initial commit); `git status --porcelain` must be empty (the
   uncommitted change was committed).
-- **`disabled-entry`:** the skill must return exactly `successful`; commit count must stay `1`;
-  `git status --porcelain` must still show the original uncommitted change, untouched.
 - **`unrecognized-instruction`:** the skill's return must NOT be `successful`; commit count must
   stay `1`; `git status --porcelain` must still show the original uncommitted change, untouched
   (the instruction has nothing to do with committing, so nothing should change here either way —
@@ -107,8 +106,6 @@ Read the skill's own report against each scenario's expectation:
 
 - **`commit-entry`:** the skill's report describes actually creating a commit for the
   uncommitted change (via `commit-changes` or equivalent), not just asserting success.
-- **`disabled-entry`:** the skill's report explains that the `commit-uncommitted` entry was
-  skipped because its value is empty — not that it attempted and somehow produced no commit.
 - **`unrecognized-instruction`:** the skill's report explains that it attempted to find an
   operation fitting "Recite three lines from Hamlet" and found none, rather than silently
   treating the entry as done. A skill that returns `successful` here fails this scenario
@@ -119,7 +116,7 @@ Read the skill's own report against each scenario's expectation:
 
 1. Re-materialize each scenario (Step 1) into a fresh destination — never reuse a previous dry
    run's worktree.
-2. Re-run Steps 2–3 against the edited skill for all three scenarios.
+2. Re-run Steps 2–3 against the edited skill for both scenarios.
 3. If a checklist item now fails, the edit introduced a regression — fix it before merging, the
    same way a failing unit test blocks a merge elsewhere in this repo.
 

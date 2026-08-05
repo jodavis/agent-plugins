@@ -1515,7 +1515,7 @@ class TestHookPhaseGating:
         assert captured["descriptors"] == [{
             "action": "hooks",
             "message": "Running before-implement instructions.",
-            "instructions": {"self-assign": "Assign Jira work item to self"},
+            "instructions": ["Assign Jira work item to self"],
             "context_file": str(context_path),
         }]
         assert ctx.hook_phase == "before"
@@ -1557,7 +1557,7 @@ class TestHookPhaseGating:
         assert captured["descriptors"] == [{
             "action": "hooks",
             "message": "Running after-implement instructions.",
-            "instructions": {"notify": "Post a status update"},
+            "instructions": ["Post a status update"],
             "context_file": str(context_path),
         }]
         assert ctx.hook_phase == "after"
@@ -1656,7 +1656,7 @@ class TestHookPhaseGating:
         with pytest.raises(SystemExit):
             pipeline._do_get_actions_and_exit(step)
 
-        assert list(captured["descriptors"][0]["instructions"].keys()) == ["notify", "log"]
+        assert captured["descriptors"][0]["instructions"] == ["Post a status update", "Log the outcome"]
 
     def test_disabled_entry_is_filtered_out(self, tmp_path, monkeypatch):
         captured: dict = {}
@@ -1673,7 +1673,7 @@ class TestHookPhaseGating:
         with pytest.raises(SystemExit):
             pipeline._do_get_actions_and_exit(step)
 
-        assert captured["descriptors"][0]["instructions"] == {"push": "Push git changes to remote"}
+        assert captured["descriptors"][0]["instructions"] == ["Push git changes to remote"]
 
     def test_inline_step_with_no_actions_and_no_hooks_returns_trigger_directly(self, tmp_path):
         ctx, context_path = self._make_ctx(tmp_path)

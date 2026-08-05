@@ -296,6 +296,10 @@ def _resolve_hook_map(config: dict, key: str) -> dict:
     Filters out any entry disabled via a null/"" value (the existing per-label disable
     convention — a more specific config tier can silence one inherited label without
     touching its siblings). An absent or entirely null/empty key resolves to {}.
+
+    The label is only meaningful here and in the merge step that follows (deduplicating an
+    entry a trigger-specific and an unconditional key both define) — once merged, only the
+    surviving instruction *text* is ever handed to a "hooks" action descriptor, as a bare list.
     """
     instructions = config.get("instructions") or {}
     entries = instructions.get(key) or {}
@@ -1116,7 +1120,7 @@ class DevTeamPipeline:
                     exit_with_actions([{
                         "action": "hooks",
                         "message": f"Running before-{event_name} instructions.",
-                        "instructions": before,
+                        "instructions": list(before.values()),
                         "context_file": str(self.context_path),
                     }])
             elif ctx.hook_phase == "before":
@@ -1156,7 +1160,7 @@ class DevTeamPipeline:
                 exit_with_actions([{
                     "action": "hooks",
                     "message": f"Running after-{event_name} instructions.",
-                    "instructions": merged,
+                    "instructions": list(merged.values()),
                     "context_file": str(self.context_path),
                 }])
         elif ctx.hook_phase == "after":
