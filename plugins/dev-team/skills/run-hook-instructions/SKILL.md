@@ -87,8 +87,8 @@ general pattern for anything else:
 |---|---|
 | "Assign Jira work item to self" | `work-with-Jira-tasks`'s `atlassianUserInfo` operation to get the current user, then `editJiraIssue` to set the assignee |
 | `Transition Jira work item to "<status>"` | `work-with-Jira-tasks`'s `getTransitionsForJiraIssue` then `transitionJiraIssue` |
-| "Push git changes to remote" | Plain `git push` for the current working branch |
-| "If there are uncommitted changes, commit and push the branch" | If `git status --porcelain` is non-empty, the `commit-changes` skill, then `git push`; a clean tree is a no-op success, not a failure |
+| "Push git changes to remote" | `git push -u origin <current-branch>` for the current working branch — never a bare `git push`, which pushes to whatever upstream happens to be configured (possibly a shared/protected base branch, e.g. if `ensure-working-branch` ever regresses on this) rather than the working branch itself |
+| "If there are uncommitted changes, commit and push the branch" | If `git status --porcelain` is non-empty, the `commit-changes` skill, then `git push -u origin <current-branch>` (same rationale as above); a clean tree is a no-op success, not a failure |
 | "Promote GitHub PR to ready for review" | `work-with-pr`'s convert-to-ready operation (`update_pull_request` with `draft=false`) against `pr_url` from the context file |
 | `Request a GitHub review from <name>` | `work-with-pr`'s request-review operation (`update_pull_request` with `reviewers=[...]`) |
 | `Assign work item to <email>` | `work-with-Jira-tasks`'s `lookupJiraAccountId` (if a GitHub-side assignment is meant, resolve the linked username) then `editJiraIssue` to set the assignee |
