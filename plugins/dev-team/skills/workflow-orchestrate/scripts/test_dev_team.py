@@ -1373,8 +1373,9 @@ class TestFindRepoRoot:
 # ---------------------------------------------------------------------------
 
 class TestEventNamePerStep:
-    """Every single-action Step declares a stable EVENT_NAME; spec-finding/signoff (and
-    signoff's own children) don't."""
+    """Every single-action Step declares a stable EVENT_NAME; spec-finding (and signoff's
+    own children) don't. `SignoffStep` itself carries EVENT_NAME = "signoff" directly —
+    there is no separate hand-off step to carry it instead."""
 
     @pytest.mark.parametrize("step_class_name,expected_event", [
         ("DebugStep", "debug"),
@@ -1386,7 +1387,7 @@ class TestEventNamePerStep:
         ("ReviewStep", "review"),
         ("FixStep", "fix"),
         ("FixPrStep", "fix"),
-        ("HandoffStep", "signoff"),
+        ("SignoffStep", "signoff"),
     ])
     def test_step_declares_expected_event_name(self, step_class_name, expected_event):
         import dev_team
@@ -1397,17 +1398,13 @@ class TestEventNamePerStep:
         from dev_team import FindSpecStep
         assert FindSpecStep.EVENT_NAME is None
 
-    def test_signoff_step_has_no_event_name(self):
-        from dev_team import SignoffStep
-        assert SignoffStep.EVENT_NAME is None
-
     @pytest.mark.parametrize("step_class_name", [
         "ReviewerSignOffStep", "BuildValidationStep",
     ])
     def test_signoff_child_step_has_no_event_name(self, step_class_name):
-        """SignoffStep's three children still dispatch via workflow-worker/workflow-script
-        exactly as today, just without any --event — the exclusion is about signoff as a
-        whole having no single wrappable agent session, not about these Steps individually."""
+        """SignoffStep's children still dispatch via workflow-worker/workflow-script exactly
+        as today, with no hooks of their own — hooks apply to signoff as a whole, resolved
+        around SignoffStep's own resolution, not to these children individually."""
         import dev_team
         step_class = getattr(dev_team, step_class_name)
         assert step_class.EVENT_NAME is None
@@ -1421,9 +1418,12 @@ class TestEventNamePerStep:
 # "event" descriptor field injection (DevTeamPipeline._do_get_actions_and_exit)
 # ---------------------------------------------------------------------------
 
-class TestEventFieldInjection:
-    """_do_get_actions_and_exit() injects an 'event' key into each emitted descriptor
-    when the dispatched step declares EVENT_NAME, and omits it entirely otherwise."""
+class TestHookPhaseGating:
+    """_do_get_actions_and_exit() resolves this project's before-<event>/
+    after-<event>-<trigger> instructions (if any) around a step's real dispatch and
+    dispatches them as their own "hooks" actions, tracked via ctx.hook_phase/
+    ctx.pending_trigger across repeated invocations. No hooks configured means no "hooks"
+    action is ever emitted and the real dispatch is unaffected."""
 
     def _make_pipeline(self, ctx, context_path, step):
         from dev_team import DevTeamPipeline, WorkflowDefinition, StateMachine
@@ -1453,15 +1453,22 @@ class TestEventFieldInjection:
 
         monkeypatch.setattr(dev_team, "exit_with_actions", fake_exit)
 
-    def test_injects_event_key_when_step_has_event_name(self, tmp_path, monkeypatch):
+    def _make_ctx(self, tmp_path, instructions=None):
+        import json
         from dev_team import PipelineContext
-
-        captured: dict = {}
-        self._expect_exit_with_actions_captures(monkeypatch, captured)
-
-        ctx = PipelineContext(work_item_id="ADR-TEST", state="testing")
+        config = {"instructions": instructions} if instructions is not None else {}
+        ctx = PipelineContext(
+            work_item_id="ADR-TEST", state="testing",
+            project_configuration=json.dumps(config),
+        )
         context_path = tmp_path / "ctx.md"
         ctx.save(context_path)
+        return ctx, context_path
+
+    def test_no_hooks_configured_dispatches_main_action_directly(self, tmp_path, monkeypatch):
+        captured: dict = {}
+        self._expect_exit_with_actions_captures(monkeypatch, captured)
+        ctx, context_path = self._make_ctx(tmp_path)
 
         action = {"action": "spawn_agent", "skill": "implement-task"}
         step = _StubStep([action], "impl_done")
@@ -1471,59 +1478,205 @@ class TestEventFieldInjection:
         with pytest.raises(SystemExit):
             pipeline._do_get_actions_and_exit(step)
 
-        assert captured["descriptors"][0]["event"] == "implement"
+        assert captured["descriptors"] == [action]
+        assert ctx.hook_phase == ""
 
-    def test_no_event_key_when_step_has_no_event_name(self, tmp_path, monkeypatch):
-        from dev_team import PipelineContext
-
+    def test_no_event_name_is_unaffected(self, tmp_path, monkeypatch):
         captured: dict = {}
         self._expect_exit_with_actions_captures(monkeypatch, captured)
-
-        ctx = PipelineContext(work_item_id="ADR-TEST", state="testing")
-        context_path = tmp_path / "ctx.md"
-        ctx.save(context_path)
+        ctx, context_path = self._make_ctx(tmp_path)
 
         action = {"action": "spawn_agent", "skill": "review-sign-off"}
         step = _StubStep([action], "approved")
-        # No EVENT_NAME attribute set on the stub — getattr(...) falls back to None,
-        # mirroring FindSpecStep/SignoffStep (and signoff's children).
+        # No EVENT_NAME attribute — getattr(...) falls back to None, mirroring
+        # FindSpecStep (and signoff's children).
         pipeline = self._make_pipeline(ctx, context_path, step)
 
         with pytest.raises(SystemExit):
             pipeline._do_get_actions_and_exit(step)
 
-        assert "event" not in captured["descriptors"][0]
+        assert captured["descriptors"] == [action]
 
-    def test_mutates_every_action_in_a_multi_item_list(self, tmp_path, monkeypatch):
-        from dev_team import PipelineContext
-
+    def test_before_hook_dispatches_hooks_action_first(self, tmp_path, monkeypatch):
         captured: dict = {}
         self._expect_exit_with_actions_captures(monkeypatch, captured)
+        ctx, context_path = self._make_ctx(
+            tmp_path, {"before-implement": {"self-assign": "Assign Jira work item to self"}},
+        )
 
-        ctx = PipelineContext(work_item_id="ADR-TEST", state="testing")
-        context_path = tmp_path / "ctx.md"
-        ctx.save(context_path)
-
-        a1 = {"action": "spawn_agent", "skill": "reviewer-sign-off"}
-        a2 = {"action": "run_script", "command": "bash build.sh"}
-        step = _StubStep([a1, a2], "approved")
-        step.EVENT_NAME = "review"
+        action = {"action": "spawn_agent", "skill": "implement-task"}
+        step = _StubStep([action], "impl_done")
+        step.EVENT_NAME = "implement"
         pipeline = self._make_pipeline(ctx, context_path, step)
 
         with pytest.raises(SystemExit):
             pipeline._do_get_actions_and_exit(step)
 
-        assert all(d["event"] == "review" for d in captured["descriptors"])
+        assert captured["descriptors"] == [{
+            "action": "hooks",
+            "message": "Running before-implement instructions.",
+            "instructions": {"self-assign": "Assign Jira work item to self"},
+            "context_file": str(context_path),
+        }]
+        assert ctx.hook_phase == "before"
+        assert not step.called  # the real step was never reached
 
-    def test_inline_step_with_no_actions_is_unaffected(self, tmp_path):
-        """An inline step (get_actions() == []) never reaches exit_with_actions, so
-        there is nothing to inject — behavior identical to before this change."""
-        from dev_team import PipelineContext
+    def test_resuming_after_before_hook_proceeds_to_main_action(self, tmp_path, monkeypatch):
+        captured: dict = {}
+        self._expect_exit_with_actions_captures(monkeypatch, captured)
+        ctx, context_path = self._make_ctx(
+            tmp_path, {"before-implement": {"self-assign": "Assign Jira work item to self"}},
+        )
+        ctx.hook_phase = "before"
 
-        ctx = PipelineContext(work_item_id="ADR-TEST", state="testing")
-        context_path = tmp_path / "ctx.md"
-        ctx.save(context_path)
+        action = {"action": "spawn_agent", "skill": "implement-task"}
+        step = _StubStep([action], "impl_done")
+        step.EVENT_NAME = "implement"
+        pipeline = self._make_pipeline(ctx, context_path, step)
 
+        with pytest.raises(SystemExit):
+            pipeline._do_get_actions_and_exit(step)
+
+        assert captured["descriptors"] == [action]
+        assert ctx.hook_phase == ""
+
+    def test_after_hook_dispatches_based_on_trigger(self, tmp_path, monkeypatch):
+        captured: dict = {}
+        self._expect_exit_with_actions_captures(monkeypatch, captured)
+        ctx, context_path = self._make_ctx(
+            tmp_path, {"after-implement-impl_done": {"notify": "Post a status update"}},
+        )
+
+        step = _StubStep([], "impl_done")  # inline: the main action's data is already present
+        step.EVENT_NAME = "implement"
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        with pytest.raises(SystemExit):
+            pipeline._do_get_actions_and_exit(step)
+
+        assert captured["descriptors"] == [{
+            "action": "hooks",
+            "message": "Running after-implement instructions.",
+            "instructions": {"notify": "Post a status update"},
+            "context_file": str(context_path),
+        }]
+        assert ctx.hook_phase == "after"
+        assert ctx.pending_trigger == "impl_done"
+        assert step.called
+
+    def test_resuming_after_after_hook_returns_trigger(self, tmp_path):
+        ctx, context_path = self._make_ctx(
+            tmp_path, {"after-implement-impl_done": {"notify": "Post a status update"}},
+        )
+        ctx.hook_phase = "after"
+        ctx.pending_trigger = "impl_done"
+
+        step = _StubStep([], "impl_done")
+        step.EVENT_NAME = "implement"
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        trigger = pipeline._do_get_actions_and_exit(step)
+
+        assert trigger == "impl_done"
+        assert ctx.hook_phase == ""
+        assert ctx.pending_trigger == ""
+        assert not step.called  # handle_results() was not called again to get here
+
+    def test_get_actions_not_called_again_once_pending_trigger_is_set(self, tmp_path, monkeypatch):
+        """Regression: a step like ValidateStep clears its own "is my data here yet" signal
+        (e.g. ctx.validate_result) inside handle_results(). If get_actions() were called again
+        on the after-hook resumption pass, it would misread that now-empty signal as "no result
+        yet" and re-dispatch the main action a second time instead of returning the trigger."""
+        captured: dict = {}
+        self._expect_exit_with_actions_captures(monkeypatch, captured)
+        ctx, context_path = self._make_ctx(
+            tmp_path, {"after-implement-impl_done": {"notify": "Post a status update"}},
+        )
+        ctx.hook_phase = "after"
+        ctx.pending_trigger = "impl_done"
+
+        get_actions_call_count = {"n": 0}
+
+        class _ReDispatchingStep:
+            EVENT_NAME = "implement"
+
+            def get_actions(self):
+                get_actions_call_count["n"] += 1
+                return [{"action": "spawn_agent", "skill": "implement-task"}]
+
+            def handle_results(self):
+                raise AssertionError("handle_results() should not be called again")
+
+        step = _ReDispatchingStep()
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        trigger = pipeline._do_get_actions_and_exit(step)
+
+        assert trigger == "impl_done"
+        assert get_actions_call_count["n"] == 0
+
+    def test_handle_results_called_exactly_once_across_a_pending_after_hook(self, tmp_path, monkeypatch):
+        captured: dict = {}
+        self._expect_exit_with_actions_captures(monkeypatch, captured)
+        ctx, context_path = self._make_ctx(
+            tmp_path, {"after-implement-impl_done": {"notify": "Post a status update"}},
+        )
+
+        call_count = {"n": 0}
+        step = _StubStep([], "impl_done")
+        step.EVENT_NAME = "implement"
+        real_handle_results = step.handle_results
+
+        def counting_handle_results():
+            call_count["n"] += 1
+            return real_handle_results()
+
+        step.handle_results = counting_handle_results
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        with pytest.raises(SystemExit):
+            pipeline._do_get_actions_and_exit(step)  # dispatches the after-hook
+        trigger = pipeline._do_get_actions_and_exit(step)  # resumes, returns the trigger
+
+        assert trigger == "impl_done"
+        assert call_count["n"] == 1
+
+    def test_after_hook_merges_trigger_specific_before_unconditional(self, tmp_path, monkeypatch):
+        captured: dict = {}
+        self._expect_exit_with_actions_captures(monkeypatch, captured)
+        ctx, context_path = self._make_ctx(tmp_path, {
+            "after-implement-impl_done": {"notify": "Post a status update"},
+            "after-implement": {"log": "Log the outcome"},
+        })
+
+        step = _StubStep([], "impl_done")
+        step.EVENT_NAME = "implement"
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        with pytest.raises(SystemExit):
+            pipeline._do_get_actions_and_exit(step)
+
+        assert list(captured["descriptors"][0]["instructions"].keys()) == ["notify", "log"]
+
+    def test_disabled_entry_is_filtered_out(self, tmp_path, monkeypatch):
+        captured: dict = {}
+        self._expect_exit_with_actions_captures(monkeypatch, captured)
+        ctx, context_path = self._make_ctx(tmp_path, {
+            "before-implement": {"self-assign": "", "push": "Push git changes to remote"},
+        })
+
+        action = {"action": "spawn_agent", "skill": "implement-task"}
+        step = _StubStep([action], "impl_done")
+        step.EVENT_NAME = "implement"
+        pipeline = self._make_pipeline(ctx, context_path, step)
+
+        with pytest.raises(SystemExit):
+            pipeline._do_get_actions_and_exit(step)
+
+        assert captured["descriptors"][0]["instructions"] == {"push": "Push git changes to remote"}
+
+    def test_inline_step_with_no_actions_and_no_hooks_returns_trigger_directly(self, tmp_path):
+        ctx, context_path = self._make_ctx(tmp_path)
         step = _StubStep([], "done_ok")
         step.EVENT_NAME = "implement"
         pipeline = self._make_pipeline(ctx, context_path, step)
@@ -1542,8 +1695,10 @@ class TestWorkflowAssetSignoffRouting:
     workflow assets let `reviewing --> handoff : approved` bypass `signoff` entirely on a
     clean first-pass review, so a task that never needed a `fixing_pr` cycle skipped the
     signoff parallel checks (and, before this fix, the hand-off hooks tied to them) outright.
-    `reviewing`'s only `approved` exit must be `signoff` — `signoff` is what may reach
-    `handoff`, never `reviewing` directly."""
+    `reviewing`'s only `approved` exit must be `signoff` — `signoff` is what may reach `done`,
+    never `reviewing` directly. `handoff` no longer exists as its own state (the `signoff`
+    pipeline event now hangs directly off `SignoffStep`'s own resolution), so the invariant is
+    now "only `signoff` reaches `done`" rather than "only `signoff` reaches `handoff`"."""
 
     ASSETS_DIR = SCRIPTS_DIR.parent / "assets"
 
@@ -1551,7 +1706,7 @@ class TestWorkflowAssetSignoffRouting:
         "implement-task-plan.md",
         "fix-issue-plan.md",
     ])
-    def test_reviewing_approved_routes_to_signoff_not_handoff(self, asset_name):
+    def test_reviewing_approved_routes_to_signoff_not_done(self, asset_name):
         from dev_team import parse_workflow
         workflow = parse_workflow(self.ASSETS_DIR / asset_name)
         assert workflow.transitions["reviewing"]["approved"] == "signoff"
@@ -1560,11 +1715,11 @@ class TestWorkflowAssetSignoffRouting:
         "implement-task-plan.md",
         "fix-issue-plan.md",
     ])
-    def test_only_signoff_reaches_handoff(self, asset_name):
+    def test_only_signoff_reaches_done(self, asset_name):
         from dev_team import parse_workflow
         workflow = parse_workflow(self.ASSETS_DIR / asset_name)
-        sources_reaching_handoff = [
+        sources_reaching_done = [
             src for src, triggers in workflow.transitions.items()
-            if "handoff" in triggers.values()
+            if "done" in triggers.values()
         ]
-        assert sources_reaching_handoff == ["signoff"]
+        assert sources_reaching_done == ["signoff"]

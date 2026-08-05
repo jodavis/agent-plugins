@@ -31,6 +31,8 @@ class PipelineContext:
     review_cycle_count: int = field(default=0, metadata=FRONTMATTER_FIELD)
     troubleshooter_input: str = field(default="", metadata=FRONTMATTER_FIELD)
     pending_agent: str = field(default="", metadata=FRONTMATTER_FIELD)
+    hook_phase: str = field(default="", metadata=FRONTMATTER_FIELD)
+    pending_trigger: str = field(default="", metadata=FRONTMATTER_FIELD)
     project_configuration: str = ""
     started: datetime.datetime = field(default_factory=datetime.datetime.now, metadata=FRONTMATTER_FIELD)
     last_updated: datetime.datetime = field(default_factory=datetime.datetime.now, metadata=FRONTMATTER_FIELD)
@@ -45,7 +47,6 @@ class PipelineContext:
     signoff_research: str = ""
     signoff_build_result: str = ""
     validate_result: str = ""
-    handoff_result: str = ""
 
     def save(self, path):
         self.last_updated = datetime.datetime.now()
@@ -65,6 +66,8 @@ class PipelineContext:
             f"review_cycle_count: {self.review_cycle_count}",
             f"troubleshooter_input: {self.troubleshooter_input}",
             f"pending_agent: {self.pending_agent}",
+            f"hook_phase: {self.hook_phase}",
+            f"pending_trigger: {self.pending_trigger}",
             f"started: {self.started.isoformat()}",
             f"last_updated: {self.last_updated.isoformat()}",
         ]
@@ -116,9 +119,6 @@ class PipelineContext:
 
         if self.validate_result:
             lines += ["<!-- section:Validate Result -->", "", self.validate_result.strip(), ""]
-
-        if self.handoff_result:
-            lines += ["<!-- section:Handoff Result -->", "", self.handoff_result.strip(), ""]
 
         log_links = []
         if self.build_log:
@@ -182,6 +182,8 @@ class PipelineContext:
             review_cycle_count=int(meta.get("review_cycle_count", 0)),
             troubleshooter_input=meta.get("troubleshooter_input", ""),
             pending_agent=meta.get("pending_agent", ""),
+            hook_phase=meta.get("hook_phase", ""),
+            pending_trigger=meta.get("pending_trigger", ""),
         )
 
         try:
@@ -203,7 +205,6 @@ class PipelineContext:
         ctx.signoff_research = sections.get("Signoff Research", "")
         ctx.signoff_build_result = sections.get("Signoff Build Result", "")
         ctx.validate_result = sections.get("Validate Result", "")
-        ctx.handoff_result = sections.get("Handoff Result", "")
         if "Implementation Summary" in sections:
             ctx.work_summaries = [sections["Implementation Summary"]]
             i = 1

@@ -268,7 +268,9 @@ def _load_project_config(repo_root: Path) -> dict:
 
 def _project_configuration(ctx: "PipelineContext") -> dict:
     """Return the project configuration cached on `ctx.project_configuration` at
-    context-file creation time."""
+    context-file creation time, or {} if it was never populated."""
+    if not ctx.project_configuration:
+        return {}
     return json.loads(ctx.project_configuration)
 
 
@@ -286,6 +288,18 @@ def _resolve_validation_script(config: dict, repo_root: Path) -> str | None:
         return None
     run_validation_script = Path(__file__).parent / "run_validation.py"
     return f'{sys.executable} "{run_validation_script}" --repo-root "{repo_root}"'
+
+
+def _resolve_hook_map(config: dict, key: str) -> dict:
+    """Return the ordered label:instruction map configured under one `instructions:` key.
+
+    Filters out any entry disabled via a null/"" value (the existing per-label disable
+    convention — a more specific config tier can silence one inherited label without
+    touching its siblings). An absent or entirely null/empty key resolves to {}.
+    """
+    instructions = config.get("instructions") or {}
+    entries = instructions.get(key) or {}
+    return {label: instruction for label, instruction in entries.items() if instruction}
 
 
 def parse_json_output(text: str) -> dict:
@@ -381,10 +395,11 @@ class Step(ABC):
 
     handles: str
 
-    # Stable event name used by run-event-hooks to resolve before-<event>/after-<event>
-    # instructions. None means this Step has no single wrappable agent/script session
-    # (e.g. an inline step, or a ParallelSteps composite with no single action of its own)
-    # and no "event" key should be added to its emitted descriptors.
+    # Stable event name _do_get_actions_and_exit() uses to resolve before-<event>/
+    # after-<event>-<trigger> instructions from the project's `instructions:` config and
+    # dispatch them as their own "hooks" pipeline steps. None means this Step has no single
+    # wrappable agent/script session (e.g. an inline step, or a ParallelSteps composite with
+    # no single action of its own) and no hooks apply to it.
     EVENT_NAME: str | None = None
 
     @abstractmethod
@@ -847,7 +862,14 @@ class BuildValidationStep(Step):
 
 
 class SignoffStep(ParallelSteps):
+    """Runs the three signoff checks in parallel, then resolves to `"approved"` or
+    `"changes_requested"`. Carries `EVENT_NAME = "signoff"` directly (rather than a
+    downstream near-no-op hand-off step) — `dev_team.py` already knows exactly when this
+    resolves, so a project's `before-signoff`/`after-signoff-approved` instructions (e.g.
+    promoting the PR, requesting review) hang directly off this step's own trigger."""
+
     handles = "signoff"
+    EVENT_NAME = "signoff"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path, log_dir: Path) -> None:
         self._ctx = ctx
@@ -1030,53 +1052,6 @@ class FixPrStep(Step):
         return "fix_done"
 
 
-class HandoffStep(Step):
-    """Runs only once `signoff` has approved — `reviewing`'s own `approved` trigger routes
-    to `signoff`, never here directly, so every hand-off is preceded by a full signoff pass.
-
-    Its event is named `signoff` (not `handoff`) because the pipeline event a project's
-    `instructions:` config customizes around this step is `before-signoff`/
-    `after-signoff-success`/`after-signoff-failure` — the hand-off work (promote PR, request
-    review, assign the work item) is configured as `after-signoff-success` instructions, run
-    generically by `run-event-hooks` around this near-no-op dispatch.
-    """
-
-    handles = "handoff"
-    EVENT_NAME = "signoff"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.handoff_result:
-            return []
-        return [{
-            "action": "spawn_agent",
-            "message": "Signoff approved. Developer is handing off to a human reviewer.",
-            "agent": "dev-team:developer",
-            "skill": "final-sign-off",
-            "args": f"{ctx.pr_url} {ctx.work_item_id}",
-            "context_file": str(self._context_path),
-            "read_sections": [],
-            "write_section": "Handoff Result",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.handoff_result:
-            _handle_agent_success(ctx)
-            return "handoff_done"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "handoff_done"
-
-
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
@@ -1108,7 +1083,6 @@ class DevTeamPipeline:
             "reviewing": ReviewStep(ctx, context_path),
             "signoff": SignoffStep(ctx, context_path, log_dir),
             "fixing_pr": FixPrStep(ctx, context_path),
-            "handoff": HandoffStep(ctx, context_path),
         }
 
     def _dispatch_step(self, step: Step) -> str:
@@ -1116,18 +1090,81 @@ class DevTeamPipeline:
         return self._do_get_actions_and_exit(step)
 
     def _do_get_actions_and_exit(self, step: Step) -> str:
-        """Call get_actions(); exit if non-empty; otherwise call handle_results()."""
-        actions = step.get_actions()
-        if actions:
-            event_name = getattr(step, "EVENT_NAME", None)
-            if event_name:
-                for action in actions:
-                    action["event"] = event_name
-            self.ctx.pending_agent = _step_pending_key(step)
-            self.ctx.save(self.context_path)
-            exit_with_actions(actions)
-        # Inline step
-        return step.handle_results()
+        """Gate a step's dispatch through before-hook / main action / after-hook phases.
+
+        For a step with no EVENT_NAME, this is exactly get_actions()-then-handle_results(),
+        unchanged. For a step with EVENT_NAME set, before returning a trigger to run() it also
+        resolves and dispatches this project's configured before-<event>/after-<event>-<trigger>
+        instructions (if any) as their own "hooks" action — a step this function may be
+        re-entered for multiple times, tracked via ctx.hook_phase, before the real trigger is
+        ever returned. The orchestration loop is synchronous (dispatch an action, await its
+        result, re-invoke this script), so by the time this function sees hook_phase == "before"
+        or "after" again, that hook dispatch has already finished — nothing about its outcome is
+        inspected here; a failed hook surfaces through the orchestrator's own per-item result
+        logging, the same as any other failed dispatch item.
+        """
+        ctx = self.ctx
+        event_name = getattr(step, "EVENT_NAME", None)
+        config = _project_configuration(ctx) if event_name else None
+
+        if event_name:
+            if ctx.hook_phase == "":
+                before = _resolve_hook_map(config, f"before-{event_name}")
+                if before:
+                    ctx.hook_phase = "before"
+                    ctx.save(self.context_path)
+                    exit_with_actions([{
+                        "action": "hooks",
+                        "message": f"Running before-{event_name} instructions.",
+                        "instructions": before,
+                        "context_file": str(self.context_path),
+                    }])
+            elif ctx.hook_phase == "before":
+                ctx.hook_phase = ""
+                ctx.save(self.context_path)
+
+        if not ctx.pending_trigger:
+            # Only call get_actions() while the trigger hasn't been computed yet. Once
+            # pending_trigger is set, handle_results() already consumed the step's own
+            # "is my data here yet" signal (e.g. ctx.validate_result) — calling get_actions()
+            # again during an after-hook resumption would misread that consumed signal as
+            # "no result yet" and re-dispatch the main action a second time.
+            actions = step.get_actions()
+            if actions:
+                self.ctx.pending_agent = _step_pending_key(step)
+                self.ctx.save(self.context_path)
+                exit_with_actions(actions)
+
+        if not event_name:
+            # Inline step, no hooks apply.
+            return step.handle_results()
+
+        if ctx.pending_trigger:
+            trigger = ctx.pending_trigger
+        else:
+            trigger = step.handle_results()
+            ctx.pending_trigger = trigger
+            ctx.save(self.context_path)
+
+        if ctx.hook_phase == "":
+            after = _resolve_hook_map(config, f"after-{event_name}-{trigger}")
+            after_unconditional = _resolve_hook_map(config, f"after-{event_name}")
+            merged = {**after, **after_unconditional}
+            if merged:
+                ctx.hook_phase = "after"
+                ctx.save(self.context_path)
+                exit_with_actions([{
+                    "action": "hooks",
+                    "message": f"Running after-{event_name} instructions.",
+                    "instructions": merged,
+                    "context_file": str(self.context_path),
+                }])
+        elif ctx.hook_phase == "after":
+            ctx.hook_phase = ""
+            ctx.save(self.context_path)
+
+        ctx.pending_trigger = ""
+        return trigger
 
     def run(self) -> None:
         if self.machine.state == self.workflow.initial_state:

@@ -182,14 +182,31 @@ Ask/confirm:
 ### instructions
 
 Detect a hint first: run `merge_config.py` (already loaded in Step 2, or re-run here) and read the
-merged `instructions` map. Each key (`before-<event>` / `after-<event>` / `after-<event>-success` /
-`after-<event>-failure`) holds an ordered `label: instruction` map — see `run-event-hooks` for the
-full label/ordering/dispatch semantics; this subsection doesn't repeat those mechanics.
+merged `instructions` map. Each key is either `before-<event>` (runs before the step's real
+dispatch, unconditionally), `after-<event>` (runs after, regardless of outcome), or
+`after-<event>-<trigger>` (runs after, only when the step's own trigger matches `<trigger>`
+exactly — e.g. `after-validate-clean` vs. `after-validate-build_failed`, `after-signoff-approved`
+vs. `after-signoff-changes_requested`). Each key holds an ordered `label: instruction` map.
+`dev_team.py` owns resolving which keys apply and in what order (trigger-specific entries before
+the unconditional `after-<event>` entries); `run-hook-instructions` owns dispatching an
+already-resolved map to the real tool call each instruction describes — this subsection doesn't
+repeat either's mechanics.
+
+Available `<trigger>` values per event (a step whose trigger isn't listed here — `research`,
+`create-pr`, `plan`, `fix` — only ever has one outcome shape, so only the unconditional
+`after-<event>` key applies to it):
+
+| Event | Triggers |
+|---|---|
+| `debug` | `debug_done`, `reproduction_failed` |
+| `implement` | `impl_done` |
+| `validate` | `clean`, `build_failed` |
+| `review` | `approved`, `changes_requested` |
+| `signoff` | `approved`, `changes_requested` |
 
 Present the current merged instructions, leading with the events that ship non-empty defaults
-(`before-implement`, `after-validate-success`, `before-create-pr`, `after-create-pr`,
-`after-signoff-success`) and offering the remaining events on request rather than listing all of
-them unconditionally.
+(`after-validate-clean`, `before-create-pr`) and offering the remaining events on request rather
+than listing all of them unconditionally.
 
 For each event the user wants to change, ask which action applies:
 - **Add** a new labeled entry — ask for a label (an opaque key, only used to override this one
@@ -203,14 +220,13 @@ For each event the user wants to change, ask which action applies:
   repo), disable the relevant labeled entries this way — there is no block-level `enabled: false`
   under `instructions:`.
 
-Then ask specifically who should be assigned as PR/work-item reviewer once the hand-off/sign-off
-pipeline step approves the work: write the answer into `after-signoff-success`'s `request-review`
-label (a GitHub username, for requesting review on the PR) and `assign-work-item` label (an email
-or account identifier, for assigning the tracked work item) — ask for both forms if the user's
-single answer doesn't unambiguously give both. (`after-signoff-success` is this config schema's
-actual key for the pipeline's hand-off/sign-off step — its `EVENT_NAME` is `signoff` — even though
-some spec prose elsewhere still calls this step "hand-off".) This repo's own
-`.dev-team/config.yaml` has a worked example under `instructions.after-signoff-success`.
+Then ask specifically who should be assigned as PR/work-item reviewer once signoff approves the
+work: write the answer into `after-signoff-approved`'s `request-review` label (a GitHub username,
+for requesting review on the PR) and `assign-work-item` label (an email or account identifier, for
+assigning the tracked work item) — ask for both forms if the user's single answer doesn't
+unambiguously give both. (`after-signoff-approved` is this config schema's key for the pipeline's
+sign-off step — `SignoffStep`'s own `EVENT_NAME` is `signoff`, and its `"approved"` trigger is
+what a clean sign-off actually returns.)
 
 ### attribution
 

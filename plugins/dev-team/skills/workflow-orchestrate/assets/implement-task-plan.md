@@ -11,12 +11,11 @@ stateDiagram-v2
     reviewing --> signoff : approved
     reviewing --> fixing_pr : changes_requested
     fixing_pr --> signoff : fix_done
-    signoff --> handoff : approved
+    signoff --> done : approved
     signoff --> fixing_pr : changes_requested
     fixing --> validating : fix_done
     fixing --> failed : max_retries
     fixing_pr --> failed : max_retries
-    handoff --> done : handoff_done
     done --> [*]
     failed --> [*]
 ```
@@ -33,13 +32,12 @@ The `signoff` state runs three tasks in parallel before making its decision:
 All three must pass for `signoff` to emit `approved`. Any failure from any task emits
 `changes_requested` and routes back to `fixing_pr`, with accumulated failure details.
 
-`reviewing`'s own `approved` trigger routes to `signoff`, never directly to `handoff` — every
+`reviewing`'s own `approved` trigger routes to `signoff`, never directly to `done` — every
 approval, including a clean first pass with no `fixing_pr` cycle, runs the full signoff checks
-before any hand-off work happens.
+before the pipeline finishes.
 
-The `handoff` state is reached only out of `signoff`'s own `approved` trigger. It runs
-`final-sign-off`, a near-no-op agent turn whose only job is to report that the hand-off point
-was reached — it does not itself convert the PR to ready, assign the Jira issue, or request a
-review. That work is performed by this pipeline event's `after-signoff-success` instructions
-(run generically by `run-event-hooks`, wrapped around this dispatch by `workflow-worker`), so a
-project can configure or disable each piece independently.
+`signoff` carries the `signoff` pipeline event directly — `dev_team.py` resolves this project's
+`before-signoff`/`after-signoff-approved` instructions (converting the PR to ready, assigning the
+work item, requesting a review, etc.) around `SignoffStep`'s own resolution and dispatches them as
+their own pipeline steps, so a project can configure or disable each piece independently without
+needing a separate hand-off state or agent turn.

@@ -97,7 +97,7 @@ Let `descriptors` be the parsed JSON array. The array always has at least one it
 
 Run the troubleshooter agent (see below) with `problem: <descriptors[0].trigger`.
 
-**All other lists (multiple items, a single `spawn_agent` item, or a single `run_script` item):**
+**All other lists (multiple items, a single `spawn_agent`/`run_script`/`hooks` item):**
 
 Dispatch all items in parallel:
 
@@ -109,8 +109,7 @@ results = await [
 --context-file <context_file>
 --write-section <item.write_section>
 --skill <item.skill>
---skill-args <item.args>
---event <item.event>"
+--skill-args <item.args>"
   )  if item.action == "spawn_agent"  else
 
   Agent(
@@ -119,9 +118,15 @@ results = await [
 --context-file <context_file>
 --write-section <item.write_section>
 --command <item.command>
---log-file <item.log_file>
---event <item.event>"
-  )  if item.action == "run_script"
+--log-file <item.log_file>"
+  )  if item.action == "run_script"  else
+
+  Agent(
+    subagent_type="dev-team:hook-runner",
+    prompt="Invoke the `run-hook-instructions` skill with arguments:
+--instructions <item.instructions as JSON>
+--context-file <context_file>"
+  )  if item.action == "hooks"
 
   for item in descriptors
 ]
@@ -129,11 +134,13 @@ results = await [
 
 Omit `--skill-args` for `spawn_agent` items where `item.args` is empty.
 Omit `--command` arguments that are empty.
-Omit `--event` entirely for either item type when `item.event` is absent.
+A `hooks` item carries no `agent`/`skill`/`write_section` fields — it always dispatches to
+`dev-team:hook-runner` running `run-hook-instructions`, and (per the confirmed "no write-back"
+design) its result is only logged and checked below, never written to the context file.
 
 Log each result:
 ```
-[<work-item-id>] <item.skill or item.command>: <result>
+[<work-item-id>] <item.skill or item.command or "hooks">: <result>
 ```
 
 If any result is anything other than `successful` (case-insensitive), run the troubleshooter agent (see below).
