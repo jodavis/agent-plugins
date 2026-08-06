@@ -93,6 +93,30 @@ def parse_task_dependencies(spec_text: str) -> dict[str, list[str]]:
     return graph
 
 
+def validate_stack_order(spec_text: str) -> list[str]:
+    """Extend parse_task_dependencies with a stack-order check.
+
+    Confirms that every task's `Depends on:` entries appear earlier in the spec's document
+    order than the task itself, then returns the task keys in that same document order.
+
+    Raises TaskDependencyError for the same dangling-reference/cycle cases as
+    parse_task_dependencies, plus when a task is listed before one of its own dependencies.
+    """
+    graph = parse_task_dependencies(spec_text)
+    order = list(graph.keys())
+    position = {task_key: index for index, task_key in enumerate(order)}
+
+    for task_key, dependencies in graph.items():
+        for dependency_key in dependencies:
+            if position[dependency_key] > position[task_key]:
+                raise TaskDependencyError(
+                    f"Task {task_key} is listed before its dependency {dependency_key}; "
+                    f"tasks must appear after every task they depend on."
+                )
+
+    return order
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         print(f"Usage: {Path(sys.argv[0]).name} <path to spec file>", file=sys.stderr)
