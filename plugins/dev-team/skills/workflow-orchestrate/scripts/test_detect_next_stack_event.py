@@ -337,6 +337,123 @@ class TestDetectNextStackEventStackPositionPrecedence:
 
 
 # ---------------------------------------------------------------------------
+# detect_next_stack_event — gh_stack.view() itself fails: the scan returns
+# None immediately, without walking any branches or making any other calls
+# ---------------------------------------------------------------------------
+
+class TestDetectNextStackEventViewFails:
+    def test_detect_next_stack_event_view_error_returns_none_without_further_calls(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        import detect_next_stack_event
+
+        monkeypatch.setattr(
+            detect_next_stack_event.gh_stack,
+            "view",
+            MagicMock(return_value=("error", "not a stack")),
+        )
+
+        mock_run = MagicMock()
+
+        # Act
+        with patch("subprocess.run", mock_run):
+            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+
+        # Assert
+        assert result is None
+        mock_run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# detect_next_stack_event — a branch entry with no usable name (e.g. an empty
+# string) yields no task id to look up, so it's skipped without error
+# ---------------------------------------------------------------------------
+
+class TestDetectNextStackEventBranchWithNoUsableName:
+    def test_detect_next_stack_event_branch_with_empty_name_is_skipped(self, tmp_path, monkeypatch):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        import detect_next_stack_event
+
+        monkeypatch.setattr(
+            detect_next_stack_event.gh_stack,
+            "view",
+            MagicMock(return_value=("ok", {"branches": [{"name": "", "isMerged": False}]})),
+        )
+
+        mock_run = MagicMock()
+
+        # Act
+        with patch("subprocess.run", mock_run):
+            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+
+        # Assert
+        assert result is None
+        mock_run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# detect_next_stack_event — a branch whose task has no context file yet (e.g.
+# a backfilled placeholder branch never spawned as a real task) is skipped
+# without error, and the scan continues to the next branch
+# ---------------------------------------------------------------------------
+
+class TestDetectNextStackEventNoContextFile:
+    def test_detect_next_stack_event_branch_without_context_file_is_skipped(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        import detect_next_stack_event
+
+        # ADR-68 has no context file at all; ADR-69 does, and fires cleanly.
+        PipelineContext(
+            work_item_id="ADR-69",
+            pr_url="https://github.com/acme/widget/pull/79",
+        ).save(compute_context_path("ADR-69", get_repo_slug()))
+
+        monkeypatch.setattr(
+            detect_next_stack_event.gh_stack,
+            "view",
+            MagicMock(
+                return_value=(
+                    "ok",
+                    {
+                        "branches": [
+                            {"name": "dev/claude/ADR-68", "isMerged": False},
+                            {"name": "dev/claude/ADR-69", "isMerged": False},
+                        ]
+                    },
+                )
+            ),
+        )
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:2] == ["gh", "api"]:
+                return MagicMock(returncode=0, stdout=json.dumps([{"id": 902}]), stderr="")
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:2] == ["git", "checkout"]:
+                return MagicMock(returncode=0, stdout="", stderr="")
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        # Act
+        with patch("subprocess.run", side_effect=fake_run):
+            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+
+        # Assert
+        assert result == {"type": "review_comment", "task_work_item_id": "ADR-69"}
+
+
+# ---------------------------------------------------------------------------
 # detect_next_stack_event — a branch already reported as merged in a prior
 # call never re-fires task_merged; the scan moves on to the next branch
 # ---------------------------------------------------------------------------
