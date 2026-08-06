@@ -32,7 +32,38 @@ If `pr_url` is already set in the context file, the PR has already been created.
 
 ### 4 — Create the PR
 
-Use the `create-pr` skill, providing the `work-item-id`, working branch, base branch, and task brief content.
+Check the context file's `added_to_stack` frontmatter field (already available from step 2's
+full context-file read):
+
+**If `added_to_stack` is `true`** — this task's branch is registered in a `gh stack`. Submit the
+whole stack rather than constructing or passing any explicit `base`; `gh stack` already knows
+this task's base from the `add` call `ensure-working-branch` made at registration time, and that
+is the single source of truth — never a separately-read `base_branch` value. This is what closes
+Issue-129 (PRs opening against the wrong base): there is no code path left where a stale/wrong
+`base_branch` could produce a PR against `main`.
+
+1. Run the `work-with-stacked-prs` skill's Preflight check, if it has not already been run this
+   session.
+2. Run the `work-with-stacked-prs` skill's `submit` operation — `gh_stack.py`'s
+   `submit(auto=True, open_prs=False)` (or the CLI form `gh stack submit --auto`), matching
+   `create-pr`'s existing `draft: true` convention. `submit` is always scoped to the entire
+   stack — there is no per-branch flag — but this is safe to call unconditionally here: every
+   entry below this task's newly-added one already has a real, open PR (guaranteed by
+   `ensure-working-branch`'s lazy/recursive registration having pushed each ancestor branch
+   already), so `submit` only *creates* a PR for the one entry that doesn't have one yet and is a
+   no-op (idempotent) for the rest.
+3. On failure, report the failure in detail — `submit()` failures are already typed
+   `("error", detail)` per `gh_stack.py`'s docstring.
+4. On success, resolve *this task's own* PR URL with a direct lookup (its schema is already
+   well-known, unlike the stack `view` operation's per-branch `pr` object):
+   ```bash
+   gh pr list --head <working-branch> --json url --jq '.[0].url'
+   ```
+
+**Otherwise** (falsy/absent `added_to_stack`) — unchanged: use the `create-pr` skill, providing
+the `work-item-id`, working branch, `base_branch` (from the context file), and task brief
+content. This is the fallback path for the one PR that's never part of a stack (the epic's own
+spec PR), and for any task whose `ensure-working-branch` run fell through to the non-stack path.
 
 ### 5 — Update the context file
 
