@@ -38,6 +38,13 @@ SCRIPTS_DIR = Path(__file__).parent
 
 _DEFAULT_EPIC_ID = "ADR-369"
 
+# Captured at module-import time, before the autouse `_env` fixture below monkeypatches
+# `concurrent_schedule._feature_branch_exists` for every test — so `TestFeatureBranchExists`
+# can exercise the real implementation directly instead of picking up its own stub.
+import concurrent_schedule as _concurrent_schedule_module
+
+_real_feature_branch_exists = _concurrent_schedule_module._feature_branch_exists
+
 
 def _write_spec(tmp_path: Path, edges: dict[str, list[str]], epic_id: str = _DEFAULT_EPIC_ID) -> Path:
     """Write a fake `_spec_Test.md` file into `tmp_path`: a `> **Epic:** [<key>](url)` header
@@ -591,6 +598,52 @@ class TestBootstrapNeeded:
         # Assert
         assert result["status"] == "waiting"
         assert result["spawn"] == [{"task_id": "ADR-1"}]
+
+
+# ---------------------------------------------------------------------------
+# _feature_branch_exists — live `git branch -r` check
+# ---------------------------------------------------------------------------
+
+class TestFeatureBranchExists:
+    def test_feature_branch_exists_exact_match_returns_true(self, tmp_path):
+        # Arrange
+        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-369")
+
+        # Act & Assert
+        assert _real_feature_branch_exists("ADR-369", tmp_path) is True
+
+    def test_feature_branch_exists_suffixed_match_returns_true(self, tmp_path):
+        # Arrange — a branch like `feature/ADR-369-stack` must still match: the anchoring only
+        # needs to rule out a *different*, longer epic id sharing this prefix, not a
+        # hyphen-suffixed variant of this same epic id.
+        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-369-stack")
+
+        # Act & Assert
+        assert _real_feature_branch_exists("ADR-369", tmp_path) is True
+
+    def test_feature_branch_exists_prefix_of_a_different_epic_id_returns_false(self, tmp_path):
+        # Arrange — regression test for the unanchored substring bug: `feature/ADR-3690` (a
+        # different epic's branch) must not be mistaken for `feature/ADR-369`'s own branch.
+        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-3690")
+
+        # Act & Assert
+        assert _real_feature_branch_exists("ADR-369", tmp_path) is False
+
+    def test_feature_branch_exists_no_matching_branch_returns_false(self, tmp_path):
+        # Arrange
+        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-999")
+
+        # Act & Assert
+        assert _real_feature_branch_exists("ADR-369", tmp_path) is False
+
+    def test_feature_branch_exists_git_command_failure_raises_runtime_error(self, tmp_path):
+        # Arrange — `tmp_path` is not a git repository at all, so `git branch -r` fails
+        # (returncode 128, "fatal: not a git repository" on stderr) rather than returning empty
+        # output for "no such branch"; that failure must surface, not be swallowed as False.
+
+        # Act & Assert
+        with pytest.raises(RuntimeError, match="git branch -r"):
+            _real_feature_branch_exists("ADR-369", tmp_path)
 
 
 # ---------------------------------------------------------------------------

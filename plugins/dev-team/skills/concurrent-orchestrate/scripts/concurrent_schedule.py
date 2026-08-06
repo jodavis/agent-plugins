@@ -138,7 +138,9 @@ def _feature_branch_exists(epic_id: str, repo_root: Path) -> bool:
     result = subprocess.run(
         ["git", "branch", "-r"], cwd=repo_root, capture_output=True, text=True, timeout=30,
     )
-    return f"feature/{epic_id}" in result.stdout
+    if result.returncode != 0:
+        raise RuntimeError(f"'git branch -r' failed: {result.stderr.strip()}")
+    return bool(re.search(rf"feature/{re.escape(epic_id)}(-|$)", result.stdout, re.MULTILINE))
 
 
 def _validate_explicit_list(tasks: list[str], graph: dict[str, list[str]]) -> None:
