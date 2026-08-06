@@ -132,6 +132,15 @@ Once `<feature-branch>` is known, write it to the context file's `base_branch` f
 
 Skip this sub-step if 4d fell through to 4f (no epic known) — there is no stack to register into.
 
+Also skip this sub-step if `spec_path` is not known at this point (4a found no local spec file,
+and the parent feature-work-item ID was discovered only via 4c's Jira fallback). Without a spec
+document there is no validated stack order to register into — mirror the old step 4b's guard,
+which fell through unchanged rather than guessing at an order. In this case, treat
+`<feature-branch>` itself as this task's base: write it to the context file's `base_branch` field
+via `use-context-file` (it may already be set from 4d) and continue directly to step 5, which
+creates `<working-branch>` straight off `<base-branch>` — no `add` call is made here and
+`added_to_stack` is left unset.
+
 Run `work-with-stacked-prs`'s Preflight check if it hasn't already run earlier this session —
 every sub-step below uses its `add` operation.
 
@@ -203,8 +212,9 @@ git checkout <working-branch>
 git pull origin <working-branch>
 ```
 
-If step 4 fell through to 4f instead (no epic known) and `<working-branch>` does not yet exist,
-create it directly from `<base-branch>` — the one case that was never part of a stack:
+If step 4 fell through to 4f instead (no epic known), or 4e was skipped because `spec_path` was
+not known, and `<working-branch>` does not yet exist, create it directly from `<base-branch>` —
+the cases that were never part of a stack:
 
 ```bash
 git checkout -b <working-branch> origin/<base-branch>
