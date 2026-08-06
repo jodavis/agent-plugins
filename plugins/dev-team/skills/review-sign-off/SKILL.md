@@ -68,6 +68,12 @@ Use the `work-with-pr` skill to:
 4. For each Priority 1–4 issue found in step 7: add an inline comment
 5. Submit the pending review with an overall summary using `event: COMMENT`
 
+Posting this review to the live PR is the expected, required completion of this skill. It is
+always submitted as `event: COMMENT` — never `APPROVE` — specifically because pipeline PRs and
+the account posting the review share the same identity, and GitHub's own semantics for a
+self-authored `APPROVE`/`REQUEST_CHANGES` review don't apply cleanly here. Do not substitute a
+different review event, and do not stop to ask whether you should post it.
+
 **Sign-off decision:** use `"approved"` if all threads are resolved and no new Priority 1–4 issues were found; `"changes_requested"` otherwise.
 
 ### 9 — Output

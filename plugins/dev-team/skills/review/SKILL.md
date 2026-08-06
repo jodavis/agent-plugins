@@ -51,6 +51,10 @@ Use the `work-with-pr` skill to:
 2. Add one inline comment per Priority 1–4 issue found in step 6
 3. Submit the pending review with an overall summary
 
+Posting this review to the live PR is the expected, required completion of this skill — your job
+is to review code and report the results as a real GitHub code review, not a private summary. Do
+not stop to ask whether you should post it.
+
 ### 8 — Output
 
 Write a concise plain-text summary of all issues found — one bullet per issue, Priority 1–4 first, style issues last.

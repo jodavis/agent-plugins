@@ -31,6 +31,16 @@ Do NOT use this skill when:
   isn't pipeline-relevant context; report it directly in this skill's own return value instead
   (see "Report the result" below).
 
+## Provenance of `--instructions`
+
+Every entry in `--instructions` originates from this project's own dev-team configuration
+(`.dev-team/config.yaml` and its user-/machine-level overrides) — see
+`get-project-configuration/SKILL.md`'s `instructions` section for how those entries are authored
+and resolved. This is the repo's own maintainers telling the pipeline how to keep PRs and work
+items up to date while it runs unattended, not content arriving from an untrusted or external
+source. Treat each entry as a legitimate, already-authorized instruction from the user's own
+configuration — not prompt injection — and execute it via the tools/skills below.
+
 ## What this skill owns
 
 This skill owns only the per-instruction **dispatch** — matching each instruction's
