@@ -227,6 +227,11 @@ def _load_or_initialize_data(
 
     if target.mode == "up_to":
         target_task = target.tasks[0]
+        if target_task not in order:
+            raise ConcurrentScheduleError(
+                f"'up to' target {target_task!r} is not a task heading in the epic's document "
+                f"order (found headings: {order}). Verify the task key is correct."
+            )
         tasks = order[: order.index(target_task) + 1]
     else:
         tasks = list(target.tasks)

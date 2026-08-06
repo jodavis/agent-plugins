@@ -195,6 +195,31 @@ class TestComputeNextBatchUpToDocumentOrder:
 
 
 # ---------------------------------------------------------------------------
+# compute_next_batch — "up to" target not a valid task heading
+# ---------------------------------------------------------------------------
+
+class TestComputeNextBatchUpToTargetNotInDocumentOrder:
+    def test_compute_next_batch_up_to_target_not_a_task_heading_raises_concurrent_schedule_error(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — "up to ADR-369" resolves to this spec file via find_spec_file's plain
+        # substring search (ADR-369 appears in the Epic header line), but ADR-369 is not itself
+        # a "### [KEY: Title]" task heading, so it never appears in validate_stack_order's
+        # document order. order.index() must not propagate a raw ValueError here — it must
+        # raise a ConcurrentScheduleError, the same clean "Error: ..." family every other bad
+        # "up to"/explicit-list input in this module already raises.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": [], "ADR-2": ["ADR-1"]}, epic_id="ADR-369")
+        from concurrent_schedule import ConcurrentScheduleError, TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-369",))
+
+        # Act & Assert
+        with pytest.raises(ConcurrentScheduleError, match="ADR-369"):
+            compute_next_batch(target)
+
+
+# ---------------------------------------------------------------------------
 # compute_next_batch — explicit list, no expansion
 # ---------------------------------------------------------------------------
 
