@@ -2,11 +2,26 @@
 """Concurrent scheduler.
 
 `compute_next_batch(target)` owns everything `concurrent-orchestrate`'s thin spawn loop needs
-computed for it: the "up to" target's dependency closure (or the explicit list taken as-is,
-with no closure expansion), each target task's cached status (via the Task readiness checker),
-and a repo-wide concurrency cap enforced across every target's own data file — never just this
-one. It never spawns anything itself; that's the `Agent` tool's job, driven by
-`concurrent-orchestrate`'s own prose.
+computed for it: the "up to" target's inclusive document-order task set (or the explicit list
+taken as-is, with no expansion), each target task's cached status (via the Task readiness
+checker), a live check for whether the epic's feature branch is bootstrapped yet, and a
+repo-wide concurrency cap enforced across every target's own data file — never just this one.
+It never spawns anything itself, and never invokes `ensure-feature-branch` itself either
+(no MCP/`gh` credentials available to a bare script); that's `concurrent-orchestrate`'s own
+prose, which holds real credentials.
+
+ADR-374 changes two things from ADR-296's original scheduler: (1) the "up to" target set is now
+every task from the start of the epic's document order (per the Stack order validator) through
+the target inclusive — not just the target's own transitive dependency closure, since one
+linear stack per epic means an earlier, unrelated task still needs implementing regardless of
+whether the target depends on it; (2) `compute_next_batch` first runs a live
+`git branch -r`-based check for whether `<epic-id>`'s feature branch already exists (parsed from
+the spec's own `> **Epic:** [<key>](...)` header line); if not, it returns
+`{"status": "bootstrap_needed", "epic_id": ...}` before doing any batch computation, still
+persisting the target's data file exactly as it always does — the live check is what lets a
+retry (once `concurrent-orchestrate` has invoked `ensure-feature-branch`) or a different target
+against an already-bootstrapped epic proceed straight to normal scheduling instead of looping
+or re-bootstrapping needlessly.
 
 `poll_until_actionable(target)` wraps `compute_next_batch` with the blocking behavior the CLI
 exposes: rather than making the calling agent re-invoke this script itself every 30 seconds
@@ -35,6 +50,7 @@ failure.
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -48,7 +64,7 @@ _WORKFLOW_ORCHESTRATE_SCRIPTS = (
 sys.path.insert(0, str(_WORKFLOW_ORCHESTRATE_SCRIPTS))
 import dev_team  # noqa: E402 — referenced via module attribute so tests can monkeypatch dev_team.REPO_ROOT
 from get_context_path import get_repo_slug  # noqa: E402
-from task_dependencies import TaskDependencyError, parse_task_dependencies  # noqa: E402
+from task_dependencies import TaskDependencyError, parse_task_dependencies, validate_stack_order  # noqa: E402
 from task_readiness import (  # noqa: E402
     dependency_status,
     dependency_status_and_context,
@@ -67,6 +83,10 @@ _TERMINAL_STATUSES = ("done", "failed")
 
 _DEFAULT_POLL_INTERVAL_SECONDS = 30
 _DEFAULT_MAX_POLL_CYCLES = 10
+
+# Matches the spec's own epic header line, e.g.:
+#   > **Epic:** [ADR-369](https://jodasoft.atlassian.net/browse/ADR-369)
+_EPIC_HEADER_RE = re.compile(r"^>\s*\*\*Epic:\*\*\s*\[([A-Z]+-\d+)\]", re.MULTILINE)
 
 
 class ConcurrentScheduleError(ValueError):
@@ -98,18 +118,27 @@ def _data_file_path(repo_slug: str, target: TargetSpec) -> Path:
     return _state_dir(repo_slug) / f"concurrent-{target_slug(target)}.json"
 
 
-def _closure(start: str, graph: dict[str, list[str]]) -> set[str]:
-    """All tasks transitively reachable from `start` via dependency edges, including `start`
-    itself."""
-    seen = {start}
-    stack = [start]
-    while stack:
-        task = stack.pop()
-        for dep in graph.get(task, []):
-            if dep not in seen:
-                seen.add(dep)
-                stack.append(dep)
-    return seen
+def _parse_epic_id(spec_text: str) -> str | None:
+    """Parse `<epic-id>` from the spec's own `> **Epic:** [<key>](...)` header line — the only
+    local, MCP-free source of the epic key available to this bare script (mirroring
+    `ensure-feature-branch`'s own bootstrap steps, which it can't invoke directly). Returns
+    `None` if no such header line is present (a spec authored before this convention, or a
+    malformed one) — callers treat that as "nothing to gate bootstrap on" rather than an
+    error."""
+    match = _EPIC_HEADER_RE.search(spec_text)
+    return match.group(1) if match else None
+
+
+def _feature_branch_exists(epic_id: str, repo_root: Path) -> bool:
+    """Live check — never a data-file check — for whether `<epic-id>`'s feature branch already
+    exists on the remote, mirroring the same `git branch -r` check `ensure-feature-branch`
+    itself runs as its own first step. A live check avoids both looping forever (nothing ever
+    writes a persisted bootstrap signal) and forcing a second, different target landing on an
+    already-bootstrapped epic to needlessly re-invoke `ensure-feature-branch`."""
+    result = subprocess.run(
+        ["git", "branch", "-r"], cwd=repo_root, capture_output=True, text=True, timeout=30,
+    )
+    return f"feature/{epic_id}" in result.stdout
 
 
 def _validate_explicit_list(tasks: list[str], graph: dict[str, list[str]]) -> None:
@@ -184,15 +213,21 @@ def _repo_wide_active_spawn_count(repo_slug: str) -> int:
     return count
 
 
-def _load_or_initialize_data(target: TargetSpec, data_path: Path, graph: dict[str, list[str]]) -> dict:
+def _load_or_initialize_data(
+    target: TargetSpec, data_path: Path, graph: dict[str, list[str]], order: list[str]
+) -> dict:
     """Load this target's persisted data file, or build and persist it on first invocation:
-    the "up to" form's closure (topologically stable via set + sorted order), or the explicit
-    list as-is after upfront validation."""
+    the "up to" form takes every task from the start of `order` (the epic's document order, per
+    the Stack order validator) through the target inclusive — not just its dependency closure
+    (ADR-296's old behavior), since one linear stack per epic means an earlier, unrelated task
+    still needs implementing regardless of whether the target depends on it. The explicit list
+    form is taken as-is after upfront validation, unaffected by this change."""
     if data_path.exists():
         return json.loads(data_path.read_text(encoding="utf-8"))
 
     if target.mode == "up_to":
-        tasks = sorted(_closure(target.tasks[0], graph))
+        target_task = target.tasks[0]
+        tasks = order[: order.index(target_task) + 1]
     else:
         tasks = list(target.tasks)
         _validate_explicit_list(tasks, graph)
@@ -222,16 +257,28 @@ def _running_snapshots(
 def compute_next_batch(target: TargetSpec) -> dict:
     """Compute the next batch of tasks to spawn for `target`.
 
-    Returns `{"status": "waiting" | "complete" | "blocked", "spawn": [...],
-    "blocked_tasks": [...], "running": [...]}`. Never spawns anything — deterministic
-    computation only.
+    Returns `{"status": "waiting" | "complete" | "blocked" | "bootstrap_needed", "spawn": [...],
+    "blocked_tasks": [...], "running": [...]}` — plus an `"epic_id"` key on a
+    `"bootstrap_needed"` result. Never spawns anything, and never invokes `ensure-feature-branch`
+    itself — deterministic computation only.
     """
     spec_path = dev_team.find_spec_file(target.tasks[0])
-    graph = parse_task_dependencies(spec_path.read_text(encoding="utf-8"))
+    spec_text = spec_path.read_text(encoding="utf-8")
+    graph = parse_task_dependencies(spec_text)
+    # Only the "up to" form needs document order — the explicit-list form is taken as-is, no
+    # expansion, so it never needs the Stack order validator's stricter ordering check.
+    order = validate_stack_order(spec_text) if target.mode == "up_to" else []
 
     repo_slug = get_repo_slug()
     data_path = _data_file_path(repo_slug, target)
-    data = _load_or_initialize_data(target, data_path, graph)
+    data = _load_or_initialize_data(target, data_path, graph, order)
+
+    epic_id = _parse_epic_id(spec_text)
+    if epic_id is not None and not _feature_branch_exists(epic_id, dev_team.REPO_ROOT):
+        return {
+            "status": "bootstrap_needed", "epic_id": epic_id,
+            "spawn": [], "blocked_tasks": [], "running": [],
+        }
 
     tasks: list[str] = data["tasks"]
     spawned: set[str] = set(data.get("spawned", []))
@@ -256,22 +303,16 @@ def compute_next_batch(target: TargetSpec) -> dict:
             "running": _running_snapshots(spawned, statuses_and_contexts),
         }
 
-    eligible: list[tuple[str, str | None]] = []
-    for task in not_yet_started:
-        if task in blocked_tasks:
-            continue
-        elig_status, base_branch = is_task_eligible(task, graph.get(task, []))
-        if elig_status == "eligible":
-            eligible.append((task, base_branch))
+    eligible: list[str] = [
+        task for task in not_yet_started
+        if task not in blocked_tasks and is_task_eligible(task, graph.get(task, [])) == "eligible"
+    ]
 
     max_parallel = _max_parallel_tasks(dev_team.REPO_ROOT)
     active = _repo_wide_active_spawn_count(repo_slug)
     available = max(0, max_parallel - active)
 
-    spawn = [
-        {"task_id": task, "base_branch": base_branch}
-        for task, base_branch in eligible[:available]
-    ]
+    spawn = [{"task_id": task} for task in eligible[:available]]
 
     running = _running_snapshots(spawned, statuses_and_contexts)
 
@@ -293,9 +334,10 @@ def poll_until_actionable(
     poll comes back `"waiting"` with an empty `spawn` (nothing newly eligible and the cap isn't
     the reason — there's simply nothing to do yet), sleeps `poll_interval_seconds` and polls
     again, up to `max_poll_cycles` times. Returns as soon as any poll reports `"complete"`,
-    `"blocked"`, or `"waiting"` with a non-empty `spawn`. If every cycle stays idle, returns the
-    last (still "waiting", still empty) result anyway once `max_poll_cycles` is exhausted, so the
-    caller regains control periodically to sanity-check the run rather than blocking forever."""
+    `"blocked"`, `"bootstrap_needed"`, or `"waiting"` with a non-empty `spawn`. If every cycle
+    stays idle, returns the last (still "waiting", still empty) result anyway once
+    `max_poll_cycles` is exhausted, so the caller regains control periodically to sanity-check
+    the run rather than blocking forever."""
     result = compute_next_batch(target)
     cycles = 0
     while result["status"] == "waiting" and not result["spawn"] and cycles < max_poll_cycles:
