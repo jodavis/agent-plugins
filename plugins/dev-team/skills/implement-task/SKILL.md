@@ -152,9 +152,8 @@ File path(s) and test method names for all new or modified unit tests.
 Feature file path(s) and scenario title(s) for all new or modified Gherkin scenarios.
 
 **Known ambiguities**
-Any Tier 3 "best-effort, documented, non-blocking" ambiguity notes bubbled up from an
-`implement-tdd` escalation (or recorded directly during this skill's own step 7 triage), for
-human review after the fact. Omit this section if there are none.
+Any ambiguity notes recorded while implementing a component (declared or ad hoc) or during this
+skill's own step 7 triage, for human review after the fact. Omit this section if there are none.
 
 ## Skills
 
