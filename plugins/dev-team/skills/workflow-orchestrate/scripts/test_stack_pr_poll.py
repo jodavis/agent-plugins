@@ -52,23 +52,33 @@ class TestPollConflictDetected:
 
 class TestPollActionableEventFiresImmediately:
     @pytest.mark.parametrize(
-        "event",
+        "detector_event, expected_result",
         [
-            pytest.param({"type": "review_comment", "task_work_item_id": "ADR-50"}, id="review_comment"),
-            pytest.param({"type": "ci_failure", "task_work_item_id": "ADR-51"}, id="ci_failure"),
+            pytest.param(
+                {"type": "review_comment", "task_work_item_id": "ADR-50"},
+                {"task_work_item_id": "ADR-50", "event": "review_comment"},
+                id="review_comment",
+            ),
+            pytest.param(
+                {"type": "ci_failure", "task_work_item_id": "ADR-51"},
+                {"task_work_item_id": "ADR-51", "event": "ci_failure"},
+                id="ci_failure",
+            ),
         ],
     )
-    def test_poll_actionable_event_returns_it_without_sleeping(self, event):
+    def test_poll_actionable_event_renames_type_key_to_event_without_sleeping(
+        self, detector_event, expected_result
+    ):
         # Arrange
         sleep_mock = MagicMock()
         with patch("stack_pr_poll.gh_stack.sync", return_value=("ok", "")), \
              patch("stack_pr_poll._rebase_in_progress", return_value=False), \
-             patch("stack_pr_poll.detect_next_stack_event", return_value=event):
+             patch("stack_pr_poll.detect_next_stack_event", return_value=detector_event):
             # Act
             result = poll("ADR-EPIC-1", sleep=sleep_mock)
 
         # Assert
-        assert result == event
+        assert result == expected_result
         sleep_mock.assert_not_called()
 
 
@@ -167,7 +177,7 @@ class TestPollSyncRunsEveryIteration:
             result = poll("ADR-EPIC-1", max_seconds=999, sleep=sleep_mock, clock=clock_mock)
 
         # Assert
-        assert result == {"type": "ci_failure", "task_work_item_id": "ADR-53"}
+        assert result == {"task_work_item_id": "ADR-53", "event": "ci_failure"}
         assert sync_mock.call_count == 3
 
 
@@ -195,8 +205,8 @@ class TestPollSecondEventPickedUpOnNextCall:
             second_result = poll("ADR-EPIC-1", sleep=MagicMock())
 
         # Assert
-        assert first_result == first_event
-        assert second_result == second_event
+        assert first_result == {"task_work_item_id": "ADR-54", "event": "review_comment"}
+        assert second_result == {"task_work_item_id": "ADR-55", "event": "ci_failure"}
 
 
 # ---------------------------------------------------------------------------

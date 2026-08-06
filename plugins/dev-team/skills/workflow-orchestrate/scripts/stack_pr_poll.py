@@ -83,7 +83,7 @@ def poll(
                 if _epic_complete(REPO_ROOT):
                     return "epic_complete"
             else:
-                return event
+                return {"task_work_item_id": event["task_work_item_id"], "event": event["type"]}
 
         if clock() - start >= max_seconds:
             return "no_change"
