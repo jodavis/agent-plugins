@@ -23,6 +23,9 @@ import gh_stack  # noqa: E402
 
 
 def detect_next_stack_event(epic_id: str) -> dict | None:
+    """`epic_id` is unused — `gh_stack.view()`/`sync()` operate on whatever stack is anchored in
+    the current worktree (no epic-scoped filter exists in `gh_stack.py`); the caller is
+    responsible for running from the correct worktree."""
     status, detail = gh_stack.view(cwd=REPO_ROOT)
     if status == "error":
         return None
