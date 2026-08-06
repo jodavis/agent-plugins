@@ -207,6 +207,136 @@ class TestDetectNextStackEventNoneFired:
 
 
 # ---------------------------------------------------------------------------
+# detect_next_stack_event — a review comment fires for a task other than the
+# first branch scanned: the worktree is checked out onto *that* task's own
+# branch, not the first branch in the stack
+# ---------------------------------------------------------------------------
+
+class TestDetectNextStackEventChecksOutFiringBranch:
+    def test_detect_next_stack_event_second_branch_fires_checks_out_second_branch(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        import detect_next_stack_event
+
+        PipelineContext(
+            work_item_id="ADR-64",
+            pr_url="https://github.com/acme/widget/pull/74",
+        ).save(compute_context_path("ADR-64", get_repo_slug()))
+        PipelineContext(
+            work_item_id="ADR-65",
+            pr_url="https://github.com/acme/widget/pull/75",
+        ).save(compute_context_path("ADR-65", get_repo_slug()))
+
+        monkeypatch.setattr(
+            detect_next_stack_event.gh_stack,
+            "view",
+            MagicMock(
+                return_value=(
+                    "ok",
+                    {
+                        "branches": [
+                            {"name": "dev/claude/ADR-64", "isMerged": False},
+                            {"name": "dev/claude/ADR-65", "isMerged": False},
+                        ]
+                    },
+                )
+            ),
+        )
+
+        checkout_calls = []
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:2] == ["gh", "api"]:
+                if "74" in cmd[2]:
+                    return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+                return MagicMock(returncode=0, stdout=json.dumps([{"id": 900}]), stderr="")
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:2] == ["git", "checkout"]:
+                checkout_calls.append(cmd)
+                return MagicMock(returncode=0, stdout="", stderr="")
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        # Act
+        with patch("subprocess.run", side_effect=fake_run):
+            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+
+        # Assert
+        assert result == {"type": "review_comment", "task_work_item_id": "ADR-65"}
+        assert checkout_calls == [["git", "checkout", "dev/claude/ADR-65"]]
+
+
+# ---------------------------------------------------------------------------
+# detect_next_stack_event — two branches each have a firing event in the same
+# call: only the first, by stack position, is reported; the second branch's
+# own PR is never even queried
+# ---------------------------------------------------------------------------
+
+class TestDetectNextStackEventStackPositionPrecedence:
+    def test_detect_next_stack_event_two_branches_fire_only_first_by_position_reported(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        import detect_next_stack_event
+
+        PipelineContext(
+            work_item_id="ADR-66",
+            pr_url="https://github.com/acme/widget/pull/76",
+        ).save(compute_context_path("ADR-66", get_repo_slug()))
+        PipelineContext(
+            work_item_id="ADR-67",
+            pr_url="https://github.com/acme/widget/pull/77",
+        ).save(compute_context_path("ADR-67", get_repo_slug()))
+
+        monkeypatch.setattr(
+            detect_next_stack_event.gh_stack,
+            "view",
+            MagicMock(
+                return_value=(
+                    "ok",
+                    {
+                        "branches": [
+                            {"name": "dev/claude/ADR-66", "isMerged": False},
+                            {"name": "dev/claude/ADR-67", "isMerged": False},
+                        ]
+                    },
+                )
+            ),
+        )
+
+        queried_prs = []
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:2] == ["gh", "api"]:
+                queried_prs.append(cmd[2])
+                return MagicMock(returncode=0, stdout=json.dumps([{"id": 901}]), stderr="")
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return MagicMock(returncode=0, stdout=json.dumps([{"bucket": "fail"}]), stderr="")
+            if cmd[:2] == ["git", "checkout"]:
+                return MagicMock(returncode=0, stdout="", stderr="")
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        # Act
+        with patch("subprocess.run", side_effect=fake_run):
+            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+
+        # Assert
+        assert result == {"type": "review_comment", "task_work_item_id": "ADR-66"}
+        assert not any("77" in pr for pr in queried_prs)
+
+
+# ---------------------------------------------------------------------------
 # detect_next_stack_event — a branch already reported as merged in a prior
 # call never re-fires task_merged; the scan moves on to the next branch
 # ---------------------------------------------------------------------------
