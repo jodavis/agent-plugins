@@ -166,7 +166,9 @@ every sub-step below uses its `add` operation.
    c. Use the `add` operation from `work-with-stacked-prs` (e.g. `gh_stack.py`'s
       `add(branch=<computed-name>)`, or the `gh stack add <computed-name>` CLI form) to create,
       register, and check out that placeholder branch — no commit, no changes, an intentionally
-      empty branch.
+      empty branch. If the operation reports failure (`gh_stack.py`'s `add()` returns
+      `("error", detail)`, or the CLI form exits non-zero), stop and report the failure in detail
+      — do not proceed to the push in sub-step d.
    d. Push it: `git push -u origin <computed-name>`. If the push fails, stop and report the
       failure in detail.
    e. Only once the push succeeds, use `use-context-file` with that entry's explicit work-item-id
@@ -178,7 +180,8 @@ every sub-step below uses its `add` operation.
    a. Ensure the branch checked out is the last backfilled placeholder's branch from step 3 (or
       `<base-for-first-entry>` directly, if `plan` had only this one entry — no backfill needed).
    b. Use the `add` operation for `<working-branch>` (this task's own name, computed in step 3),
-      exactly as in this section's own sub-step 3.c above.
+      exactly as in this section's own sub-step 3.c above. If the operation reports failure, stop
+      and report the failure in detail — do not proceed to the guardrail in sub-step c.
    c. **Guardrail (closes #126):** run
       `python3 "<skill-dir>/scripts/stack_registration.py" verify "$(git rev-parse --abbrev-ref HEAD)" "<working-branch>" "<feature-branch>"`
       via `Bash`. A zero exit confirms HEAD is genuinely `<working-branch>` and not
