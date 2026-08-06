@@ -23,10 +23,11 @@ section for the definitions used throughout this skill.
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an
-environment variable. The Task readiness checker's scripts (`task_readiness.py`,
-`task_dependencies.py`) live in the sibling `workflow-orchestrate` skill's `scripts/` directory,
-so they are invoked as `<skill-dir>/../workflow-orchestrate/scripts/<script>.py` — still anchored
-to `<skill-dir>`, never to an assumed repo-root CWD.
+environment variable. This skill's own `stack_registration.py` script lives in its sibling
+`scripts/` directory (`<skill-dir>/scripts/stack_registration.py`); it in turn imports the Stack
+order validator (`validate_stack_order`, from the sibling `workflow-orchestrate` skill's
+`task_dependencies.py`) and `PipelineContext`, so no separate `Bash` call to
+`task_dependencies.py` is needed here.
 
 ## Configured behavior
 
@@ -48,14 +49,22 @@ worktree at this point means it isn't the fresh one this task expects.
 ### 2 — Check the context file for already-known values
 
 Use the `use-context-file` skill with the `work-item-id` to locate and read the context file.
-Note any of these frontmatter fields that are already set: `working_branch`, `base_branch`,
-`spec_path`, `parent_work_item`. Skip the corresponding step below for each one found, and use
-the recorded value instead of recomputing it.
+Note any of these frontmatter fields that are already set: `working_branch`, `spec_path`,
+`parent_work_item`, `added_to_stack`. Skip the corresponding step below for each one found, and
+use the recorded value instead of recomputing it. A pre-populated `base_branch` (e.g. from a
+scheduler that hasn't yet been updated to this task's stack-based registration) is never treated
+as a skip signal here — stack position, not a stored `base_branch`, determines basing now, so
+step 4 always runs its own registration logic regardless of any `base_branch` already on the
+context file.
 
 Also read `git-repo` and `documentation` from the same context file's
 `<!-- section:Project Configuration -->` section.
 
-If `working_branch` is already known, skip straight to step 5.
+If `working_branch` is already known and `added_to_stack` is already `true`, this task's branch
+was already fully registered by a previous run (or backfilled by a descendant while this task was
+still unstarted) — skip straight to step 5, which simply checks it out. If `working_branch` is
+already known but `added_to_stack` is not yet `true`, skip step 3 (the name is already computed)
+but still run step 4. Otherwise continue normally through step 3 then step 4.
 
 ### 3 — Compute the working branch name
 
@@ -66,11 +75,7 @@ Take `git-repo.working-branches.task`, substituting `<user-alias>` with `git-rep
 short kebab-case slug of the task. Call the result `<working-branch>`. Write it to the context
 file's `working_branch` field via `use-context-file`.
 
-### 4 — Determine the base branch
-
-Skip this step if `base_branch` was already known from step 2 — including the case where the
-context file has it explicitly set (a scheduler-spawned task may pre-populate it; a plain
-`/implement <key>` run never has it pre-populated, so this step always runs for that case).
+### 4 — Determine the base branch and register this task's branch in the stack
 
 #### 4a — Search the repo for a spec file
 
@@ -84,49 +89,6 @@ feature-work-item: a heading or field naming it, e.g. a heading shaped `<type> <
 or a field labelled `Parent:`. Extract the key (pattern `[A-Z]+-\d+`). That key is the parent
 feature-work-item ID.
 
-#### 4b — Dependency-aware base branch
-
-This is the only dependency-aware step in the pipeline itself — no rebasing happens here or
-anywhere else mid-pipeline; it only decides which base branch this task's own working branch
-should start from.
-
-Skip this sub-step entirely (fall through to 4c unchanged) if no `spec_path` is known at this
-point (neither pre-populated nor found in 4a) — without a spec there is nothing to read this
-task's own dependencies from.
-
-Otherwise:
-
-1. Read this task's own dependency ids: invoke
-   `python3 "<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py" "<spec_path>"` via
-   `Bash`. It prints the whole spec's `{task_key: [dependency_ids]}` graph as JSON on success.
-   Look up this task's own work-item-id key in that graph — that list is this task's own
-   dependency ids (an empty list if the task declares `— none —` or has no `Depends on:` line at
-   all). If the command exits non-zero, it prints a clear `Error: ...` message to stderr instead
-   of JSON — stop and report that error in detail; do not fall through to 4c.
-
-2. If that list is empty, skip the rest of this sub-step and fall through to 4c unchanged (no
-   dependencies means nothing for this step to override).
-
-3. Otherwise, invoke
-   `python3 "<skill-dir>/../workflow-orchestrate/scripts/task_readiness.py" "<work-item-id>" "<dep1>,<dep2>,..."`
-   via `Bash`, passing this task's own dependency ids as a comma-separated list. It prints
-   `{"status": "eligible" | "waiting" | "blocked", "base_branch": <branch-name-or-null>}` as JSON
-   on success. If the command exits non-zero, it prints a clear `Error: ...` message to stderr
-   instead of JSON — stop and report that error in detail; do not fall through to 4c.
-
-4. If `status` is `"eligible"` and `base_branch` is a real (non-null) branch name: write it to
-   the context file's `base_branch` field via `use-context-file`, then skip the rest of step 4
-   entirely (4c–4f) and proceed straight to step 5.
-
-5. If `status` is `"eligible"` and `base_branch` is `null`: no override is needed (every
-   dependency is already done) — fall through to 4c and let the existing feature-branch lookup
-   run unchanged.
-
-6. If `status` is `"waiting"` or `"blocked"`: this task's dependencies are not yet ready to start
-   from. Stop and report the failure in detail (name the task, its dependency ids, and the
-   returned status) — do not fall back to the feature-branch lookup, since that would silently
-   start this task's working branch without the dependency it actually needs.
-
 #### 4c — Query the tracker if no parent feature-work-item ID found
 
 Skip if `parent_work_item` was already known from step 2. If no parent feature-work-item ID was
@@ -138,57 +100,111 @@ parent is not an issue key, continue with no parent feature-work-item ID.
 If a parent feature-work-item ID was found in step 4a or 4c, write it to the context file's
 `parent_work_item` field via `use-context-file`.
 
-#### 4d — Find the feature-work-item branch
+#### 4d — Ensure the epic's feature branch and stack exist (single-task-path bootstrap trigger)
 
-If a parent feature-work-item ID is known (from step 2, 4a, or 4c), search remote branches for
-it. Take the literal prefix of `git-repo.working-branches.feature` up to its first `<placeholder>`
-(e.g. `feature/` from `feature/<feature-work-item-id>-<slug>`) and search for it:
+Skip this sub-step and go straight to 4f if no parent feature-work-item ID is known at all
+(neither 4a nor 4c found one) — there is no epic to bootstrap or register into.
 
-```bash
-git fetch origin
-git branch -r | grep "<feature-prefix><parent-feature-work-item-id>"
-```
+Otherwise:
 
-Strip the `origin/` prefix from the matching branch name. That is the base branch. If more than
-one branch matches, prefer the one most recently pushed.
+1. Take the literal prefix of `git-repo.working-branches.feature` up to its first `<placeholder>`
+   (e.g. `feature/` from `feature/<feature-work-item-id>-<slug>`) — call this `<feature-prefix>`.
+2. ```bash
+   git fetch origin
+   git branch -r --sort=-committerdate | grep -E "<feature-prefix><parent-feature-work-item-id>(-|$)"
+   ```
+   (Anchored the same way `ensure-feature-branch`'s own existence check is — tolerant of a
+   missing or different slug, but anchored so the epic id must end at a `-` or the branch name's
+   end.)
+3. If one or more matches are found, take the first line (most recently pushed), strip the
+   `origin/` prefix — that is `<feature-branch>`. Skip to 4e.
+4. If no match is found, this epic hasn't been bootstrapped yet — this is the single-task-path
+   trigger (when `/implement <key>` dispatches straight here with no `concurrent-orchestrate`
+   involved, nothing else is running concurrently, so no coordination is needed to bootstrap it
+   directly). Use the `ensure-feature-branch` skill with the parent feature-work-item ID. If it
+   does not respond `successful`, stop and report the failure in detail. Once it completes,
+   re-run the search in sub-step 2 — it must now find a match; take it as `<feature-branch>`.
 
-#### 4e — Fallback: nearest ancestor feature branch
+Once `<feature-branch>` is known, write it to the context file's `base_branch` field via
+`use-context-file`.
 
-If no parent feature-work-item ID is known and step 4d was not reached, check for the nearest
-ancestor branch matching the `<feature-prefix>` from step 4d:
+#### 4e — Register this task's branch in the stack (recursive backfill)
 
-```bash
-git branch -r --merged HEAD | grep "<feature-prefix>"
-```
+Skip this sub-step if 4d fell through to 4f (no epic known) — there is no stack to register into.
 
-Use the closest ancestor matching branch as the base branch.
+Run `work-with-stacked-prs`'s Preflight check if it hasn't already run earlier this session —
+every sub-step below uses its `add` operation.
 
-#### 4f — Fallback or error
+1. Run `python3 "<skill-dir>/scripts/stack_registration.py" plan "<work-item-id>" "<spec_path>"`
+   via `Bash`. It prints `{"plan": [<task-ids, oldest first, this task last>], "anchor_task":
+   <task-id-or-null>}` as JSON on success — `anchor_task` is the already-registered task whose
+   branch the first `plan` entry should be based on, or `null` when the first `plan` entry is the
+   very first task in the epic's stack order (base off `<feature-branch>` itself instead). If the
+   command exits non-zero, it prints a clear `Error: ...` message to stderr instead of JSON —
+   stop and report that error in detail.
 
-If no matching feature branch has been found:
+2. Determine `<base-for-first-entry>`: if `anchor_task` is `null`, it's `<feature-branch>`;
+   otherwise use the `use-context-file` skill with `anchor_task` as an explicit work-item-id to
+   read its `working_branch` field.
+
+3. For every entry in `plan` **except the last** (these are not-yet-started ancestors needing an
+   empty placeholder branch, oldest first):
+   a. Check out `<base-for-first-entry>` (or the branch registered for the previous entry in this
+      same loop, once one exists).
+   b. Compute that entry's own working-branch name from `git-repo.working-branches.task`
+      (the same template step 3 uses, substituted with that entry's own task id instead of this
+      task's).
+   c. Use the `add` operation from `work-with-stacked-prs` (e.g. `gh_stack.py`'s
+      `add(branch=<computed-name>)`, or the `gh stack add <computed-name>` CLI form) to create,
+      register, and check out that placeholder branch — no commit, no changes, an intentionally
+      empty branch.
+   d. Push it: `git push -u origin <computed-name>`. If the push fails, stop and report the
+      failure in detail.
+   e. Only once the push succeeds, use `use-context-file` with that entry's explicit work-item-id
+      to write `working_branch: <computed-name>` (if not already set) and `added_to_stack: true`
+      to its own context file.
+
+4. For the **last** entry in `plan` (this task itself — always present, since `plan` always ends
+   with `<work-item-id>`):
+   a. Ensure the branch checked out is the last backfilled placeholder's branch from step 3 (or
+      `<base-for-first-entry>` directly, if `plan` had only this one entry — no backfill needed).
+   b. Use the `add` operation for `<working-branch>` (this task's own name, computed in step 3),
+      exactly as in this section's own sub-step 3.c above.
+   c. **Guardrail (closes #126):** run
+      `python3 "<skill-dir>/scripts/stack_registration.py" verify "$(git rev-parse --abbrev-ref HEAD)" "<working-branch>" "<feature-branch>"`
+      via `Bash`. A zero exit confirms HEAD is genuinely `<working-branch>` and not
+      `<feature-branch>`. A non-zero exit is a **hard stop**: stop immediately, report the
+      mismatch in detail (its stderr names the branch HEAD is actually on, the expected working
+      branch, and — when this is the exact conflation bug — the feature branch) — do not proceed
+      to push or write `added_to_stack`.
+   d. Push it: `git push -u origin <working-branch>`. If the push fails, stop and report the
+      failure in detail.
+   e. Only once the push succeeds, write `added_to_stack: true` to this task's own context file
+      via `use-context-file` (`working_branch` was already written in step 3).
+
+#### 4f — Fallback when no epic is known
+
+Reached only when no parent feature-work-item ID could be found at all (neither 4a nor 4c). This
+task isn't part of a tracked epic/stack:
 - `work-item-type` is `jira`: stop and report an error — a feature-work-item branch is required
   for Jira-tracked task-work-items.
-- Otherwise: use `main` as the base branch.
-
-Once the base branch is determined, write it to the context file's `base_branch` field via
-`use-context-file`.
+- Otherwise: use `main` as the base branch, write it to the context file's `base_branch` field via
+  `use-context-file`. Step 5's fallback branch-creation path applies for this case only.
 
 ### 5 — Prepare the working branch
 
-Fetch the latest state from the remote:
+If step 4e registered this task's branch (`added_to_stack` now `true`), or `working_branch` and
+`added_to_stack` were already known from step 2, `<working-branch>` already exists locally — the
+`add` operation (or a previous run) already checked it out. Just confirm it's current:
 
 ```bash
 git fetch origin
-```
-
-If `<working-branch>` already exists locally or on the remote, check it out and pull:
-
-```bash
 git checkout <working-branch>
 git pull origin <working-branch>
 ```
 
-If it does not yet exist, create it from the base branch:
+If step 4 fell through to 4f instead (no epic known) and `<working-branch>` does not yet exist,
+create it directly from `<base-branch>` — the one case that was never part of a stack:
 
 ```bash
 git checkout -b <working-branch> origin/<base-branch>
