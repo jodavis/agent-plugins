@@ -74,7 +74,7 @@ gaps to raise — do not treat a missing table as also failing checks 2 or 3.
 
 ### 7 — Return results
 
-**If no blocking gaps exist**, return exactly:
+**If no blocking gaps exist**, return:
 
 > No blocking questions — spec is implementation-ready.
 
@@ -84,6 +84,9 @@ gaps to raise — do not treat a missing table as also failing checks 2 or 3.
   - 1 — you could answer this easily with high confidence (an obvious, low-risk inference)
   - 5 — you cannot continue without this answered (no reasonable inference exists; it requires a human decision)
   Format each question as `N. [Rating: X/5] <question text>`.
-- Under a `## Useful resources` heading: any external resources from step 4 that would inform implementation.
 
-Do not include summaries, recommendations, or file quotes.
+**In both cases**, if while researching you learned a concrete fact worth recording (e.g. an existing utility, pattern, or constraint the spec should reference but doesn't) or made a reasonable, low-stakes decision to fill a small gap without it rising to a blocking question, add a `## Findings & Decisions` section: a bullet list of concrete statements, each naming the spec section it belongs in. Omit this section entirely if there is nothing to add beyond what the questions above already surface.
+
+Under a `## Useful resources` heading: any external resources from step 4 that would inform implementation.
+
+Do not include summaries or recommendations about the document itself, or file quotes — `## Findings & Decisions` entries are limited to new facts or decisions, not commentary on what's already written.

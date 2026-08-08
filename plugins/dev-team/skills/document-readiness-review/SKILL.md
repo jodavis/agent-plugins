@@ -41,9 +41,11 @@ Use `AskUserQuestion` to present the remaining questions to the user. Provide 2�
 
 **PAUSE — wait for answers before editing.**
 
-### 4 — Integrate answers
+### 4 — Integrate answers and findings
 
 Integrate all answers — self-resolved in step 2 and user-provided in step 3 — naturally into the appropriate sections of the document (do not append a Q&A block). If the researcher cited external resources, add them to the `## Related Docs` section.
+
+If the researcher also returned a `## Findings & Decisions` section, integrate each item into the appropriate section of the document the same way. These are facts the researcher already discovered or reasonable decisions it already made while reviewing — not open questions — so they skip steps 2 and 3 entirely; write them directly into the document. This is what makes the document complete enough that future planning needs no further investigation.
 
 ### 5 — Decide whether to loop again
 
@@ -53,4 +55,4 @@ Otherwise, return to step 1. Repeat up to 3 times total.
 
 ### 6 — Proceed when ready
 
-When the researcher returns a single "ready" line with no blocking questions, or after 3 review iterations (whichever comes first), tell the user the document is ready and proceed.
+When the researcher returns a single "ready" line with no blocking questions, or after 3 review iterations (whichever comes first), tell the user the document is ready. If any findings or decisions were integrated automatically in step 4, mention them briefly so the user knows what changed. Then proceed.

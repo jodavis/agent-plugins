@@ -36,109 +36,18 @@ Skip questions you can already answer from docs, the design doc, or source. Prov
 
 If answers raise new ambiguities that would materially affect the spec, ask one more targeted follow-up round. Otherwise proceed.
 
+Treat this step as the place unresolved questions get eliminated, not deferred. If you notice a gap while writing the draft in step 2, stop and go back through this same research/`AskUserQuestion` process before continuing — do not carry it forward into the draft's Open Questions section instead. An item belongs in Open Questions only if the user was asked and explicitly said something like "I don't know, we'll have to figure that out as we go" — a genuinely open question that can't be resolved by research or a decision right now. It is not for questions you simply haven't asked yet, or that research could answer.
+
 ### 2 — Write the first draft
 
 Determine the spec file location: the `_spec_*.md` lives next to the code it describes — in the directory where the new feature's code will live.
 
 Name: `_spec_<FeatureName>.md` in PascalCase.
 
-Write the file using this structure:
+Write the file following the template at
+[`assets/dev_spec_template.md`](assets/dev_spec_template.md).
 
----
-
-# \<Feature Name\>
-
-> **Status:** Draft
-> **Design:** `_design_<FeatureName>.md` — the PM design doc this spec implements, if one exists;
-> otherwise "— none"
-> **Architecture doc:** `_doc_<FeatureName>.md` — authored by `dev-spec-task-breakdown`'s
-> unconditional final "Author design documentation" task once implementation completes; this
-> spec persists afterward for harvesting
-
-This line names an obligation owned by `dev-spec-task-breakdown`, not by this skill: every task
-breakdown must append that unconditional final documentation task, so the reference above is
-always honored. If `dev-spec-task-breakdown` does not yet append it, treat that as a gap in
-`dev-spec-task-breakdown`, not a reason to omit the header line here.
-
-## Overview
-
-One paragraph: what this feature does and why it exists.
-
-## Responsibilities & Boundaries
-
-- **Owns:** ...
-- **Does not own:** ...
-- **Integrates with:** ...
-
-## Key Design Decisions
-
-### \<Decision title\>
-
-_Context:_ Why this choice was needed.
-_Decision:_ What was decided.
-_Consequences:_ Trade-offs accepted.
-
-_(Repeat for each significant decision.)_
-
-## Component Breakdown
-
-| Component | Type | Responsibility | Depends on |
-|---|---|---|---|
-| `<Name>` | Wrapper \| Testable \| Orchestrator | One sentence | `<Component>`, `<Component>`, or — |
-
-Use the `component-taxonomy` skill for the Wrapper/Testable/Orchestrator definitions and the
-property-level Wrapper carve-out to classify every planned component.
-
-When identifying Testable components, apply these isolation patterns as authoring guidance:
-
-- Prefer dependency injection to isolate a component from its collaborators.
-- Consider the **State Object** pattern for stateful components: state lives as plain,
-  directly-observable fields on a data object. By default, only the owning/controller
-  service mutates it; other services may read it. Some components legitimately invert
-  this — a ViewModel-style State Object is written directly by its consumer (e.g. the UI),
-  and the owning controller subscribes to change notifications on it to react. In this
-  inverted case, both sides may read and write the object; design each field's ownership
-  deliberately rather than assuming a single default direction.
-- Prefer synchronous logic for anything complex; gather async data up front and pass the
-  results in, rather than doing async work on demand inside complex logic.
-- Where practical, build each component before its dependencies exist, using mocks of the
-  interfaces, so the dependency interfaces reflect real usage rather than speculative design.
-
-## Planned Implementation
-
-### Interfaces
-
-Public interfaces — method signatures, types, and responsibilities.
-
-### Key Classes
-
-Planned classes, their roles, and important relationships.
-
-### Data Flow
-
-How data moves through the feature from trigger to output.
-
-## Related Features
-
-Features identified during drafting that are out of scope here and will be spec'd separately.
-
-| Feature | Scope |
-|------|-------|
-| (this feature) | ... |
-
-_(Omit if there are no related features.)_
-
-## Open Questions
-
-- [ ] Unresolved question
-
-## Related Docs
-
-Links to the documentation files consulted during drafting.
-
----
-
-Fill every section. For anything genuinely unresolved, use `> TBD: reason` inline and list it again in Open Questions.
+Fill every section with resolved content — research or ask about anything you don't yet know before writing it in, using step 1's process. Reserve `> TBD: reason` and the Open Questions section only for items the user explicitly deferred (e.g. "we'll figure it out as we go"), not for questions you simply haven't asked yet.
 
 ### 3 — Pause for review
 
