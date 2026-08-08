@@ -1,7 +1,7 @@
 ---
 description: >
   Use when writing a complete new PM-style design doc for a feature.
-  Guides through context gathering, first draft, iterative refinement, critical readiness review, and breakdown into independently cuttable deliverables.
+  Guides through context gathering, first draft, iterative refinement, breakdown into independently cuttable deliverables, critical readiness review, and work item creation.
 argument-hint: <work-item-id | #issue | feature name and description | pasted notes>
 ---
 
@@ -34,7 +34,7 @@ resolve each via `identify-project-work-items` and the matching `work-with-<prov
 and read its summary/description.
 
 Keep this list for the rest of this flow: it can inform `design-first-draft`'s research (step 3)
-even for items that turn out to no longer apply, and `design-deliverable-breakdown` (step 6) uses
+even for items that turn out to no longer apply, and `design-create-work-items` (step 7) uses
 it to reuse or repurpose existing items instead of asking about them again from scratch.
 
 ### 3 — Write the first draft
@@ -50,22 +50,22 @@ Use the `document-discussion` skill to resolve `> **Review:**` comments with the
 
 Repeat until the user says the document is ready.
 
-### 5 — Design readiness review
+### 5 — Deliverable breakdown
+
+Use the `design-deliverable-breakdown` skill to draft the design's deliverable breakdown into
+independently cuttable deliverables and pause for user approval.
+
+### 6 — Readiness review
 
 Use the `document-readiness-review` skill on the design doc with `researcher-design-review` to
-verify it actually solves the stated problem and is complete.
+verify it — problem/solution fit and deliverable breakdown together — actually solves the stated
+problem, is complete, and each deliverable is genuinely independently cuttable.
 
-### 6 — Deliverable breakdown
+### 7 — Create tracked work items
 
-Use the `design-deliverable-breakdown` skill to break the design into independently cuttable
-deliverables, pause for user approval, and create (or reuse) tracked feature-work-items. Pass it
-the related existing work items identified in step 2, if any.
-
-### 7 — Deliverable breakdown readiness review
-
-Use the `document-readiness-review` skill again with `researcher-design-review` — this time
-focused on the deliverable breakdown — to verify each deliverable is genuinely independently
-cuttable.
+Use the `design-create-work-items` skill to reconcile deliverables with existing work items,
+create (or reuse) tracked feature-work-items, and update the design doc with links. Pass it the
+related existing work items identified in step 2, if any.
 
 ### 8 — Update the source work item
 

@@ -1,7 +1,7 @@
 ---
 description: >
   Use when writing a complete new dev spec for a feature or GitHub issue.
-  Guides through context gathering, first draft, iterative refinement, readiness review, and task breakdown.
+  Guides through context gathering, first draft, iterative refinement, task breakdown, readiness review, and work item creation.
 argument-hint: <work-item-id | #issue | feature name and description>
 ---
 
@@ -42,20 +42,22 @@ Use the `document-discussion` skill to resolve `> **Review:**` comments with the
 
 Repeat until the user says the document is ready.
 
-### 4 — Design readiness review
+### 4 — Task breakdown
+
+Use the `dev-spec-task-breakdown` skill to draft the spec's task breakdown and pause for user
+approval.
+
+### 5 — Readiness review
 
 Use the `document-readiness-review` skill on the spec file with `researcher-dev-spec-review` to
-verify the design content is implementation-ready.
+verify the full spec — design content and task breakdown together — is implementation-ready and
+complete.
 
-### 5 — Task breakdown
+### 6 — Create tracked work items
 
-Use the `dev-spec-task-breakdown` skill to break the spec into tasks, pause for user approval, and create tracked work items.
-
-### 6 — Task breakdown readiness review
-
-Use the `document-readiness-review` skill again with `researcher-dev-spec-review` — this time
-focused on the task breakdown — to verify tasks are scoped and specified clearly enough to
-implement.
+Use the `dev-spec-create-work-items` skill to create tracked work items for the approved tasks
+(and any related features), link task dependencies in the tracker, and update the spec with the
+assigned keys.
 
 ### 7 — Update work items
 

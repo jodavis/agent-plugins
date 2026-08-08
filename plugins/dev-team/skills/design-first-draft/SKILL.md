@@ -48,63 +48,20 @@ Skip questions already answered by the brief or research. Provide 2–4 concrete
 
 If answers raise new ambiguities that would materially affect the design, ask one more targeted follow-up round. Otherwise proceed.
 
+Treat this step as the place unresolved questions get eliminated, not deferred. If you notice a gap while writing the draft in step 2, stop and go back through this same research/`AskUserQuestion` process before continuing — do not carry it forward into the draft's Risks & Open Questions section instead. An item belongs in Risks & Open Questions only if the user was asked and explicitly said something like "I don't know, we'll have to figure that out as we go" — a genuinely open question that can't be resolved by research or a decision right now. It is not for questions you simply haven't asked yet, or that research could answer.
+
 ### 2 — Write the first draft
 
-Determine the design doc file location and name per `write-repo-documentation`'s configured
-`documentation.specs` placement: `_design_<FeatureName>.md` in PascalCase.
+Determine the proposal's save location by asking the user where to save it (a file path or an
+external location) — the Proposal is not part of the `documentation` config schema, so there is no
+`documentation.proposals` placement to derive a location from.
 
-Write the file using this structure:
+Write the file following the template at
+[`assets/proposal_template.md`](assets/proposal_template.md). Each section there carries a note on
+its goal and the questions to open with — treat those as interview prompts, not just section
+descriptions.
 
----
-
-# \<Feature Name\>
-
-> **Status:** Draft
-> **Source:** \<citation(s) from the sources gathered in step 1, or "— none"\>
-
-## Problem
-
-What problem exists, for whom, and what evidence supports it.
-
-## Goals & Non-Goals
-
-- **Goals:** what this design must achieve
-- **Non-Goals:** what it deliberately does not address
-
-## Proposed Solution
-
-The solution at the level of observable system behavior — what changes for the user or the
-system, not how it's built.
-
-## Behavior
-
-Key scenarios described as concrete, observable behavior (what happens, from the outside, in each
-case). Concrete enough that "does this solve the problem?" can be checked without guessing.
-
-## Success Criteria
-
-How to tell, after shipping, whether this solved the problem.
-
-## Alternatives Considered
-
-Other solutions considered (including prior art / existing solutions found in step 1) and why
-they weren't chosen.
-
-## Risks & Open Questions
-
-- [ ] Unresolved question
-
-## Deliverables
-
-_(Added later by `design-deliverable-breakdown`.)_
-
-## Related Docs
-
-Links to the documentation and research sources consulted during drafting.
-
----
-
-Fill every section. For anything genuinely unresolved, use `> TBD: reason` inline and list it again in Risks & Open Questions.
+Fill every section with resolved content — research or ask about anything you don't yet know before writing it in, using step 1's process. Reserve `> TBD: reason` only for items the user explicitly deferred (e.g. "we'll figure it out as we go"), not for questions you simply haven't asked yet.
 
 ### 3 — Pause for review
 
