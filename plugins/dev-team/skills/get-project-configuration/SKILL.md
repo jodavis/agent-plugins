@@ -168,6 +168,29 @@ attribution:
 The configured string is used verbatim as `<name>` in `Written by <name>` — there is no
 separate built-in default name to fall back to.
 
+### `troubleshooter.can-fix` / `troubleshooter.can-push-fix` — booleans
+
+Two independent authorization gates read by `workflow-troubleshoot`, both defaulting `false`
+(the shipped default ships a blank `troubleshooter:` key — neither flag set). Issue searching
+and filing is unconditional either way; these gates only affect whether the troubleshooter
+attempts a root-cause code fix.
+
+- **`can-fix`** — authorizes writing a root-cause fix and committing it on a branch in the
+  plugin checkout `workflow-troubleshoot` resolves via `<skill-dir>`, then merging that branch
+  directly into whatever is checked out there. No push, no PR.
+- **`can-push-fix`** — has no effect unless `can-fix` is also set. Additionally authorizes
+  pushing the fix branch and opening a draft PR via `gh stack`, instead of a local merge.
+
+Set only in machine-tier config (`.dev-team/config.local.yaml`), never project-tier, since
+authorization to make and push automated code changes is a personal, not project-wide,
+decision:
+
+```yaml
+troubleshooter:
+  can-fix: true
+  can-push-fix: true
+```
+
 ### `git-repo`
 
 `user-alias` — substituted for `<user-alias>` in the `working-branches.*` templates below.
