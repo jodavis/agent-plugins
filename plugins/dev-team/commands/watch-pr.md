@@ -34,4 +34,30 @@ Agent(
 )
 ```
 
+Once the spawn call returns its worktree branch, rename it to `watch-<work-item-id>` — the same
+task-identifying convention `concurrent-orchestrate`'s auto-start path uses (see its **Worktree
+naming** section), so a manually-started monitor's worktree is just as identifiable in
+`git worktree list` as an auto-started one:
+
+```bash
+git branch -m <raw-branch-name> watch-<work-item-id>
+```
+
+If it fails because `watch-<work-item-id>` already exists (a stale leftover from an earlier
+monitor for the same task that was never cleaned up), fall back to a disambiguated name instead:
+
+```bash
+git branch -m <raw-branch-name> watch-<work-item-id>-<raw-branch-suffix>
+```
+
+using the last segment of `<raw-branch-name>` (its 8-hex-char suffix) to disambiguate. If the
+rename fails for any other reason (git lock, unexpected error, etc.), this is a **hard stop**:
+stop immediately and report the failure in detail rather than proceeding with an unrenamed
+worktree. This rename is run from your own (non-worktree) checkout, never from inside the spawned
+worktree — it only renames a ref, so it never touches the worktree's files. `watch-pr`'s own
+step 2 records this renamed name as `watch_worktree_branch` by reading its own current branch
+*before* checking out `working_branch` — reading it any later would return `working_branch`
+instead, once `watch-pr` step 2's checkout has switched HEAD away from the renamed branch — no
+further action needed here.
+
 Then stop.
