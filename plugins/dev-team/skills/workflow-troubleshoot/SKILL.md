@@ -166,8 +166,9 @@ above. Read `troubleshooter.can-fix` and `troubleshooter.can-push-fix` through
         already created the PR. Never promote it out of draft or request review — this skill's
         job stops at opening the draft PR.
      6. Add the PR link plus a description of the change to the issue.
-3. Apply the `message-attribution` skill's line to every issue/comment body written in this
-   section and in "Before diagnosing" above, per existing convention.
+3. Apply the `message-attribution` skill's line to every issue or comment body written anywhere
+   in this skill — "Before diagnosing" above, the new-issue/cross-link/matched-issue-update
+   bullets in "Fix strategies" above, and this section — per existing convention.
 
 ## Output
 
