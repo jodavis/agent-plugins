@@ -147,8 +147,11 @@ If any result is anything other than `successful` (case-insensitive), run the tr
 
 **If `descriptors` matches none of the shapes above** (e.g. an unrecognized `action` value, a
 single-item array whose one item is neither `"done"` nor `troubleshooter`): do not guess and
-proceed — this is an unknown condition. Stop and report it in full detail per this skill's Role
-section above: the raw `descriptors` JSON, what shape you expected, and why it didn't match.
+proceed — this is an unknown condition. Run the troubleshooter agent (see below) with
+`problem: <the raw descriptors JSON, what shape you expected, and why it didn't match>`. Only if
+the troubleshooter itself returns `"terminate"` do you fall back to stopping and reporting it in
+full detail per this skill's Role section above: the raw `descriptors` JSON, what shape you
+expected, and why it didn't match.
 
 ### 3 — Error handling
 
@@ -161,7 +164,7 @@ When a problem occurs with the workflow, don't try to fix it. Spawn the troubles
 
 ```
 Agent(
-  subagent_type="claude",
+  subagent_type="dev-team:troubleshooter",
   prompt="""Invoke the `dev-team:workflow-troubleshoot` skill with arguments:
 --context-file <context_file>
 --problem "<problem_description>"
