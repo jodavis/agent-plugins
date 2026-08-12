@@ -191,10 +191,10 @@ reports a state that doesn't square with what's expected — run the troubleshoo
 "Running the troubleshooter agent" below) against that task_id's own context file, resolved the
 same way step 2c already resolves it, rather than continuing to poll blindly. This applies only to
 anomalies tied to one task_id; an anomaly in `concurrent_schedule.py`'s own scheduling logic, not
-tied to any task, is already covered by step 2a's existing stop-and-report handling above (see
-"Data Flow" in the design — the scheduler's plain-JSON state file is incompatible with
-`workflow-troubleshoot`'s YAML-frontmatter context-file convention, so it is never passed as
-`--context-file`) and needs no new dispatch here.
+tied to any task, is already covered by step 2a's existing stop-and-report handling above — the
+scheduler's plain-JSON state file is incompatible with `workflow-troubleshoot`'s YAML-frontmatter
+context-file convention, so it is never passed as `--context-file`, and needs no new dispatch
+here.
 
 Either way, **any spawned pipeline from step 2c finishing** — reported to you as a background-
 agent completion notification, whether it arrives between cycles or while step 2a's `Bash` call
