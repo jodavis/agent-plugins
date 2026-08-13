@@ -224,8 +224,12 @@ reported as finished *successfully*:
    successful hand-off left no `pr_url`) and skip the rest of this step for this task_id — do
    not spawn or record anything for it.
 2. Read that same context file's `parent_work_item` field — the task's own epic id, recorded by
-   `ensure-working-branch`'s existing step 4a/4c. If it's already in your in-session record,
-   this epic already has a monitor running; skip the rest of this step for this task_id.
+   `ensure-working-branch`'s existing step 4a/4c. If it's empty (e.g. a plain GitHub-issue-driven
+   task, or a spec section with no parent heading, has no discoverable epic), report the
+   inconsistency in detail (task_id and the fact that a successful hand-off left no
+   `parent_work_item`) and skip the rest of this step for this task_id — do not spawn or record
+   anything for it. If it's already in your in-session record, this epic already has a monitor
+   running; skip the rest of this step for this task_id.
 3. Otherwise, spawn `dev-team:monitor-stack` for the epic as a **local background `Agent`**
    (`run_in_background: true`, not a cloud routine), mirroring the exact spawn pattern step 2c
    already uses for `workflow-orchestrate` itself:
