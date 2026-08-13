@@ -186,8 +186,15 @@ discovered mid-run — its `workflow-orchestrate` spawn died silently without ev
 completion — and respawn `workflow-orchestrate` for it exactly the way step 2c does, catching the
 stall immediately rather than waiting for a restart to trigger step 1's own reconciliation. If
 everything else looks healthy, wait 30 seconds and re-invoke step 2a again. If something else
-looks broken (not covered by the staleness check), invoke a troubleshooting step rather than
-continuing to poll blindly.
+looks broken for a specific task_id (not covered by the staleness check) — e.g. a `running` entry
+reports a state that doesn't square with what's expected — run the troubleshooter agent (see
+"Running the troubleshooter agent" below) against that task_id's own context file, resolved the
+same way step 2c already resolves it, rather than continuing to poll blindly. This applies only to
+anomalies tied to one task_id; an anomaly in `concurrent_schedule.py`'s own scheduling logic, not
+tied to any task, is already covered by step 2a's existing stop-and-report handling above — the
+scheduler's plain-JSON state file is incompatible with `workflow-troubleshoot`'s YAML-frontmatter
+context-file convention, so it is never passed as `--context-file`, and needs no new dispatch
+here.
 
 Either way, **any spawned pipeline from step 2c finishing** — reported to you as a background-
 agent completion notification, whether it arrives between cycles or while step 2a's `Bash` call
@@ -239,7 +246,53 @@ step — there is no PR to monitor, so no `dev-team:monitor-pr` is spawned for i
   one's dependency chain includes a task that ended in `failed`, so it can never become
   eligible on its own).
 
+## Running the troubleshooter agent
+
+When step 2d notices something broken for a specific task_id that isn't covered by the staleness
+check, don't try to fix it yourself. Spawn the troubleshooter agent to investigate, against that
+task_id's own context file — resolved the same way step 2c/`use-context-file` already resolves it
+for that task, never `concurrent_schedule.py`'s own scheduler state file (a different, plain-JSON
+format, incompatible with `workflow-troubleshoot`'s YAML-frontmatter context-file convention):
+
+```
+Agent(
+  subagent_type="dev-team:troubleshooter",
+  prompt="""Invoke the `dev-team:workflow-troubleshoot` skill with arguments:
+--context-file <task's own context_file>
+--problem "<problem_description>"
+"""
+)
+```
+
+Handle the outcome (a JSON object with `action` field), identically to how
+`workflow-orchestrate`'s own "Running the troubleshooter agent" section handles it:
+- `"continue"` → resume the poll loop at step 2a (the troubleshooter has edited that task's
+  context file)
+- `"terminate"` → report the reason to the user and stop
+- `"needs_user_input"` →
+  1. Ask the user the troubleshooter's question
+  2. Write the user's answer to the `troubleshooter_input` frontmatter key in that task's context
+     file by passing the answer via stdin:
+     ```bash
+     python3 -c "
+     from pathlib import Path; import re, sys
+     path = Path('<task's own context_file>')
+     answer = sys.stdin.read().strip()
+     text = path.read_text(encoding='utf-8')
+     text = re.sub(r'troubleshooter_input:.*', lambda m: f'troubleshooter_input: {answer}', text)
+     path.write_text(text, encoding='utf-8')
+     " <<'ANSWER_HEREDOC'
+     <user_answer>
+     ANSWER_HEREDOC
+     ```
+  3. Call the troubleshooter again with the user's input
+
+This dispatch is scoped to anomalies tied to one task_id. A scheduler-level anomaly — not tied to
+any task (e.g. `concurrent_schedule.py` itself exiting non-zero) — is out of scope for this
+section; step 2a's existing stop-and-report handling covers that case unchanged.
+
 ## Skills
 
 - `use-context-file` — pre-populating `base_branch`, and recording `worktree_path` /
-  `worktree_branch`, on a spawned task's context file
+  `worktree_branch`, on a spawned task's context file; also resolves each task's own context file
+  for the troubleshooter dispatch above
