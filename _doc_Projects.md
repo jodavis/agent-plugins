@@ -28,7 +28,7 @@ A simulated development team pipeline: Researcher → Developer → Reviewer →
 | Path | Purpose |
 |------|---------|
 | `.claude-plugin/plugin.json` | Plugin manifest: name, version, description, and commands directory |
-| `agents/` | Agent definition files (`*.md`) — role prompts for each pipeline agent (debugger, developer, researcher, reviewer) |
+| `agents/` | Agent definition files (`*.md`) — role prompts for each pipeline agent (debugger, developer, researcher, reviewer, troubleshooter) |
 | `commands/` | Skill/command definition files (`*.md`) — one per slash command exposed to the user |
 | `scripts/dev_team.py` | Pipeline orchestrator — accepts a work-item ID and drives the researcher → developer → reviewer loop |
 | `scripts/fix-issue-plan.md` | Workflow definition for the fix-issue pipeline |
