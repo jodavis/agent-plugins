@@ -48,6 +48,8 @@ git-repo:
     task: dev/<user-alias>/<task-work-item-id>-<slug>
     feature: feature/<feature-work-item-id>-<slug>
 
+troubleshooter:
+
 instructions:
   before-debug:
   after-debug:
