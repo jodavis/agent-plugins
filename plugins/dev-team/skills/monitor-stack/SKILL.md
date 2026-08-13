@@ -78,8 +78,7 @@ Use the `use-context-file` skill with `<epic-id>` (this skill's own `--work-item
 to locate and read (creating if necessary) the epic's own context file — per the spec's own
 Interfaces note, this monitor's bookkeeping lives on the epic/feature-work-item's tracked
 record, not any single task's context file, since one session now spans every task in the
-stack. Note `watch_worktree_path`/`watch_worktree_branch` if already recorded by a prior run of
-this skill for this epic.
+stack.
 
 Determine the epic's own feature branch — the trunk `gh stack` is anchored to — the same way
 `ensure-feature-branch` step 2 does: read `git-repo.working-branches.feature` from the context
@@ -107,8 +106,9 @@ already this worktree.
 ### 3 — Record this session's own worktree
 
 Record this session's own worktree as `watch_worktree_path`/`watch_worktree_branch` on the
-epic's context file via `use-context-file`, if not already recorded by an earlier pass of this
-same run:
+epic's context file via `use-context-file`, overwriting any values a prior (now-stopped) run of
+this skill for the same epic left behind — this session's worktree is always a fresh one,
+regardless of whether it's the epic's first monitor or a restart:
 
 ```bash
 git rev-parse --show-toplevel   # -> watch_worktree_path
