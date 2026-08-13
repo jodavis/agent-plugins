@@ -37,6 +37,16 @@ the shared common git directory. It is **not** visible or correct from a differe
 the one that last registered the branch. Always run these operations from within the same
 worktree that owns the branch/stack in question.
 
+**Concurrent workers, concretely:** this repo's usual pattern gives each task its own fresh
+`isolation: "worktree"` — that pattern is unsafe for `gh stack` state. Per the spike's
+recommendation, every `gh stack` operation for one feature's stack (task-branch registration via
+`ensure-working-branch`/`ensure-feature-branch`, and the ongoing `sync`/`view` polling in
+`monitor-stack`) must run from **one shared worktree per feature**, never from a task's own
+per-task worktree — a second task's `ensure-working-branch` run registering into the stack from a
+different worktree would get a false "not part of a stack" result instead of seeing the first
+task's registration. Callers that spawn a task into its own isolated worktree must still route
+their `gh stack` calls back through that one shared worktree.
+
 ## Preflight check
 
 Before any stacked-PR operation runs for the first time in a session, verify the extension:
@@ -52,7 +62,7 @@ Before any stacked-PR operation runs for the first time in a session, verify the
    `gh extension install github/gh-stack` and re-run step 1 to confirm.
 3. If the user **declines** the install offer, hard-stop: report clearly that stacked-PR work
    cannot proceed without `github/gh-stack`, and stop — there is no fallback stacked-PR mechanism.
-   No epic bootstrap or task work proceeds past this point.
+   No feature bootstrap or task work proceeds past this point.
 
 This preflight is agent-driven (an `AskUserQuestion`-style interaction), not a pure script — only
 the presence check itself (step 1) is scriptable, via `gh_stack.py`.
@@ -60,8 +70,8 @@ the presence check itself (step 1) is scriptable, via `gh_stack.py`.
 **Scope boundary for the decline hard-stop (step 3):** this skill and `gh_stack.py` have no
 "calling flow" of their own to exercise end-to-end — they are consumed by other skills
 (`ensure-feature-branch` in ADR-373, `ensure-working-branch` in ADR-375, and others across the
-epic), and it is those callers' own runtime flow that actually halts on a decline. The only piece
-of this decision that lives in this task's own scope is the absent/present signal
+feature), and it is those callers' own runtime flow that actually halts on a decline. The only
+piece of this decision that lives in this task's own scope is the absent/present signal
 `check_gh_stack_extension_installed()` returns, which is covered by
 `TestCheckGhStackExtensionInstalled`'s `no_extensions_installed`/`gh_extension_list_command_fails`
 cases; the hard-stop behavior itself — reporting clearly and halting all further work when the
@@ -72,7 +82,7 @@ against their own calling flow when they consume this preflight.
 
 ### init
 
-Anchors a new stack to a trunk branch (typically the epic's feature branch).
+Anchors a new stack to a trunk branch (typically the feature's own branch).
 
 ```
 gh stack init [branches...] [-b/--base <branch>]
