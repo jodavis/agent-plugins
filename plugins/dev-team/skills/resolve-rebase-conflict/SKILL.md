@@ -25,8 +25,8 @@ Do NOT use this skill when:
 
 You are working entirely inside a rebase already left mid-flight with conflicts. You never
 call `rebase_onto()`, and you never run `git push` or `git rebase --abort` yourself — those
-decisions belong to the caller (`dev-team:monitor-pr`), made from whichever of `"resolved"` or
-`"unresolved"` you report at the end.
+decisions belong to the caller (`dev-team:monitor-stack`), made from whichever of `"resolved"`
+or `"unresolved"` you report at the end.
 
 ## Steps
 
@@ -120,6 +120,7 @@ commit's own message carries forward unless the rebase specifically demands a ne
   still in progress for any other reason:** return `"unresolved"`.
 
 Either way, stop here. Do not run `git rebase --abort` or `git push` — the caller
-(`dev-team:monitor-pr`) runs `git rebase --abort` on `"unresolved"` to return to a clean
-pre-rebase state, and `git push --force-with-lease` on `"resolved"`; neither is this skill's
-responsibility.
+(`dev-team:monitor-stack`) runs `git rebase --abort` on `"unresolved"` to return to a clean
+pre-rebase state, and re-runs the `sync` operation (not a raw `git push --force-with-lease`) on
+`"resolved"` so `gh stack`'s own PR-position bookkeeping stays consistent; neither is this
+skill's responsibility.
