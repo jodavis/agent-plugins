@@ -5,12 +5,12 @@ Covers:
 - poll: a genuine conflict (mid-rebase git state left after sync) returns "conflict" immediately
   without calling the detector; a review_comment/ci_failure event returns immediately; a
   task_merged event is untracked silently and the loop continues unless every branch in the
-  stack is now merged ("epic_complete"); "no_change" once max_seconds elapses (including
+  stack is now merged ("stack_complete"); "no_change" once max_seconds elapses (including
   max_seconds=0, without sleeping); sync runs every iteration; a second, independent poll() call
   is unaffected by what the previous call returned
 - _rebase_in_progress: git-dir resolution (absolute/relative), rebase-merge, rebase-apply, no
   rebase in progress, and the git-dir lookup itself failing
-- _epic_complete: gh_stack.view() error, no branches, all merged, some not merged
+- _stack_complete: gh_stack.view() error, no branches, all merged, some not merged
 - main() CLI wrapper: dict-result success, "no_change" success, and the error path
 """
 
@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stack_pr_poll import main, poll, _epic_complete, _rebase_in_progress
+from stack_pr_poll import main, poll, _stack_complete, _rebase_in_progress
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ class TestPollConflictDetected:
              patch("stack_pr_poll._rebase_in_progress", return_value=True), \
              patch("stack_pr_poll.detect_next_stack_event", detect_mock):
             # Act
-            result = poll("ADR-EPIC-1", sleep=sleep_mock)
+            result = poll(sleep=sleep_mock)
 
         # Assert
         assert result == "conflict"
@@ -75,7 +75,7 @@ class TestPollActionableEventFiresImmediately:
              patch("stack_pr_poll._rebase_in_progress", return_value=False), \
              patch("stack_pr_poll.detect_next_stack_event", return_value=detector_event):
             # Act
-            result = poll("ADR-EPIC-1", sleep=sleep_mock)
+            result = poll(sleep=sleep_mock)
 
         # Assert
         assert result == expected_result
@@ -97,27 +97,27 @@ class TestPollTaskMergedEvent:
         with patch("stack_pr_poll.gh_stack.sync", return_value=("ok", "")), \
              patch("stack_pr_poll._rebase_in_progress", return_value=False), \
              patch("stack_pr_poll.detect_next_stack_event", return_value=merged_event), \
-             patch("stack_pr_poll._epic_complete", return_value=False):
+             patch("stack_pr_poll._stack_complete", return_value=False):
             # Act
-            result = poll("ADR-EPIC-1", max_seconds=90, sleep=sleep_mock, clock=clock)
+            result = poll(max_seconds=90, sleep=sleep_mock, clock=clock)
 
         # Assert
         assert result == "no_change"
         assert sleep_mock.call_count > 0
 
-    def test_poll_task_merged_every_branch_merged_returns_epic_complete(self):
+    def test_poll_task_merged_every_branch_merged_returns_stack_complete(self):
         # Arrange
         sleep_mock = MagicMock()
         merged_event = {"type": "task_merged", "task_work_item_id": "ADR-52"}
         with patch("stack_pr_poll.gh_stack.sync", return_value=("ok", "")), \
              patch("stack_pr_poll._rebase_in_progress", return_value=False), \
              patch("stack_pr_poll.detect_next_stack_event", return_value=merged_event), \
-             patch("stack_pr_poll._epic_complete", return_value=True):
+             patch("stack_pr_poll._stack_complete", return_value=True):
             # Act
-            result = poll("ADR-EPIC-1", sleep=sleep_mock)
+            result = poll(sleep=sleep_mock)
 
         # Assert
-        assert result == "epic_complete"
+        assert result == "stack_complete"
         sleep_mock.assert_not_called()
 
 
@@ -136,7 +136,7 @@ class TestPollNoChange:
              patch("stack_pr_poll._rebase_in_progress", return_value=False), \
              patch("stack_pr_poll.detect_next_stack_event", return_value=None):
             # Act
-            result = poll("ADR-EPIC-1", max_seconds=90, sleep=sleep_mock, clock=clock)
+            result = poll(max_seconds=90, sleep=sleep_mock, clock=clock)
 
         # Assert
         assert result == "no_change"
@@ -149,7 +149,7 @@ class TestPollNoChange:
              patch("stack_pr_poll._rebase_in_progress", return_value=False), \
              patch("stack_pr_poll.detect_next_stack_event", return_value=None):
             # Act
-            result = poll("ADR-EPIC-1", max_seconds=0, sleep=sleep_mock, clock=clock_mock)
+            result = poll(max_seconds=0, sleep=sleep_mock, clock=clock_mock)
 
         # Assert
         assert result == "no_change"
@@ -174,7 +174,7 @@ class TestPollSyncRunsEveryIteration:
              patch("stack_pr_poll._rebase_in_progress", return_value=False), \
              patch("stack_pr_poll.detect_next_stack_event", detect_mock):
             # Act
-            result = poll("ADR-EPIC-1", max_seconds=999, sleep=sleep_mock, clock=clock_mock)
+            result = poll(max_seconds=999, sleep=sleep_mock, clock=clock_mock)
 
         # Assert
         assert result == {"task_work_item_id": "ADR-53", "event": "ci_failure"}
@@ -196,13 +196,13 @@ class TestPollSecondEventPickedUpOnNextCall:
              patch("stack_pr_poll._rebase_in_progress", return_value=False), \
              patch("stack_pr_poll.detect_next_stack_event", side_effect=[first_event]):
             # Act
-            first_result = poll("ADR-EPIC-1", sleep=MagicMock())
+            first_result = poll(sleep=MagicMock())
 
         with patch("stack_pr_poll.gh_stack.sync", return_value=("ok", "")), \
              patch("stack_pr_poll._rebase_in_progress", return_value=False), \
              patch("stack_pr_poll.detect_next_stack_event", side_effect=[second_event]):
             # Act
-            second_result = poll("ADR-EPIC-1", sleep=MagicMock())
+            second_result = poll(sleep=MagicMock())
 
         # Assert
         assert first_result == {"task_work_item_id": "ADR-54", "event": "review_comment"}
@@ -269,10 +269,10 @@ class TestRebaseInProgress:
 
 
 # ---------------------------------------------------------------------------
-# _epic_complete — every branch reported by gh_stack.view() is merged
+# _stack_complete — every branch reported by gh_stack.view() is merged
 # ---------------------------------------------------------------------------
 
-class TestEpicComplete:
+class TestStackComplete:
     @pytest.mark.parametrize(
         "view_result, expected",
         [
@@ -290,11 +290,11 @@ class TestEpicComplete:
             ),
         ],
     )
-    def test_epic_complete_reflects_whether_every_branch_is_merged(self, tmp_path, view_result, expected):
+    def test_stack_complete_reflects_whether_every_branch_is_merged(self, tmp_path, view_result, expected):
         # Arrange
         with patch("stack_pr_poll.gh_stack.view", return_value=view_result):
             # Act
-            result = _epic_complete(tmp_path)
+            result = _stack_complete(tmp_path)
 
         # Assert
         assert result is expected
@@ -307,7 +307,7 @@ class TestEpicComplete:
 class TestMainCliWrapper:
     def test_main_no_change_result_prints_no_change(self, monkeypatch, capsys):
         # Arrange
-        monkeypatch.setattr(sys, "argv", ["stack_pr_poll.py", "ADR-EPIC-1", "0"])
+        monkeypatch.setattr(sys, "argv", ["stack_pr_poll.py", "0"])
 
         with patch("stack_pr_poll.poll", return_value="no_change"):
             # Act
@@ -319,7 +319,7 @@ class TestMainCliWrapper:
 
     def test_main_dict_result_prints_result_json(self, monkeypatch, capsys):
         # Arrange
-        monkeypatch.setattr(sys, "argv", ["stack_pr_poll.py", "ADR-EPIC-1", "480"])
+        monkeypatch.setattr(sys, "argv", ["stack_pr_poll.py", "480"])
         event = {"task_work_item_id": "ADR-56", "event": "ci_failure"}
 
         with patch("stack_pr_poll.poll", return_value=event):
@@ -332,7 +332,7 @@ class TestMainCliWrapper:
 
     def test_main_poll_raises_prints_error_and_exits_1(self, monkeypatch, capsys):
         # Arrange
-        monkeypatch.setattr(sys, "argv", ["stack_pr_poll.py", "ADR-EPIC-1", "480"])
+        monkeypatch.setattr(sys, "argv", ["stack_pr_poll.py", "480"])
 
         with patch("stack_pr_poll.poll", side_effect=RuntimeError("boom")):
             # Act
@@ -342,4 +342,4 @@ class TestMainCliWrapper:
         # Assert
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
-        assert captured.err == "Error: could not poll stack events for 'ADR-EPIC-1': boom\n"
+        assert captured.err == "Error: could not poll stack events: boom\n"

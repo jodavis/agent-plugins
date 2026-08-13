@@ -1,4 +1,4 @@
-"""Tests for detect_next_stack_event.py — detect_next_stack_event(epic_id) scans a stack's
+"""Tests for detect_next_stack_event.py — detect_next_stack_event() scans a stack's
 branches (via gh_stack.view(), already in stack-position order) and returns the first actionable
 event across the whole stack — one of review_comment, ci_failure, or task_merged — or None if
 nothing fired this call.
@@ -98,7 +98,7 @@ class TestDetectNextStackEventSingleSignal:
 
         # Act
         with patch("subprocess.run", side_effect=fake_run):
-            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+            result = detect_next_stack_event.detect_next_stack_event()
 
         # Assert
         assert result == {"type": expected_type, "task_work_item_id": work_item_id}
@@ -141,7 +141,7 @@ class TestDetectNextStackEventNoPrUrl:
 
         # Act
         with patch("subprocess.run", mock_run):
-            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+            result = detect_next_stack_event.detect_next_stack_event()
 
         # Assert
         assert result is None
@@ -200,7 +200,7 @@ class TestDetectNextStackEventNoneFired:
 
         # Act
         with patch("subprocess.run", side_effect=fake_run):
-            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+            result = detect_next_stack_event.detect_next_stack_event()
 
         # Assert
         assert result is None
@@ -265,7 +265,7 @@ class TestDetectNextStackEventChecksOutFiringBranch:
 
         # Act
         with patch("subprocess.run", side_effect=fake_run):
-            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+            result = detect_next_stack_event.detect_next_stack_event()
 
         # Assert
         assert result == {"type": "review_comment", "task_work_item_id": "ADR-65"}
@@ -329,7 +329,7 @@ class TestDetectNextStackEventStackPositionPrecedence:
 
         # Act
         with patch("subprocess.run", side_effect=fake_run):
-            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+            result = detect_next_stack_event.detect_next_stack_event()
 
         # Assert
         assert result == {"type": "review_comment", "task_work_item_id": "ADR-66"}
@@ -360,7 +360,7 @@ class TestDetectNextStackEventViewFails:
 
         # Act
         with patch("subprocess.run", mock_run):
-            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+            result = detect_next_stack_event.detect_next_stack_event()
 
         # Assert
         assert result is None
@@ -389,11 +389,60 @@ class TestDetectNextStackEventBranchWithNoUsableName:
 
         # Act
         with patch("subprocess.run", mock_run):
-            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+            result = detect_next_stack_event.detect_next_stack_event()
 
         # Assert
         assert result is None
         mock_run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# detect_next_stack_event — a branch name following the working-branches.task
+# template's `<task-work-item-id>-<slug>` shape has its slug stripped before
+# the context-file lookup
+# ---------------------------------------------------------------------------
+
+class TestDetectNextStackEventBranchNameWithSlug:
+    def test_detect_next_stack_event_strips_slug_suffix_from_branch_name(self, tmp_path, monkeypatch):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        import detect_next_stack_event
+
+        PipelineContext(
+            work_item_id="ADR-70",
+            pr_url="https://github.com/acme/widget/pull/80",
+        ).save(compute_context_path("ADR-70", get_repo_slug()))
+
+        monkeypatch.setattr(
+            detect_next_stack_event.gh_stack,
+            "view",
+            MagicMock(
+                return_value=(
+                    "ok",
+                    {"branches": [{"name": "dev/claude/ADR-70-fix-slug-parsing", "isMerged": False}]},
+                )
+            ),
+        )
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:2] == ["gh", "api"]:
+                return MagicMock(returncode=0, stdout=json.dumps([{"id": 903}]), stderr="")
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:2] == ["git", "checkout"]:
+                return MagicMock(returncode=0, stdout="", stderr="")
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        # Act
+        with patch("subprocess.run", side_effect=fake_run):
+            result = detect_next_stack_event.detect_next_stack_event()
+
+        # Assert
+        assert result == {"type": "review_comment", "task_work_item_id": "ADR-70"}
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +496,7 @@ class TestDetectNextStackEventNoContextFile:
 
         # Act
         with patch("subprocess.run", side_effect=fake_run):
-            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+            result = detect_next_stack_event.detect_next_stack_event()
 
         # Assert
         assert result == {"type": "review_comment", "task_work_item_id": "ADR-69"}
@@ -505,7 +554,7 @@ class TestDetectNextStackEventMergedAlreadySeen:
 
         # Act
         with patch("subprocess.run", side_effect=fake_run):
-            result = detect_next_stack_event.detect_next_stack_event("ADR-EPIC-1")
+            result = detect_next_stack_event.detect_next_stack_event()
 
         # Assert
         assert result is None

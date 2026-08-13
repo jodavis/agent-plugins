@@ -5,7 +5,7 @@ Every iteration runs the `sync` operation first (silent on success); a genuine c
 rebase left mid-flight by sync's own cascade-rebase step — returns "conflict" immediately,
 without ever consulting the detector. On a clean sync, the Stack PR event detector decides what
 happens next: a task_merged result is untracked silently and the loop continues unless every
-branch in the stack is now merged ("epic_complete"); a review_comment/ci_failure result — the
+branch in the stack is now merged ("stack_complete"); a review_comment/ci_failure result — the
 detector has already checked out that task's branch — is returned immediately as
 {"task_work_item_id", "event"}. Nothing firing loops on a fixed interval until max_seconds
 elapses, at which point "no_change" is returned. Self-bounded to stay well under Bash's
@@ -52,10 +52,10 @@ def _rebase_in_progress(cwd: Path) -> bool:
     return (git_dir / "rebase-merge").is_dir() or (git_dir / "rebase-apply").is_dir()
 
 
-def _epic_complete(cwd: Path) -> bool:
+def _stack_complete(cwd: Path) -> bool:
     """Every branch in the current stack is merged. The full stack's own `view()` membership
     stands in for the "target set" (see ADR-377's task brief, Known ambiguity #3) — no narrower,
-    epic-scoped target-set source is available to a bare script."""
+    feature-scoped target-set source is available to a bare script."""
     status, detail = gh_stack.view(cwd=cwd)
     if status != "ok":
         return False
@@ -66,22 +66,21 @@ def _epic_complete(cwd: Path) -> bool:
 
 
 def poll(
-    epic_id: str,
     max_seconds: int = 480,
     sleep=time.sleep,
     clock=time.monotonic,
-) -> Literal["conflict", "epic_complete", "no_change"] | dict:
+) -> Literal["conflict", "stack_complete", "no_change"] | dict:
     start = clock()
     while True:
         gh_stack.sync(cwd=REPO_ROOT)
         if _rebase_in_progress(REPO_ROOT):
             return "conflict"
 
-        event = detect_next_stack_event(epic_id)
+        event = detect_next_stack_event()
         if event is not None:
             if event["type"] == "task_merged":
-                if _epic_complete(REPO_ROOT):
-                    return "epic_complete"
+                if _stack_complete(REPO_ROOT):
+                    return "stack_complete"
             else:
                 return {"task_work_item_id": event["task_work_item_id"], "event": event["type"]}
 
@@ -92,14 +91,13 @@ def poll(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("epic_id")
     parser.add_argument("max_seconds", nargs="?", type=int, default=480)
     args = parser.parse_args()
 
     try:
-        result = poll(args.epic_id, args.max_seconds)
+        result = poll(args.max_seconds)
     except Exception as e:
-        print(f"Error: could not poll stack events for '{args.epic_id}': {e}", file=sys.stderr)
+        print(f"Error: could not poll stack events: {e}", file=sys.stderr)
         sys.exit(1)
 
     print(json.dumps(result))
