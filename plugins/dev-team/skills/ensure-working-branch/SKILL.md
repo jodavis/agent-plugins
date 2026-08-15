@@ -220,8 +220,18 @@ not known, and `<working-branch>` does not yet exist, create it directly from `<
 the cases that were never part of a stack:
 
 ```bash
-git checkout -b <working-branch> origin/<base-branch>
+git checkout --no-track -b <working-branch> origin/<base-branch>
 ```
+
+`--no-track` is required here: `git checkout -b <new> origin/<base>` (without it) makes git
+auto-configure `<new>`'s upstream as `origin/<base>` — the *base* branch, not `<new>` itself. A
+later bare `git push` (e.g. the pipeline's "Push git changes to remote" hook) would then push
+straight at that tracked upstream, which is very often a shared/protected branch (a feature
+branch, or another task's own working branch used as a dependency base) that rejects direct
+pushes — a real, previously-shipped bug (see PR #158's ADR-338 push-rejection incident). With
+`--no-track`, `<working-branch>` starts with no upstream configured at all, so the first push
+must set it explicitly (`git push -u origin <working-branch>`) — see `run-hook-instructions`'s
+push-instruction handling, which does exactly this rather than a bare `git push`.
 
 ---
 

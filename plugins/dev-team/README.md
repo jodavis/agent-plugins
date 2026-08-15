@@ -1,8 +1,8 @@
 # dev-team plugin
 
-The dev-team plugin provides a pipeline of agents — researcher, developer, reviewer, and debugger —
-for implementing work items and fixing bugs. It is designed to work across projects with different
-conventions, tools, and workflows.
+The dev-team plugin provides a pipeline of agents — planner, researcher, developer, reviewer, and
+debugger — for implementing work items and fixing bugs. It is designed to work across projects
+with different conventions, tools, and workflows.
 
 ## Extension point skills
 

@@ -20,7 +20,7 @@ files in the next steps.
 
 ### 2 — Read the task brief
 
-Read the context file. Locate the `<!-- section:task-brief -->` sentinel and extract all content that follows it until the next `<!-- section:` marker or end of file.
+Read the context file. Locate the `<!-- section:Researcher Brief -->` sentinel and extract all content that follows it until the next `<!-- section:` marker or end of file.
 
 If no task brief section is found, stop and report:
 

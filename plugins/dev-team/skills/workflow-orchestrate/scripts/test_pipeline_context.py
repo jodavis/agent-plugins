@@ -45,6 +45,8 @@ class TestPipelineContextDefaults:
         assert ctx.troubleshooter_input == ""
         assert ctx.pending_agent == ""
         assert ctx.added_to_stack is False
+        assert ctx.hook_phase == ""
+        assert ctx.pending_trigger == ""
         assert ctx.project_configuration == ""
         assert isinstance(ctx.started, datetime.datetime)
         assert isinstance(ctx.last_updated, datetime.datetime)
@@ -76,6 +78,8 @@ class TestPipelineContextSaveLoadRoundTrip:
             troubleshooter_input="some input",
             pending_agent="researcher",
             added_to_stack=True,
+            hook_phase="before",
+            pending_trigger="impl_done",
         )
         path = tmp_path / "ctx.md"
 
@@ -98,6 +102,8 @@ class TestPipelineContextSaveLoadRoundTrip:
         assert loaded.troubleshooter_input == "some input"
         assert loaded.pending_agent == "researcher"
         assert loaded.added_to_stack is True
+        assert loaded.hook_phase == "before"
+        assert loaded.pending_trigger == "impl_done"
 
     def test_save_then_load_roundtrips_started_and_last_updated_timestamps(self, tmp_path):
         # Arrange
@@ -130,6 +136,8 @@ class TestPipelineContextSaveLoadRoundTrip:
         assert loaded.test_log == ""
         assert loaded.troubleshooter_input == ""
         assert loaded.pending_agent == ""
+        assert loaded.hook_phase == ""
+        assert loaded.pending_trigger == ""
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +313,6 @@ class TestPipelineContextBodySections:
             pytest.param("signoff_research", "Checked prior signoff cycles for regressions.", id="signoff_research"),
             pytest.param("signoff_build_result", "Build passed on signoff attempt 2.", id="signoff_build_result"),
             pytest.param("validate_result", "All exit criteria satisfied.", id="validate_result"),
-            pytest.param("handoff_result", "Handed off to human reviewer.", id="handoff_result"),
         ],
     )
     def test_save_then_load_roundtrips_body_section(self, tmp_path, field_name, value):

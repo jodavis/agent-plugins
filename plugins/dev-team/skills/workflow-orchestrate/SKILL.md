@@ -5,14 +5,13 @@ description: >
   Orchestration loop for the dev-team pipeline. Drives the step machine by repeatedly
   invoking dev_team.py, parsing its JSON descriptor, and spawning the appropriate
   agent for each step. Replaces dev-team.md.
-argument-hint: --work-item-id <id> --workflow <pipeline> --research-skill <skill>
+argument-hint: --work-item-id <id> --workflow <pipeline>
 ---
 
 ## Arguments
 
 - `--work-item-id` — the resolved work item identifier (e.g. `PROJ-123` or `Issue-444`)
 - `--workflow` — the pipeline filename stem (e.g. `implement-task-plan` or `fix-issue-plan`)
-- `--research-skill` — the researcher skill name (e.g. `plan-task` or `researcher-issue`)
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory
 for this skill" path shown when this skill was invoked. Resolve it to that literal
@@ -72,7 +71,6 @@ Repeat the following until `action == "done"` or a terminal condition is reached
 ```bash
 python3 -u <skill-dir>/scripts/dev_team.py <work-item-id> \
   --workflow <skill-dir>/assets/<workflow>.md \
-  --research-skill <research-skill> \
   --context-file <context_file>
 ```
 
@@ -99,7 +97,7 @@ Let `descriptors` be the parsed JSON array. The array always has at least one it
 
 Run the troubleshooter agent (see below) with `problem: <descriptors[0].trigger`.
 
-**All other lists (multiple items, a single `spawn_agent` item, or a single `run_script` item):**
+**All other lists (multiple items, a single `spawn_agent`/`run_script`/`hooks` item):**
 
 Dispatch all items in parallel:
 
@@ -111,8 +109,7 @@ results = await [
 --context-file <context_file>
 --write-section <item.write_section>
 --skill <item.skill>
---skill-args <item.args>
---event <item.event>"
+--skill-args <item.args>"
   )  if item.action == "spawn_agent"  else
 
   Agent(
@@ -121,9 +118,15 @@ results = await [
 --context-file <context_file>
 --write-section <item.write_section>
 --command <item.command>
---log-file <item.log_file>
---event <item.event>"
-  )  if item.action == "run_script"
+--log-file <item.log_file>"
+  )  if item.action == "run_script"  else
+
+  Agent(
+    subagent_type="dev-team:hook-runner",
+    prompt="Invoke the `run-hook-instructions` skill with arguments:
+--instructions <item.instructions as JSON>
+--context-file <context_file>"
+  )  if item.action == "hooks"
 
   for item in descriptors
 ]
@@ -131,19 +134,24 @@ results = await [
 
 Omit `--skill-args` for `spawn_agent` items where `item.args` is empty.
 Omit `--command` arguments that are empty.
-Omit `--event` entirely for either item type when `item.event` is absent.
+A `hooks` item carries no `agent`/`skill`/`write_section` fields — it always dispatches to
+`dev-team:hook-runner` running `run-hook-instructions`, and (per the confirmed "no write-back"
+design) its result is only logged and checked below, never written to the context file.
 
 Log each result:
 ```
-[<work-item-id>] <item.skill or item.command>: <result>
+[<work-item-id>] <item.skill or item.command or "hooks">: <result>
 ```
 
 If any result is anything other than `successful` (case-insensitive), run the troubleshooter agent (see below).
 
 **If `descriptors` matches none of the shapes above** (e.g. an unrecognized `action` value, a
 single-item array whose one item is neither `"done"` nor `troubleshooter`): do not guess and
-proceed — this is an unknown condition. Stop and report it in full detail per this skill's Role
-section above: the raw `descriptors` JSON, what shape you expected, and why it didn't match.
+proceed — this is an unknown condition. Run the troubleshooter agent (see below) with
+`problem: <the raw descriptors JSON, what shape you expected, and why it didn't match>`. Only if
+the troubleshooter itself returns `"terminate"` do you fall back to stopping and reporting it in
+full detail per this skill's Role section above: the raw `descriptors` JSON, what shape you
+expected, and why it didn't match.
 
 ### 3 — Error handling
 
@@ -156,7 +164,7 @@ When a problem occurs with the workflow, don't try to fix it. Spawn the troubles
 
 ```
 Agent(
-  subagent_type="claude",
+  subagent_type="dev-team:troubleshooter",
   prompt="""Invoke the `dev-team:workflow-troubleshoot` skill with arguments:
 --context-file <context_file>
 --problem "<problem_description>"

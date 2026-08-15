@@ -3,9 +3,10 @@ name: implement-tdd
 user-invocable: false
 description: >
   Use when implementing one Testable component from a task brief's Components in scope list.
-  Drives the tdd-tester / tdd-implementer / tdd-refactorer trio through a genuine
-  red-green-refactor loop — tdd-refactorer gets a turn after every real green, not just a pass
-  at the end — until the component is fully covered, then commits.
+  Writes all of the component's unit tests in one pass, confirms they fail for the right
+  reason, implements until green, then commits. (Simplified flow for issue #152 — the
+  tdd-tester/tdd-implementer/tdd-refactorer trio and its driver script are parked, not
+  deleted, pending a fix.)
 argument-hint: <component-row> <task-brief-path> <spec-path>
 ---
 
@@ -16,116 +17,58 @@ Use this skill when:
 Do NOT use this skill when:
 - The component is `Wrapper` or `Orchestrator` — use `implement-direct` instead
 
-## Role reminder
-
-The trio (`tdd-tester`, `tdd-implementer`, `tdd-refactorer`) run as isolated `claude` CLI
-subprocesses, not as sub-agents of your own session — they never see your conversation and you
-never see theirs directly. A driver script owns the mechanical turn-by-turn relay (routing turns,
-checking each turn's changed-file scope, staging verified changes, driving the ping-pong loop) so
-none of that traffic enters your context. Your job is to write the component's prompt, run the
-script, and handle whatever it hands back to you: a Tier 2 escalation it can't resolve on its
-own, or a finished/committed component.
-
 ## Steps
 
-### 1 — Write the component prompt
+### 1 — Read the component's row
 
-Compose a prompt describing this component only — a focused subset of the task brief, not the
-whole thing:
-- the task brief path and spec path (so the trio can read the full brief/spec themselves if they
-  need more context)
-- this component's own Component Breakdown row (name, tier, responsibility, dependencies)
-- the work item id
+From the task brief's Components in scope list, read this component's name, tier (`Testable`),
+responsibility, and dependencies. If more detail is needed, read the spec file's Component
+Breakdown table for the same row.
 
-### 2 — Run the driver script
+### 2 — Write unit tests
 
-`<skill-dir>` refers to this skill's own base directory — the "Base directory for this skill"
-path shown when this skill was invoked. Resolve it to that literal path.
+Write *all* of this component's unit tests before writing any implementation. Cover the full
+coverage checklist `code-change-expectations` and `implement-task`'s self-review already expect
+for a `Testable` component: the nominal/happy path, every branch, every source of error
+(a dependency that throws, returns invalid data, or reports an error), boundary/invalid inputs,
+and log output that differs by branch or condition.
 
-Pass the component prompt on the script's stdin (e.g. a heredoc), not as a file:
+Follow `tdd-practices`' AAA structure and naming convention by name for every test. Do **not**
+apply `tdd-practices`' frozen-Arrange/Act rule here — that rule exists to stop rewriting a
+test's Arrange/Act after incremental green; it's moot when every test is authored before any
+implementation exists.
 
-```bash
-python3 "<skill-dir>/scripts/tdd_cycle.py" \
-  --component-name "<Component>" \
-  --repo-root <repo-root> \
-  --work-item-id <work-item-id> \
-  --state-file <state-path> <<'EOF'
-<component prompt text>
-EOF
-```
+Run the full batch and confirm every test fails, and fails for the right reason —
+`tdd-practices`' "red must fail for the right reason" rule: a missing-implementation failure,
+never a compile error, typo, or broken setup in disguise.
 
-Use a `<state-path>` unique to this component (e.g. under a scratch directory) — it's how the
-script resumes a specific component's in-progress loop after you resolve an escalation. Every
-re-run of the script (including to resolve an escalation) needs the same component prompt piped
-in again on stdin — it's only used to start a trio member's first turn, but the script always
-reads it.
+### 3 — Implement
 
-The script spawns (or resumes, via `--state-file`) three `claude -p` sessions running as the
-`tdd-tester`, `tdd-implementer`, and `tdd-refactorer` agents, relays turns between them, stages
-verified changes, and prints one of two JSON results to stdout:
+Implement the component until every test from step 2 passes. If you discover a behavior you
+missed while implementing, stop and add its test first — confirm it's red for the right reason —
+then resume implementing. Never write code for a behavior that doesn't already have a failing
+test.
 
-- **`{"status": "done", "commit_message": ..., "coverage_summary": ...}`**, exit 0 — the
-  component is fully covered and already committed. Nothing further for you to do for this
-  component.
-- **`{"status": "escalation", "recommended_action": ..., "reason": ..., "state_file": ...}`**,
-  exit 1 — the loop hit something it can't resolve on its own. `recommended_action` is one of
-  `clarify`, `resolve_directly`, `split_scope` (from `tdd-implementer`'s own Tier 2 escalation),
-  or `protocol_violation` (the script's own detection of a trio member touching the wrong file
-  class, an unrecognized reply, or a second `revise-request` after its one allowed retry).
-
-### 3 — Resolve an escalation, if one comes back
-
-- **`clarify`** — answer directly from the spec/task-brief context you already hold, then re-run
-  step 2 with `--state-file <same-path> --answer "<answer>"` to inject it and continue the loop.
-- **`resolve_directly`** — follow the `implement-direct` skill to implement the disputed piece
-  yourself, in the same working tree the script has been staging into. Run the disputed test
-  yourself to confirm it now passes. Then re-run step 2 with `--state-file <same-path>
-  --resolved-directly` — the script stages your change, treats it as a real green (routing to a
-  refactor turn), and continues the loop.
-- **`split_scope`** — the behavior needs something outside this component's declared boundary (an
-  unbuilt dependency, or a Component Breakdown gap). Stop here — do not re-run the script. Record
-  the scope adjustment for the task as a whole in your own work summary; the script leaves
-  whatever was staged as-is (nothing is committed for an incomplete component).
-- **`protocol_violation`** — read the `reason` field; the offending file has already been
-  reverted (or, for a double `revise-request`, nothing needs reverting). This should be rare.
-  Re-run step 2 with the same `--state-file` and no extra flags to retry the same turn; if it
-  recurs, treat it as an unresolved Tier 3 case per below.
-
-If you cannot confidently resolve an escalation through any of the above (Tier 3): make your best
-defensible call, implement accordingly (via the `resolve_directly` re-run path), and record the
-ambiguity in your work summary, for human review after the fact. Only treat this as an outright
-task failure if continuing would mean knowingly producing wrong code.
-
-## What the script does for you
-
-- Sends the same generic turn messages the protocol always used (`"take your next turn for
-  <Component>."`, `"tdd-tester reported: <reply>."`, the refactor-turn review message) — it never
-  tells a trio member whether its turn is structural or behavioral; each trio member's own turn
-  skill (`tdd-red-turn` / `tdd-green-turn` / `tdd-refactor-turn`) still decides that itself.
-- Checks each turn's changed-file list (test-only for `tdd-tester`, production-only for
-  `tdd-implementer`) and surfaces a mismatch as a `protocol_violation` escalation after reverting
-  the out-of-scope file.
-- Handles `tdd-implementer`'s Tier 1 `revise-request` — a pure mechanical pass-through to
-  `tdd-tester` and back for one retry — without involving you at all.
-- Stages each verified turn (`git add`) but never commits mid-loop; the one real commit happens
-  only once `tdd-tester` reports `done`, with message format `<work-item-id>: implement
-  <Component> via TDD (<coverage summary>)`.
-- Routes every real green (`tdd-implementer`'s `green`, or your `resolve_directly` resolution) to
-  a `tdd-refactorer` turn before returning to `tdd-tester` for the next behavior.
-
-## Build/test scope per turn
+### 4 — Build and test, scoped to this component
 
 Same build/test command syntax already documented in `code-change-expectations` for the target
-project — each trio member runs this itself as part of its own turn; the script does not run
-builds/tests on their behalf.
+project. An incremental build (never a clean rebuild); a test run scoped to this component's new
+tests, never the full project suite.
+
+Fix any build errors or test failures before proceeding to step 5 — never commit a component
+that doesn't build cleanly or pass its own tests.
+
+### 5 — Commit
+
+Use `commit-changes` with message `<work-item-id>: implement <Component>` — one commit for this
+component.
 
 ## Skills
 
-- `tdd-practices` — practice rules the trio follows (unchanged; still referenced by each trio
-  member's own turn skill)
+- `tdd-practices` — AAA structure, naming convention, and red-for-the-right-reason rules
+  followed in step 2
+- `code-change-expectations` — the coverage checklist step 2 writes tests against, and the
+  build/test command convention for step 4
 - `behavior-driven-development` — the E2E re-run step that still runs after all components
   (including this one) are implemented
-- `code-change-expectations` — coverage checklist `tdd-tester` (via `tdd-red-turn`) judges `done`
-  against
-- `implement-direct` — used for a `resolve_directly` Tier 2 escalation, before re-running the
-  script
+- `commit-changes` — the single commit in step 5

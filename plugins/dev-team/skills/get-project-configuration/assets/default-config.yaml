@@ -48,6 +48,8 @@ git-repo:
     task: dev/<user-alias>/<task-work-item-id>-<slug>
     feature: feature/<feature-work-item-id>-<slug>
 
+troubleshooter:
+
 instructions:
   before-debug:
   after-debug:
@@ -58,14 +60,14 @@ instructions:
   before-fix:
   after-fix:
   before-validate:
-  after-validate-success:
+  after-validate-clean:
     push: Push git changes to remote
-  after-validate-failure:
+  after-validate-build_failed:
   before-create-pr:
     ensure-pushed: If there are uncommitted changes, commit and push the branch
   after-create-pr:
   before-review:
   after-review:
   before-signoff:
-  after-signoff-success:
-  after-signoff-failure:
+  after-signoff-approved:
+  after-signoff-changes_requested:

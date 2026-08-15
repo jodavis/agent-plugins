@@ -268,7 +268,9 @@ def _load_project_config(repo_root: Path) -> dict:
 
 def _project_configuration(ctx: "PipelineContext") -> dict:
     """Return the project configuration cached on `ctx.project_configuration` at
-    context-file creation time."""
+    context-file creation time, or {} if it was never populated."""
+    if not ctx.project_configuration:
+        return {}
     return json.loads(ctx.project_configuration)
 
 
@@ -286,6 +288,22 @@ def _resolve_validation_script(config: dict, repo_root: Path) -> str | None:
         return None
     run_validation_script = Path(__file__).parent / "run_validation.py"
     return f'{sys.executable} "{run_validation_script}" --repo-root "{repo_root}"'
+
+
+def _resolve_hook_map(config: dict, key: str) -> dict:
+    """Return the ordered label:instruction map configured under one `instructions:` key.
+
+    Filters out any entry disabled via a null/"" value (the existing per-label disable
+    convention — a more specific config tier can silence one inherited label without
+    touching its siblings). An absent or entirely null/empty key resolves to {}.
+
+    The label is only meaningful here and in the merge step that follows (deduplicating an
+    entry a trigger-specific and an unconditional key both define) — once merged, only the
+    surviving instruction *text* is ever handed to a "hooks" action descriptor, as a bare list.
+    """
+    instructions = config.get("instructions") or {}
+    entries = instructions.get(key) or {}
+    return {label: instruction for label, instruction in entries.items() if instruction}
 
 
 def parse_json_output(text: str) -> dict:
@@ -381,10 +399,11 @@ class Step(ABC):
 
     handles: str
 
-    # Stable event name used by run-event-hooks to resolve before-<event>/after-<event>
-    # instructions. None means this Step has no single wrappable agent/script session
-    # (e.g. an inline step, or a ParallelSteps composite with no single action of its own)
-    # and no "event" key should be added to its emitted descriptors.
+    # Stable event name _do_get_actions_and_exit() uses to resolve before-<event>/
+    # after-<event>-<trigger> instructions from the project's `instructions:` config and
+    # dispatch them as their own "hooks" pipeline steps. None means this Step has no single
+    # wrappable agent/script session (e.g. an inline step, or a ParallelSteps composite with
+    # no single action of its own) and no hooks apply to it.
     EVENT_NAME: str | None = None
 
     @abstractmethod
@@ -464,13 +483,16 @@ class DebugStep(Step):
 
 
 class ResearchStep(Step):
+    """Runs the `/fix` pipeline's `researching` state — investigates a bug report via the
+    `dev-team:researcher` agent's `researcher-issue` skill. See `PlanStep` for the `/implement`
+    pipeline's counterpart, which hardcodes a different agent+skill pair for spec-driven tasks."""
+
     handles = "researching"
     EVENT_NAME = "research"
 
     _PENDING_KEY = "research"
 
-    def __init__(self, skill: str, ctx: "PipelineContext", context_path: Path) -> None:
-        self._skill = skill
+    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
         self._context_path = context_path
 
@@ -483,7 +505,7 @@ class ResearchStep(Step):
             "action": "spawn_agent",
             "message": f"Researcher is planning work for {ctx.work_item_id}.",
             "agent": "dev-team:researcher",
-            "skill": self._skill,
+            "skill": "researcher-issue",
             "context_file": str(self._context_path),
             "args": f"{ctx.work_item_id} {ctx.spec_path}",
             "read_sections": read_sections,
@@ -504,6 +526,53 @@ class ResearchStep(Step):
         return "research_done"
 
 
+class PlanStep(Step):
+    """Runs the `/implement` pipeline's `planning` state — turns a spec section into a task
+    brief via the `dev-team:planner` agent's `plan-task` skill, restricted to the spec and the
+    local codebase (no external research). See `ResearchStep` for the `/fix` pipeline's
+    counterpart.
+
+    `handle_results()` always returns `"ready"` today — there is no `research_needed` branch
+    wired up yet; this is the fork point a future research loop would use."""
+
+    handles = "planning"
+    EVENT_NAME = "plan"
+
+    _PENDING_KEY = "planning"
+
+    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
+        self._ctx = ctx
+        self._context_path = context_path
+
+    def get_actions(self) -> list[dict]:
+        ctx = self._ctx
+        if ctx.brief:
+            return []
+        return [{
+            "action": "spawn_agent",
+            "message": f"Planner is planning work for {ctx.work_item_id}.",
+            "agent": "dev-team:planner",
+            "skill": "plan-task",
+            "context_file": str(self._context_path),
+            "args": f"{ctx.work_item_id} {ctx.spec_path}",
+            "read_sections": [],
+            "write_section": "Researcher Brief",
+            "result_format": "success | failed",
+        }]
+
+    def handle_results(self) -> str:
+        ctx = self._ctx
+        if ctx.brief:
+            _handle_agent_success(ctx)
+            return "ready"
+        _handle_agent_failure(ctx)
+        _check_and_trigger_troubleshooter(
+            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
+            ctx.consecutive_failures, ctx, self._context_path,
+        )
+        return "ready"
+
+
 class ImplementStep(Step):
     handles = "implementing"
     EVENT_NAME = "implement"
@@ -520,7 +589,7 @@ class ImplementStep(Step):
             return []
         return [{
             "action": "spawn_agent",
-            "message": "Researcher has written the task brief. Developer is now implementing.",
+            "message": "Task brief is ready. Developer is now implementing.",
             "agent": "dev-team:developer",
             "skill": "implement-task",
             "args": ctx.work_item_id,
@@ -755,43 +824,6 @@ class ReviewerSignOffStep(Step):
         return "changes_requested"
 
 
-class ResearcherSignOffStep(Step):
-    """Wraps the researcher-validate spawn for use inside ParallelSteps."""
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.signoff_research:
-            return []
-        read_sections = ["Researcher Brief", "Implementation Summary"]
-        for i in range(1, len(ctx.work_summaries)):
-            read_sections.append(f"Fix {i}")
-        return [{
-            "action": "spawn_agent",
-            "agent": "dev-team:researcher",
-            "skill": "researcher-validate",
-            "context_file": str(self._context_path),
-            "read_sections": read_sections,
-            "write_section": "Signoff Research",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.signoff_research:
-            _handle_agent_success(ctx)
-            return "approved" if _researcher_validated(ctx.signoff_research) else "failed"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "failed"
-
-
 class BuildValidationStep(Step):
     """Wraps the wait-pr-checks run_script for use inside ParallelSteps."""
 
@@ -834,7 +866,14 @@ class BuildValidationStep(Step):
 
 
 class SignoffStep(ParallelSteps):
+    """Runs the three signoff checks in parallel, then resolves to `"approved"` or
+    `"changes_requested"`. Carries `EVENT_NAME = "signoff"` directly (rather than a
+    downstream near-no-op hand-off step) — `dev_team.py` already knows exactly when this
+    resolves, so a project's `before-signoff`/`after-signoff-approved` instructions (e.g.
+    promoting the PR, requesting review) hang directly off this step's own trigger."""
+
     handles = "signoff"
+    EVENT_NAME = "signoff"
 
     def __init__(self, ctx: "PipelineContext", context_path: Path, log_dir: Path) -> None:
         self._ctx = ctx
@@ -842,7 +881,6 @@ class SignoffStep(ParallelSteps):
         self._log_dir = log_dir
         super().__init__([
             ReviewerSignOffStep(ctx, context_path),
-            ResearcherSignOffStep(ctx, context_path),
             BuildValidationStep(ctx, context_path, log_dir),
         ])
 
@@ -1018,53 +1056,6 @@ class FixPrStep(Step):
         return "fix_done"
 
 
-class HandoffStep(Step):
-    """Runs only once `signoff` has approved — `reviewing`'s own `approved` trigger routes
-    to `signoff`, never here directly, so every hand-off is preceded by a full signoff pass.
-
-    Its event is named `signoff` (not `handoff`) because the pipeline event a project's
-    `instructions:` config customizes around this step is `before-signoff`/
-    `after-signoff-success`/`after-signoff-failure` — the hand-off work (promote PR, request
-    review, assign the work item) is configured as `after-signoff-success` instructions, run
-    generically by `run-event-hooks` around this near-no-op dispatch.
-    """
-
-    handles = "handoff"
-    EVENT_NAME = "signoff"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.handoff_result:
-            return []
-        return [{
-            "action": "spawn_agent",
-            "message": "Signoff approved. Developer is handing off to a human reviewer.",
-            "agent": "dev-team:developer",
-            "skill": "final-sign-off",
-            "args": f"{ctx.pr_url} {ctx.work_item_id}",
-            "context_file": str(self._context_path),
-            "read_sections": [],
-            "write_section": "Handoff Result",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.handoff_result:
-            _handle_agent_success(ctx)
-            return "handoff_done"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "handoff_done"
-
-
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
@@ -1078,7 +1069,6 @@ class DevTeamPipeline:
         context_path: Path,
         log_dir: Path,
         workflow: WorkflowDefinition,
-        research_skill: str,
     ) -> None:
         self.ctx = ctx
         self.context_path = context_path
@@ -1088,7 +1078,8 @@ class DevTeamPipeline:
         self.step_handlers: dict[str, Step] = {
             "spec-finding": FindSpecStep(ctx),
             "debugging": DebugStep(ctx, context_path),
-            "researching": ResearchStep(research_skill, ctx, context_path),
+            "researching": ResearchStep(ctx, context_path),
+            "planning": PlanStep(ctx, context_path),
             "implementing": ImplementStep(ctx, context_path),
             "validating": ValidateStep(ctx, context_path, log_dir),
             "fixing": FixStep(ctx, context_path),
@@ -1096,7 +1087,6 @@ class DevTeamPipeline:
             "reviewing": ReviewStep(ctx, context_path),
             "signoff": SignoffStep(ctx, context_path, log_dir),
             "fixing_pr": FixPrStep(ctx, context_path),
-            "handoff": HandoffStep(ctx, context_path),
         }
 
     def _dispatch_step(self, step: Step) -> str:
@@ -1104,18 +1094,99 @@ class DevTeamPipeline:
         return self._do_get_actions_and_exit(step)
 
     def _do_get_actions_and_exit(self, step: Step) -> str:
-        """Call get_actions(); exit if non-empty; otherwise call handle_results()."""
-        actions = step.get_actions()
-        if actions:
-            event_name = getattr(step, "EVENT_NAME", None)
-            if event_name:
-                for action in actions:
-                    action["event"] = event_name
-            self.ctx.pending_agent = _step_pending_key(step)
-            self.ctx.save(self.context_path)
-            exit_with_actions(actions)
-        # Inline step
-        return step.handle_results()
+        """Gate a step's dispatch through before-hook / main action / after-hook phases.
+
+        For a step with no EVENT_NAME, this is exactly get_actions()-then-handle_results(),
+        unchanged. For a step with EVENT_NAME set, before returning a trigger to run() it also
+        resolves and dispatches this project's configured before-<event>/after-<event>-<trigger>
+        instructions (if any) as their own "hooks" action — a step this function may be
+        re-entered for multiple times, tracked via ctx.hook_phase, before the real trigger is
+        ever returned. The orchestration loop is synchronous (dispatch an action, await its
+        result, re-invoke this script), so by the time this function sees hook_phase == "before"
+        or "after" again, that hook dispatch has already finished — nothing about its outcome is
+        inspected here; a failed hook surfaces through the orchestrator's own per-item result
+        logging, the same as any other failed dispatch item.
+
+        ctx.hook_phase == "" is reserved for "before-hooks haven't been resolved for this step
+        yet" — the one signal the top-of-function check uses to decide whether to dispatch them.
+        Once a before-hook has actually been dispatched and completes, this must NOT go back to
+        "" — the main action's own get_actions()/handle_results() cycle can legitimately take
+        several more re-entries of this function to resolve (e.g. a spawned agent needing a
+        retry), and resetting to "" here would make the very next re-entry misread "" as "fresh
+        step, haven't dispatched before-hooks yet" and re-dispatch them a second time before the
+        main action ever gets a chance to complete. Instead it moves to the intermediate "main"
+        phase, which the after-hook check below also treats as "ready" (alongside "" itself, for
+        steps whose before-hooks were never configured), so a step whose main action takes
+        multiple re-entries to resolve never re-fires either hook.
+        """
+        ctx = self.ctx
+        event_name = getattr(step, "EVENT_NAME", None)
+        config = _project_configuration(ctx) if event_name else None
+
+        if event_name:
+            if ctx.hook_phase == "":
+                before = _resolve_hook_map(config, f"before-{event_name}")
+                if before:
+                    ctx.hook_phase = "before"
+                    ctx.save(self.context_path)
+                    exit_with_actions([{
+                        "action": "hooks",
+                        "message": f"Running before-{event_name} instructions.",
+                        "instructions": list(before.values()),
+                        "context_file": str(self.context_path),
+                    }])
+            elif ctx.hook_phase == "before":
+                ctx.hook_phase = "main"
+                ctx.save(self.context_path)
+
+        if not ctx.pending_trigger:
+            # Only call get_actions() while the trigger hasn't been computed yet. Once
+            # pending_trigger is set, handle_results() already consumed the step's own
+            # "is my data here yet" signal (e.g. ctx.validate_result) — calling get_actions()
+            # again during an after-hook resumption would misread that consumed signal as
+            # "no result yet" and re-dispatch the main action a second time.
+            actions = step.get_actions()
+            if actions:
+                self.ctx.pending_agent = _step_pending_key(step)
+                self.ctx.save(self.context_path)
+                exit_with_actions(actions)
+
+        if not event_name:
+            # Inline step, no hooks apply.
+            return step.handle_results()
+
+        if ctx.pending_trigger:
+            trigger = ctx.pending_trigger
+        else:
+            trigger = step.handle_results()
+            ctx.pending_trigger = trigger
+            ctx.save(self.context_path)
+
+        if ctx.hook_phase in ("", "main"):
+            after = _resolve_hook_map(config, f"after-{event_name}-{trigger}")
+            after_unconditional = _resolve_hook_map(config, f"after-{event_name}")
+            merged = {**after, **after_unconditional}
+            if merged:
+                ctx.hook_phase = "after"
+                ctx.save(self.context_path)
+                exit_with_actions([{
+                    "action": "hooks",
+                    "message": f"Running after-{event_name} instructions.",
+                    "instructions": list(merged.values()),
+                    "context_file": str(self.context_path),
+                }])
+            elif ctx.hook_phase == "main":
+                # No after-hooks configured: clear the "main" marker now, rather than let it
+                # leak into the next step (a different EVENT_NAME) and be mistaken there for
+                # "before-hooks already handled" when they never were for that step.
+                ctx.hook_phase = ""
+                ctx.save(self.context_path)
+        elif ctx.hook_phase == "after":
+            ctx.hook_phase = ""
+            ctx.save(self.context_path)
+
+        ctx.pending_trigger = ""
+        return trigger
 
     def run(self) -> None:
         if self.machine.state == self.workflow.initial_state:
@@ -1300,8 +1371,6 @@ def main() -> None:
                         help="Work item ID (e.g. ADR-172 or Issue-444)")
     parser.add_argument("--workflow", metavar="path", default=None,
                         help="Path to a Mermaid stateDiagram-v2 workflow file")
-    parser.add_argument("--research-skill", metavar="skill", default=None,
-                        help="Researcher skill to use (e.g. plan-task or researcher-issue)")
     parser.add_argument("--plugin-root", metavar="path", default=None,
                         help="Plugin installation root (agents/ and commands/ resolved here)")
     parser.add_argument("--context-file", metavar="path", default=None,
@@ -1315,11 +1384,9 @@ def main() -> None:
         print(compute_context_path(args.work_item_id, args.print_context_path), flush=True)
         sys.exit(0)
 
-    # Normal pipeline mode requires --workflow, --research-skill, and --context-file.
+    # Normal pipeline mode requires --workflow and --context-file.
     if not args.workflow:
         parser.error("--workflow is required")
-    if not args.research_skill:
-        parser.error("--research-skill is required")
     if not args.context_file:
         parser.error("--context-file is required")
 
@@ -1353,10 +1420,7 @@ def main() -> None:
         ctx.project_configuration = json.dumps(_load_project_config(REPO_ROOT), indent=2)
         ctx.save(context_path)
 
-    DevTeamPipeline(
-        ctx, context_path, log_dir, workflow,
-        research_skill=args.research_skill,
-    ).run()
+    DevTeamPipeline(ctx, context_path, log_dir, workflow).run()
 
 
 if __name__ == "__main__":

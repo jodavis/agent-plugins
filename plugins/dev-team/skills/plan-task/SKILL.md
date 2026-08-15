@@ -22,29 +22,29 @@ Use the `identify-project-work-items` skill to determine the `work-item-id` from
 
 Use the `read-dev-spec-section` skill with the `work-item-id` to get the **task context** (the spec section describing this work item).
 
-### 3 — Research the task from three angles
+### 3 — Search the codebase from two angles
 
 **Do this yourself, in your own turn, using the `Skill` tool — do not spawn sub-agents for this
-step.** This skill runs as (or under) a `dev-team:researcher` agent, and that agent's own tool
+step.** This skill runs as (or under) a `dev-team:planner` agent, and that agent's own tool
 list has no `Agent`/`Task` tool, so it cannot spawn further agents of any kind, including more
-copies of itself. Invoke each of the following three skills in turn, passing the full task
-context from step 2 to each:
+copies of itself. Invoke each of the following two skills in turn, passing the full task context
+from step 2 to each:
 
 1. `find-repo-documentation` — discover all architecture docs in the repo. Read the ones
    relevant to this task and note a summary of what each says about the areas this task will
    touch.
 2. `research-sources` — find and read the source files most relevant to this task. Focus on
    existing interfaces, utilities, and patterns the implementer should use or extend.
-3. `research-learn` — research any frameworks, libraries, or patterns this task will use that
-   are not fully covered by local docs. Note findings with source links.
 
-Collect all three outputs before moving on.
+Collect both outputs before moving on. Do not research external frameworks, libraries, or best
+practices — those decisions are expected to already be settled in the spec; if they aren't, note
+it as a known ambiguity in step 4 rather than looking outside the repo for an answer.
 
 ### 4 — Write the task brief
 
 Use the `write-task-brief` skill, providing:
 - The `work-item-id`
 - The spec section (task context from step 2)
-- The combined research findings from all three research passes (step 3)
+- The combined findings from both codebase-search passes (step 3)
 
 Return the task brief as prose.
