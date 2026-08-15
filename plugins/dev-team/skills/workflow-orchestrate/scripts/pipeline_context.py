@@ -31,6 +31,7 @@ class PipelineContext:
     review_cycle_count: int = field(default=0, metadata=FRONTMATTER_FIELD)
     troubleshooter_input: str = field(default="", metadata=FRONTMATTER_FIELD)
     pending_agent: str = field(default="", metadata=FRONTMATTER_FIELD)
+    added_to_stack: bool = field(default=False, metadata=FRONTMATTER_FIELD)
     project_configuration: str = ""
     started: datetime.datetime = field(default_factory=datetime.datetime.now, metadata=FRONTMATTER_FIELD)
     last_updated: datetime.datetime = field(default_factory=datetime.datetime.now, metadata=FRONTMATTER_FIELD)
@@ -65,6 +66,7 @@ class PipelineContext:
             f"review_cycle_count: {self.review_cycle_count}",
             f"troubleshooter_input: {self.troubleshooter_input}",
             f"pending_agent: {self.pending_agent}",
+            f"added_to_stack: {self.added_to_stack}",
             f"started: {self.started.isoformat()}",
             f"last_updated: {self.last_updated.isoformat()}",
         ]
@@ -182,6 +184,7 @@ class PipelineContext:
             review_cycle_count=int(meta.get("review_cycle_count", 0)),
             troubleshooter_input=meta.get("troubleshooter_input", ""),
             pending_agent=meta.get("pending_agent", ""),
+            added_to_stack=meta.get("added_to_stack", "False").strip().lower() == "true",
         )
 
         try:
