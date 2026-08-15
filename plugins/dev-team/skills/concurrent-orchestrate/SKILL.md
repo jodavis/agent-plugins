@@ -4,15 +4,17 @@ user-invocable: false
 description: >
   Orchestration loop for running several dependency-ordered task-work-items concurrently.
   Repeatedly invokes concurrent_schedule.py, spawns an isolated workflow-orchestrate run per
-  newly eligible task, auto-starts a dev-team:monitor-pr monitor the moment each one reaches
-  hand-off, and stops on "complete" or "blocked" instead of polling forever.
+  newly eligible task, auto-starts a dev-team:monitor-stack monitor once per epic the moment
+  the first task in that epic's target set reaches hand-off, and stops on "complete" or
+  "blocked" instead of polling forever.
 argument-hint: --target-mode <up-to|list> --target <key, or comma-separated keys>
 ---
 
 ## Arguments
 
-- `--target-mode` — `up-to` (inclusive dependency-closure target — its own dependency graph is
-  expanded automatically) or `list` (an explicit task list — taken as-is, no closure expansion)
+- `--target-mode` — `up-to` (inclusive target — every task from the start of the epic's
+  document order through the target key, expanded automatically) or `list` (an explicit task
+  list — taken as-is, no expansion)
 - `--target` — the single target key (`up-to` mode) or a comma-separated list of two or more
   keys (`list` mode)
 
@@ -30,8 +32,8 @@ The repo-wide cap on concurrently active task-pipeline spawns, enforced internal
 `concurrent_schedule.py` (via `get-project-configuration`'s merged config) — never something
 this skill's own prose reads or reasons about directly. Counts only active (non-terminal)
 `workflow-orchestrate` spawns tracked across every `concurrent-<target-slug>.json` file under
-this repo's state directory — never a `dev-team:monitor-pr` monitor, which is idle almost all the
-time it's running. Defaults to `3`; override in `.dev-team/config.yaml` for a machine with more
+this repo's state directory — never a `dev-team:monitor-stack` monitor, which is idle almost all
+the time it's running. Defaults to `3`; override in `.dev-team/config.yaml` for a machine with more
 (or less) headroom for parallel agent sessions:
 
 ```yaml
@@ -48,11 +50,14 @@ the loop by invoking `concurrent_schedule.py` repeatedly, spawning whatever it t
 and stopping on `"complete"` or `"blocked"`.
 
 **Never attempt to:**
-- Compute the dependency closure, a task's eligibility, or the concurrency cap yourself —
-  `concurrent_schedule.py` owns all of that
+- Compute the target task set, a task's eligibility, the concurrency cap, or whether the epic's
+  feature branch is bootstrapped yet, yourself — `concurrent_schedule.py` owns all of that
 - Fix build errors, test failures, or code review comments yourself
 - Invoke agent skills directly (other than spawning `workflow-orchestrate` itself, unmodified,
-  per task, and `dev-team:monitor-pr` once that task reaches hand-off)
+  per task, `dev-team:monitor-stack` once per epic — the moment the first task in that epic's
+  target set reaches hand-off, not once per task — and `ensure-feature-branch` on a
+  `bootstrap_needed` result — the only skill this session invokes directly in-session rather
+  than spawning, since it needs this session's own real MCP/`gh` credentials)
 - Edit source files or test files
 - Take any action beyond what the script's JSON descriptor instructs
 
@@ -125,10 +130,11 @@ Invoke this `Bash` call with an explicit `timeout` of at least `330000`
 (5.5 minutes) — comfortably past the script's own ~5-minute default polling budget.
 
 Capture stdout — a single JSON object
-`{"status": ..., "spawn": [...], "blocked_tasks": [...], "running": [...]}`. If the script exits
-non-zero, it prints a clear `Error: ...` message to stderr instead — stop and report that error
-in detail (a dangling/cyclic spec, or an explicit-list task whose dependency is neither in the
-list nor already done); do not retry or fall back to guessing.
+`{"status": ..., "spawn": [...], "blocked_tasks": [...], "running": [...]}` (plus an
+`"epic_id"` key on a `"bootstrap_needed"` result). If the script exits non-zero, it prints a
+clear `Error: ...` message to stderr instead — stop and report that error in detail (a
+dangling/cyclic spec, or an explicit-list task whose dependency is neither in the list nor
+already done); do not retry or fall back to guessing.
 
 #### 2b — Branch on status
 
@@ -137,20 +143,21 @@ list nor already done); do not retry or fall back to guessing.
 - **`"blocked"`** — every currently-spawned task has also reached a terminal state, but some
   not-yet-started task's dependency chain includes a task that ended in `failed`, so it can
   never become eligible. Go to step 3 and stop — never keep polling once this fires.
+- **`"bootstrap_needed"`** — the epic's feature branch doesn't exist yet (the script can't
+  bootstrap it itself — no MCP/`gh` credentials). Invoke the `ensure-feature-branch` skill with
+  the returned `epic_id`, then re-invoke step 2a right away — the script's own live
+  `git branch -r` check will find the branch this time and proceed to compute a batch, so this
+  never round-trips through `"bootstrap_needed"` a second time for the same epic once
+  `ensure-feature-branch` reports `successful`. If `ensure-feature-branch` reports anything
+  else, stop and report the failure in detail.
 - **`"waiting"`** — continue to step 2c for each entry in `spawn` (possibly empty this cycle:
   the cap is full, or nothing newly eligible), then to step 2d.
 
 #### 2c — Spawn each newly eligible task
 
-For each `{task_id, base_branch}` in `spawn`:
+For each `{task_id}` in `spawn`:
 
-1. If `base_branch` is not `None`, use the `use-context-file` skill to write it to that task's
-   context file's `base_branch` frontmatter field, before spawning — `ensure-working-branch`
-   uses it directly instead of computing its own default when it finds it already set. If
-   `base_branch` is `None`, do nothing: leave the field unset so `ensure-working-branch` falls
-   through to its own existing default resolution (every dependency already merged, or no
-   dependencies at all).
-2. Spawn a fresh, isolated `workflow-orchestrate` run in the background, so this loop isn't
+1. Spawn a fresh, isolated `workflow-orchestrate` run in the background, so this loop isn't
    blocked waiting on it before moving to the next task or the next poll:
    ```
    Agent(
@@ -161,11 +168,11 @@ For each `{task_id, base_branch}` in `spawn`:
    --work-item-id <task_id> --workflow implement-task-plan"
    )
    ```
-3. Once the spawn call returns its worktree path and branch, use the `use-context-file` skill
+2. Once the spawn call returns its worktree path and branch, use the `use-context-file` skill
    to record them into that task's context file as `worktree_path` / `worktree_branch` — the
    `Agent` tool only auto-cleans a worktree if the spawned agent made *no* changes, which never
    applies here, so this is what makes the worktree findable for cleanup later.
-4. Add `task_id` to this session's own in-session "live spawn handle" record — the same one
+3. Add `task_id` to this session's own in-session "live spawn handle" record — the same one
    steps 1 and 2d check before treating a `running` entry as unclaimed. Keep it only in this
    session's own memory, never written to any file, mirroring step 2e's own in-session record.
    This is what makes steps 1 and 2d's "not already held" check meaningful instead of vacuously
@@ -202,42 +209,51 @@ is still in flight (in which case you'll see it as soon as that call returns) �
 trigger to run step 2e below for the task_id(s) it names, in addition to whatever re-invocation
 timing applies above.
 
-#### 2e — Auto-start `dev-team:monitor-pr` for a task that just reached hand-off
+#### 2e — Auto-start `dev-team:monitor-stack` for the epic of a task that just reached hand-off
 
-Keep your own in-session record of which task_ids you've already spawned a `dev-team:monitor-pr`
-monitor for (start empty; this record lives only in this session's own memory, never written to
-any file — a restarted `concurrent-orchestrate` run has no spawned pipelines finishing anew for
-an already-handed-off task, so it never re-triggers this step for one).
+Keep your own in-session record of which epic_ids you've already spawned a
+`dev-team:monitor-stack` monitor for (start empty; this record lives only in this session's own
+memory, never written to any file — a restarted `concurrent-orchestrate` run has no spawned
+pipelines finishing anew for an epic whose first task already handed off, so it never
+re-triggers this step for one). This record is keyed by epic_id, not task_id —
+`dev-team:monitor-stack` is spawned once per epic, the moment the *first* task in that epic's
+target set reaches hand-off, not once per task.
 
 A spawned pipeline finishing successfully (step 2c's `workflow-orchestrate` `Agent` session
 reporting success) means that task's own state machine transitioned `handoff → done` in one
 pass — there is no separately observable "reached hand-off" event apart from that session
 finishing successfully. For each task_id whose spawned pipeline the step 2d trigger just
-reported as finished *successfully*, and that isn't already in your in-session record:
+reported as finished *successfully*:
 
 1. Use the `use-context-file` skill to read that task's context file and confirm `pr_url` is
    set (it always will be, on a successful hand-off — this is a sanity check, not a retry loop).
-   If `pr_url` is empty, do not spawn a monitor for this task_id: skip it, report the
-   inconsistency in detail (task_id and the fact that a successful hand-off left no `pr_url`),
-   and add it to the in-session record anyway so a later poll doesn't repeatedly re-report the
-   same inconsistency for it.
-2. Spawn `dev-team:monitor-pr` for it as a **local background `Agent`** (`run_in_background: true`,
-   not a cloud routine), mirroring the exact spawn pattern step 2c already uses for
-   `workflow-orchestrate` itself:
+   If `pr_url` is empty, report the inconsistency in detail (task_id and the fact that a
+   successful hand-off left no `pr_url`) and skip the rest of this step for this task_id — do
+   not spawn or record anything for it.
+2. Read that same context file's `parent_work_item` field — the task's own epic id, recorded by
+   `ensure-working-branch`'s existing step 4a/4c. If it's empty (e.g. a plain GitHub-issue-driven
+   task, or a spec section with no parent heading, has no discoverable epic), report the
+   inconsistency in detail (task_id and the fact that a successful hand-off left no
+   `parent_work_item`) and skip the rest of this step for this task_id — do not spawn or record
+   anything for it. If it's already in your in-session record, this epic already has a monitor
+   running; skip the rest of this step for this task_id.
+3. Otherwise, spawn `dev-team:monitor-stack` for the epic as a **local background `Agent`**
+   (`run_in_background: true`, not a cloud routine), mirroring the exact spawn pattern step 2c
+   already uses for `workflow-orchestrate` itself:
    ```
    Agent(
      subagent_type: "claude",
      isolation: "worktree",
      run_in_background: true,
-     prompt: "Invoke the `monitor-pr` skill with arguments:
-   --work-item-id <task_id>"
+     prompt: "Invoke the `monitor-stack` skill with arguments:
+   --work-item-id <epic_id>"
    )
    ```
-3. Add `task_id` to your in-session record so this task never gets a second monitor spawned for
-   it, even if a later poll re-notices its pipeline as finished.
+4. Add `epic_id` to your in-session record so this epic never gets a second monitor spawned for
+   it, even if a later poll re-notices another of its tasks' pipelines as finished.
 
 A pipeline that finished *unsuccessfully* (failed rather than handed off) never reaches this
-step — there is no PR to monitor, so no `dev-team:monitor-pr` is spawned for it.
+step — there is no PR to monitor, so no `dev-team:monitor-stack` spawn is considered for it.
 
 ### 3 — Report
 
@@ -293,6 +309,7 @@ section; step 2a's existing stop-and-report handling covers that case unchanged.
 
 ## Skills
 
-- `use-context-file` — pre-populating `base_branch`, and recording `worktree_path` /
-  `worktree_branch`, on a spawned task's context file; also resolves each task's own context file
-  for the troubleshooter dispatch above
+- `use-context-file` — recording `worktree_path` / `worktree_branch` on a spawned task's
+  context file; reading a handed-off task's `pr_url` and `parent_work_item` fields (step 2e)
+- `ensure-feature-branch` — bootstraps the epic's feature branch, invoked in-session on a
+  `"bootstrap_needed"` result (step 2b)

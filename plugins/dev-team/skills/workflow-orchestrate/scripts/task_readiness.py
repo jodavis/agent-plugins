@@ -6,10 +6,19 @@ eligible to start given its declared dependencies.
 
 Usage: task_readiness.py <task-work-item-id> [comma-separated dependency ids]
 
+ADR-374 simplifies `is_task_eligible`: a task is eligible once every declared dependency has
+reached "ready" (PR created — `pr_url` set) or "done" — no dependency ever needs to actually
+merge, and there is no longer an "all but one merged" exception or a selected `base_branch`.
+Stack position (which branch a task's code is based on) is decoupled from this real-dependency
+readiness check entirely — see `_spec_StackedPRs.md`'s Key Design Decisions.
+
 `main()` is a thin CLI wrapper so a prose skill (`ensure-working-branch`, which has no other
 way to call a Python function directly) can invoke this via `Bash`: it prints
-`is_task_eligible`'s result as `{"status": ..., "base_branch": ...}` JSON to stdout on success,
-or a clear `Error: ...` message to stderr with a non-zero exit on failure.
+`is_task_eligible`'s result as `{"status": ..., "base_branch": null}` JSON to stdout on
+success, or a clear `Error: ...` message to stderr with a non-zero exit on failure.
+`base_branch` is kept as an unconditional `null` in this printed shape — a compatibility shim
+for `ensure-working-branch`'s still-unmigrated step 4b (ADR-375, not yet landed), which reads
+this key but no longer needs to branch meaningfully on it.
 """
 
 import json
@@ -72,21 +81,21 @@ def task_snapshot(task_work_item_id: str) -> dict:
     return snapshot_from_status_and_context(status, ctx)
 
 
-def is_task_eligible(task_work_item_id: str, dependency_ids: list[str]) -> tuple[Literal["eligible", "waiting", "blocked"], str | None]:
+def is_task_eligible(task_work_item_id: str, dependency_ids: list[str]) -> Literal["eligible", "waiting", "blocked"]:
+    """A task is eligible once every declared dependency has reached "ready" (`pr_url` set) or
+    "done" — no dependency ever needs to actually merge, since a linear stack means whichever
+    dependency sorts later already transitively contains everything sorted before it once both
+    are "ready". "blocked" if any dependency reached the `failed` terminal state, regardless of
+    the others. "waiting" while any dependency is still short of "ready"/"done" and none have
+    failed."""
     if not dependency_ids:
-        return ("eligible", None)
-    results = {dep_id: dependency_status_and_context(dep_id) for dep_id in dependency_ids}
-    statuses = {dep_id: status for dep_id, (status, _) in results.items()}
+        return "eligible"
+    statuses = {dep_id: dependency_status(dep_id) for dep_id in dependency_ids}
     if "failed" in statuses.values():
-        return ("blocked", None)
-    not_done = [dep_id for dep_id, status in statuses.items() if status != "done"]
-    if not not_done:
-        return ("eligible", None)
-    if len(not_done) == 1 and statuses[not_done[0]] == "ready":
-        _, ctx = results[not_done[0]]
-        branch = ctx.extra_frontmatter.get("working_branch")
-        return ("eligible", branch)
-    return ("waiting", None)
+        return "blocked"
+    if all(status in ("ready", "done") for status in statuses.values()):
+        return "eligible"
+    return "waiting"
 
 
 def main() -> None:
@@ -102,12 +111,12 @@ def main() -> None:
     dependency_ids = [dep.strip() for dep in raw_dependencies.split(",") if dep.strip()]
 
     try:
-        status, base_branch = is_task_eligible(task_work_item_id, dependency_ids)
+        status = is_task_eligible(task_work_item_id, dependency_ids)
     except Exception as e:
         print(f"Error: could not compute task eligibility for '{task_work_item_id}': {e}", file=sys.stderr)
         sys.exit(1)
 
-    print(json.dumps({"status": status, "base_branch": base_branch}), flush=True)
+    print(json.dumps({"status": status, "base_branch": None}), flush=True)
 
 
 if __name__ == "__main__":

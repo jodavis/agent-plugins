@@ -11,22 +11,22 @@ argument-hint: <task-brief-or-spec-context>
 ---
 
 Use this skill when:
-- You (the Developer agent) have been invoked in the current worktree after the Rebase
-  mechanic (`rebase_onto()`) already detected a conflict and left the rebase in progress —
-  `rebase_onto()` itself has already exited; this skill does not call it and does not re-enter
-  it
+- You (the Developer agent) have been invoked in the current worktree after `gh stack sync`'s
+  own cascading rebase already detected a conflict and left the rebase in progress — the
+  `sync` operation itself has already exited; this skill does not call it and does not
+  re-enter it
 - You have the task's own brief/spec section available as context for what the working
   branch's changes were meant to accomplish
 
 Do NOT use this skill when:
 - No rebase is currently in progress in this worktree — there is nothing to resolve
-- You need to start or retry a rebase from scratch — that is `rebase_onto()`'s job, not this
+- You need to start or retry a sync from scratch — that is the `sync` operation's job, not this
   skill's
 
 You are working entirely inside a rebase already left mid-flight with conflicts. You never
-call `rebase_onto()`, and you never run `git push` or `git rebase --abort` yourself — those
-decisions belong to the caller (`dev-team:monitor-pr`), made from whichever of `"resolved"` or
-`"unresolved"` you report at the end.
+call `sync` yourself, and you never run `git push` or `git rebase --abort` yourself — those
+decisions belong to the caller (`dev-team:monitor-stack`), made from whichever of `"resolved"`
+or `"unresolved"` you report at the end.
 
 ## Steps
 
@@ -120,6 +120,7 @@ commit's own message carries forward unless the rebase specifically demands a ne
   still in progress for any other reason:** return `"unresolved"`.
 
 Either way, stop here. Do not run `git rebase --abort` or `git push` — the caller
-(`dev-team:monitor-pr`) runs `git rebase --abort` on `"unresolved"` to return to a clean
-pre-rebase state, and `git push --force-with-lease` on `"resolved"`; neither is this skill's
-responsibility.
+(`dev-team:monitor-stack`) runs `git rebase --abort` on `"unresolved"` to return to a clean
+pre-rebase state, and re-runs the `sync` operation (not a raw `git push --force-with-lease`) on
+`"resolved"` so `gh stack`'s own PR-position bookkeeping stays consistent; neither is this
+skill's responsibility.

@@ -2,13 +2,12 @@
 
 Builds one of three named scenarios into a fresh working git clone, left mid-rebase with a
 real conflict already in progress — the exact entry state `resolve-rebase-conflict` expects
-(the state `rebase_onto()` leaves behind the moment it detects a conflict; see
-`plugins/dev-team/skills/workflow-orchestrate/scripts/rebase_mechanic.py`).
+(the state a rebase attempt leaves behind the moment it detects a conflict).
 
-Reuses `rebase_mechanic.rebase_onto()` itself to produce the conflict, and
-`test_rebase_mechanic.py`'s bare-"origin"-plus-working-clone, diverge-then-rebase construction
-approach — so each scenario's conflict state comes from a real rebase attempt against real git
-subprocess calls, not hand-crafted conflict markers.
+Uses this module's own `_rebase_onto()` helper (a fixture-local stand-in for the retired
+`rebase_mechanic.rebase_onto()`, ADR-378) to produce the conflict via a bare-"origin"-plus-
+working-clone, diverge-then-rebase construction — so each scenario's conflict state comes from a
+real rebase attempt against real git subprocess calls, not hand-crafted conflict markers.
 
 Scenarios:
 - "single-file": one file (CHANGELOG.md), one conflicting hunk, resolvable purely from the
@@ -28,15 +27,6 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-
-_REBASE_MECHANIC_DIR = (
-    Path(__file__).resolve().parent.parent.parent
-    / "skills"
-    / "workflow-orchestrate"
-    / "scripts"
-)
-sys.path.insert(0, str(_REBASE_MECHANIC_DIR))
-from rebase_mechanic import rebase_onto  # noqa: E402
 
 SCENARIOS = ("single-file", "multi-file", "unresolvable")
 
@@ -104,10 +94,26 @@ def _shared_initial_commit(work: Path) -> None:
     _run_git(["push", "-u", "origin", BASE_BRANCH], cwd=work)
 
 
+def _rebase_onto(working_branch: str, base_branch: str, work: Path) -> str:
+    """Fixture-local stand-in for the retired `rebase_mechanic.rebase_onto()` (ADR-378): fetches
+    origin, rebases `working_branch` onto the freshly-fetched `origin/<base_branch>`, and either
+    force-pushes with lease and returns "rebased" on a clean rebase, or leaves the rebase in
+    progress and returns "conflict" on a genuine conflict — this harness only needs that same
+    conflict-vs-clean outcome to construct its scenarios, not a shared production dependency."""
+    _run_git(["fetch", "origin"], cwd=work)
+    _run_git(["checkout", working_branch], cwd=work)
+    try:
+        _run_git(["rebase", f"origin/{base_branch}"], cwd=work)
+    except RuntimeError:
+        return "conflict"
+    _run_git(["push", "--force-with-lease", "origin", working_branch], cwd=work)
+    return "rebased"
+
+
 def _diverge_and_rebase(work: Path) -> str:
     """Push the working branch's commits, then the base branch's diverging commits, then
-    attempt the rebase exactly as `dev-team:monitor-pr` would. Returns rebase_onto()'s result
-    ("rebased" or "conflict") so callers can assert the scenario actually produced a
+    attempt the rebase exactly as `dev-team:monitor-stack` would. Returns `_rebase_onto()`'s
+    result ("rebased" or "conflict") so callers can assert the scenario actually produced a
     conflict."""
     _run_git(["push", "-u", "origin", WORKING_BRANCH], cwd=work)
 
@@ -115,7 +121,7 @@ def _diverge_and_rebase(work: Path) -> str:
     _run_git(["push", "origin", BASE_BRANCH], cwd=work)
 
     _run_git(["checkout", WORKING_BRANCH], cwd=work)
-    return rebase_onto(WORKING_BRANCH, BASE_BRANCH, work)
+    return _rebase_onto(WORKING_BRANCH, BASE_BRANCH, work)
 
 
 def build_single_file_scenario(dest: Path) -> ScenarioFixture:

@@ -31,6 +31,11 @@ Add a `## Tasks` section at the end of the spec file. For each task write:
   best-effort from the design, the same way titles and descriptions already are — a task whose
   description says it builds on another task's interfaces gets that task named as a dependency.
   A task may depend on more than one other task, comma-separated.
+- **Hard rule: write every task after all of its own `Depends on:` entries.** The `## Tasks`
+  section's document order *is* the stack order — nothing computed or persisted from it later —
+  so a task must never appear before a task it depends on. This is not the same as the softer,
+  non-enforced guideline (elsewhere) to order human-operator tasks as late as possible; this rule
+  is mandatory for every task, human or agent.
 - A one-sentence description
 - Exit criteria as a checkbox list
 - For tasks that include new E2E tests, write exit criteria as Gherkin-style acceptance scenarios (`Given / When / Then`)
