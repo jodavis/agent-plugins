@@ -221,6 +221,54 @@ class TestQueuePostIdUniqueness:
 
 
 # ---------------------------------------------------------------------------
+# queue_post — directory-creation and write failures
+# ---------------------------------------------------------------------------
+
+class TestQueuePostDirectoryAndWriteErrors:
+    def test_queue_post_raises_value_error_when_pending_posts_dir_cannot_be_created(
+        self, tmp_path
+    ):
+        # Arrange
+        from queue_post import queue_post
+
+        content_path = _write_content_file(tmp_path, "content\n")
+        # A plain file sitting where the repo-slug directory needs to be blocks
+        # `mkdir(parents=True)` from creating the `pending-posts` subdir under it.
+        blocking_path = tmp_path / "example" / "repo"
+        blocking_path.parent.mkdir(parents=True)
+        blocking_path.write_text("not a directory", encoding="utf-8")
+
+        # Act / Assert
+        with pytest.raises(ValueError, match="pending-posts"):
+            queue_post(
+                target="ADR-400",
+                channel="jira-comment",
+                content_file=str(content_path),
+                event_context="after-implement",
+            )
+
+    def test_queue_post_raises_value_error_when_record_write_fails(self, tmp_path, monkeypatch):
+        # Arrange
+        from queue_post import queue_post
+
+        content_path = _write_content_file(tmp_path, "content\n")
+
+        def _raise_os_error(self, *args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(Path, "write_text", _raise_os_error)
+
+        # Act / Assert
+        with pytest.raises(ValueError, match="disk full"):
+            queue_post(
+                target="ADR-400",
+                channel="jira-comment",
+                content_file=str(content_path),
+                event_context="after-implement",
+            )
+
+
+# ---------------------------------------------------------------------------
 # queue_post — DEV_TEAM_STATE_DIR override
 # ---------------------------------------------------------------------------
 

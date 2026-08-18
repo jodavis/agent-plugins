@@ -110,13 +110,17 @@ def queue_post(target: str, channel: str, content_file: str, event_context: str)
 
     repo_slug = get_repo_slug()
     posts_dir = _pending_posts_dir(repo_slug)
-    posts_dir.mkdir(parents=True, exist_ok=True)
 
     created_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
     record_yaml = build_record_yaml(target, channel, content, event_context, created_at)
-
     record_path = posts_dir / f"{_generate_id()}.yaml"
-    record_path.write_text(record_yaml, encoding="utf-8")
+
+    try:
+        posts_dir.mkdir(parents=True, exist_ok=True)
+        record_path.write_text(record_yaml, encoding="utf-8")
+    except OSError as e:
+        raise ValueError(f"could not write pending-posts record {record_path!s}: {e}") from e
+
     return record_path
 
 
