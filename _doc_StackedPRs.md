@@ -130,15 +130,15 @@ refined an assumption the spec started with.
   unchanged when the conflict is reached via `gh stack`'s own cascading rebase.
   `resolve-rebase-conflict/SKILL.md` was updated to name `dev-team:monitor-stack`, not the retired
   `monitor-pr`, as its caller.
-- **Known limitation — the multi-branch rebase cascade is not fully resumed after a resolved
-  conflict.** ADR-370's spike found that after `resolve-rebase-conflict` finishes the
-  currently-conflicted branch, a plain `git rebase --continue` only completes that one branch's
-  own rebase; downstream branches in the stack are left un-rebased until a `gh stack rebase
-  --continue` call specifically resumes gh-stack's own cascade. The shipped `monitor-stack` does
-  not make that call — its `"resolved"` path returns directly to the poll loop, relying on the
-  next `stack_pr_poll.py` call's `sync` step, which the spike's own finding indicates is not
-  sufficient on its own to reconcile every downstream branch. Tracked as a follow-up:
-  [issue #179](https://github.com/jodavis/agent-plugins/issues/179).
+- **The multi-branch rebase cascade is explicitly resumed after a resolved conflict.** ADR-370's
+  spike found that after `resolve-rebase-conflict` finishes the currently-conflicted branch, a
+  plain `git rebase --continue` only completes that one branch's own rebase; downstream branches
+  in the stack are left un-rebased until a `gh stack rebase --continue` call specifically resumes
+  gh-stack's own cascade — a fresh `sync` call alone is not sufficient. `monitor-stack`'s
+  `"resolved"` path calls `stack_rebase_continue.py` (which wraps `gh_stack.rebase_continue()`,
+  i.e. `gh stack rebase --continue`) before returning to the poll loop, looping back into another
+  `resolve-rebase-conflict` round if that call surfaces a further conflict higher in the stack.
+  Closed [issue #179](https://github.com/jodavis/agent-plugins/issues/179).
 - **`monitor-stack` is script-driven and whole-stack, not epic-id-scoped.** `stack_pr_poll.py`
   (`plugins/dev-team/skills/workflow-orchestrate/scripts/stack_pr_poll.py`) takes only an optional
   `max_seconds` argument — no epic id — and its `poll()` function returns `"stack_complete"` on
@@ -150,9 +150,9 @@ refined an assumption the spec started with.
 ## Key Classes / Interfaces
 
 - **`work-with-stacked-prs`/`gh_stack.py`** — sole owner of every `gh stack` CLI invocation.
-  Exposes six operations as plain Python functions (`init`, `add`, `submit`, `sync`, `view`,
-  `merge`), each returning `("ok" | "error", detail)` (`view`'s `detail` is the parsed `--json`
-  dict; the other five return stdout/stderr text), plus
+  Exposes seven operations as plain Python functions (`init`, `add`, `submit`, `sync`, `view`,
+  `merge`, `rebase_continue`), each returning `("ok" | "error", detail)` (`view`'s `detail` is the
+  parsed `--json` dict; the other six return stdout/stderr text), plus
   `check_gh_stack_extension_installed()` for the extension preflight.
 - **`ensure-feature-branch(<feature-work-item-id>)`** — bootstraps an epic's feature branch, spec
   PR, and anchored stack; every step check-before-act.
@@ -173,6 +173,10 @@ refined an assumption the spec started with.
   "no_change" | dict`** — bounded polling loop over `gh stack sync` and
   `detect_next_stack_event()`; runs `sync` first each iteration, then checks for a rebase in
   progress (`"conflict"`) before consulting the detector.
+- **`stack_rebase_continue.py`'s `rebase_continue() -> "conflict" | "ok"`** — one-shot follow-up
+  `monitor-stack` calls after `resolve-rebase-conflict` reports `"resolved"`; runs
+  `gh_stack.rebase_continue()` (`gh stack rebase --continue`) to resume the cascade across
+  downstream branches, and reports whether it hit a further conflict or reached a clean state.
 - **`concurrent_schedule.py`'s `compute_next_batch(target) -> dict`** — computes the next batch of
   tasks to spawn for an "up to" or explicit-list target, including a live check for whether the
   epic's feature branch is bootstrapped yet (`"bootstrap_needed"`) and the repo-wide concurrency
@@ -216,8 +220,10 @@ refined an assumption the spec started with.
 6. **Reacting to poll outcomes.** A `{"task_work_item_id", "event"}` result spawns `fix-pr` against
    that task's already-checked-out branch. A `"conflict"` result hands off to the developer agent
    running `resolve-rebase-conflict` against the currently-conflicted branch; on `"resolved"`, the
-   monitor returns directly to polling (relying on the next `sync` call — see the known limitation
-   above); on `"unresolved"`, the monitor aborts the rebase and halts entirely, since one stuck
-   task blocks every later task in the stack regardless of how many monitor processes exist.
+   monitor calls `stack_rebase_continue.py` to resume gh-stack's own cascade across any downstream
+   branches, looping back into another `resolve-rebase-conflict` round if that call surfaces a
+   further conflict higher in the stack, or returning to polling once it reports a clean state; on
+   `"unresolved"`, the monitor aborts the rebase and halts entirely, since one stuck task blocks
+   every later task in the stack regardless of how many monitor processes exist.
 7. **Completion.** Once every branch in the stack has merged, `stack_pr_poll.py` reports
    `"stack_complete"`, and `monitor-stack` removes its own worktree/branch and stops.

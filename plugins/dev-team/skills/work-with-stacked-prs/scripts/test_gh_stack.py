@@ -1,6 +1,6 @@
 """Tests for gh_stack.py — plain Python wrapper functions around `gh stack` operations, one per
-operation (`init`, `add`, `submit`, `sync`, `view`, `merge`), plus the `github/gh-stack` extension
-presence check the SKILL.md-level preflight calls into.
+operation (`init`, `add`, `submit`, `sync`, `view`, `merge`, `rebase_continue`), plus the
+`github/gh-stack` extension presence check the SKILL.md-level preflight calls into.
 
 Covers:
 - Each operation invokes the exact expected `gh stack <cmd>` argument list for its various
@@ -407,6 +407,55 @@ class TestMergeFailure:
         # Assert
         assert status == "error"
         assert detail == "branch protection check failed"
+
+
+# ---------------------------------------------------------------------------
+# rebase_continue — resumes gh-stack's cascading rebase after the currently-conflicted
+# branch's own git-level rebase has already been completed; a clean cascade is "ok", a
+# further conflict higher in the stack surfaces as "error" exactly like `sync`'s does
+# ---------------------------------------------------------------------------
+
+class TestRebaseContinueArguments:
+    def test_gh_stack_rebase_continue_invokes_expected_gh_stack_arguments(self):
+        # Arrange
+        mock_run = MagicMock(
+            return_value=expect_gh_stack_result(
+                stdout="Rebased feature/stack-a onto main\nRebased feature/stack-b onto feature/stack-a"
+            )
+        )
+
+        # Act
+        with patch("gh_stack.subprocess.run", mock_run):
+            status, detail = gh_stack.rebase_continue()
+
+        # Assert
+        assert status == "ok"
+        assert detail == (
+            "Rebased feature/stack-a onto main\nRebased feature/stack-b onto feature/stack-a"
+        )
+        called_args, called_kwargs = mock_run.call_args
+        assert called_args[0] == ["gh", "stack", "rebase", "--continue"]
+        assert called_kwargs["timeout"] == gh_stack.DEFAULT_TIMEOUT
+        assert called_kwargs["capture_output"] is True
+        assert called_kwargs["text"] is True
+
+
+class TestRebaseContinueFailure:
+    def test_gh_stack_rebase_continue_further_conflict_returns_error_with_stderr(self):
+        # Arrange
+        mock_run = MagicMock(
+            return_value=expect_gh_stack_result(
+                returncode=3, stderr="Rebasing feature/stack-b onto feature/stack-a — conflict"
+            )
+        )
+
+        # Act
+        with patch("gh_stack.subprocess.run", mock_run):
+            status, detail = gh_stack.rebase_continue()
+
+        # Assert
+        assert status == "error"
+        assert detail == "Rebasing feature/stack-b onto feature/stack-a — conflict"
 
 
 # ---------------------------------------------------------------------------
