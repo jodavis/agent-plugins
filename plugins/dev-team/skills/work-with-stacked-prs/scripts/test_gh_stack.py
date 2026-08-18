@@ -1,6 +1,6 @@
 """Tests for gh_stack.py — plain Python wrapper functions around `gh stack` operations, one per
-operation (`init`, `add`, `submit`, `sync`, `view`, `merge`, `rebase_continue`), plus the
-`github/gh-stack` extension presence check the SKILL.md-level preflight calls into.
+operation (`init`, `add`, `submit`, `sync`, `view`, `merge`, `rebase_continue`, `checkout`), plus
+the `github/gh-stack` extension presence check the SKILL.md-level preflight calls into.
 
 Covers:
 - Each operation invokes the exact expected `gh stack <cmd>` argument list for its various
@@ -456,6 +456,61 @@ class TestRebaseContinueFailure:
         # Assert
         assert status == "error"
         assert detail == "Rebasing feature/stack-b onto feature/stack-a — conflict"
+
+
+# ---------------------------------------------------------------------------
+# checkout — materializes a stack's membership in the current worktree (from a stack
+# number, PR number/URL, or branch name) and checks out one of its entries
+# ---------------------------------------------------------------------------
+
+class TestCheckoutArguments:
+    @pytest.mark.parametrize(
+        "target, expected_args",
+        [
+            pytest.param(7, ["gh", "stack", "checkout", "7"], id="stack_number"),
+            pytest.param(42, ["gh", "stack", "checkout", "42"], id="pr_number"),
+            pytest.param(
+                "https://github.com/owner/repo/pull/42",
+                ["gh", "stack", "checkout", "https://github.com/owner/repo/pull/42"],
+                id="pr_url",
+            ),
+            pytest.param(
+                "feat/api-routes",
+                ["gh", "stack", "checkout", "feat/api-routes"],
+                id="branch_name",
+            ),
+        ],
+    )
+    def test_gh_stack_checkout_invokes_expected_gh_stack_arguments(self, target, expected_args):
+        # Arrange
+        mock_run = MagicMock(return_value=expect_gh_stack_result(stdout="Switched to branch"))
+
+        # Act
+        with patch("gh_stack.subprocess.run", mock_run):
+            status, detail = gh_stack.checkout(target)
+
+        # Assert
+        assert status == "ok"
+        assert detail == "Switched to branch"
+        called_args, called_kwargs = mock_run.call_args
+        assert called_args[0] == expected_args
+        assert called_kwargs["timeout"] == gh_stack.DEFAULT_TIMEOUT
+
+
+class TestCheckoutFailure:
+    def test_gh_stack_checkout_command_fails_returns_error_with_stderr(self):
+        # Arrange
+        mock_run = MagicMock(
+            return_value=expect_gh_stack_result(returncode=1, stderr="no PR found for that number")
+        )
+
+        # Act
+        with patch("gh_stack.subprocess.run", mock_run):
+            status, detail = gh_stack.checkout(999)
+
+        # Assert
+        assert status == "error"
+        assert detail == "no PR found for that number"
 
 
 # ---------------------------------------------------------------------------

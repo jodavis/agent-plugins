@@ -124,6 +124,19 @@ refined an assumption the spec started with.
   `monitor-stack` — must run from one shared worktree per feature, never a task's own per-task
   worktree. `work-with-stacked-prs/SKILL.md` documents this explicitly as a structural constraint,
   not a corner case.
+- **`monitor-stack`'s own worktree lands on a real stack member, never the trunk.** A consequence
+  of the previous decision: `monitor-stack` runs in its own freshly spawned worktree, which has
+  never run `init`/`add` for this stack itself — and `gh-stack` doesn't consider the trunk branch
+  a stack member in the first place — so simply checking out the trunk there leaves `gh stack
+  view`/`sync` erroring (closed [issue #189](https://github.com/jodavis/agent-plugins/issues/189)).
+  Step 2 instead finds the one open PR that bases directly off the trunk (the bottom-most stack
+  entry, whose task triggered the monitor's own auto-start) and runs `gh stack checkout
+  <pr-number>` (via `stack_checkout.py`) — per `gh-stack`'s own behavior, a PR number not yet
+  tracked locally is discovered from the GitHub API and used to materialize the stack in this
+  worktree, landing on a real member branch. `ensure-feature-branch`'s own `init` call, run in a
+  *different* worktree, cannot be "propagated" to fix this — the whole point of the previous
+  decision is that this state is worktree-private, so every worktree must independently
+  materialize it.
 - **Rebase/sync conflicts still route through the existing `resolve-rebase-conflict` skill for the
   git-level mechanics of the currently-conflicted branch.** ADR-370's spike confirmed its plain-git
   contract (find `.git/rebase-merge`, resolve conflict markers, `git rebase --continue`) works
@@ -150,9 +163,9 @@ refined an assumption the spec started with.
 ## Key Classes / Interfaces
 
 - **`work-with-stacked-prs`/`gh_stack.py`** — sole owner of every `gh stack` CLI invocation.
-  Exposes seven operations as plain Python functions (`init`, `add`, `submit`, `sync`, `view`,
-  `merge`, `rebase_continue`), each returning `("ok" | "error", detail)` (`view`'s `detail` is the
-  parsed `--json` dict; the other six return stdout/stderr text), plus
+  Exposes eight operations as plain Python functions (`init`, `add`, `submit`, `sync`, `view`,
+  `merge`, `rebase_continue`, `checkout`), each returning `("ok" | "error", detail)` (`view`'s
+  `detail` is the parsed `--json` dict; the other seven return stdout/stderr text), plus
   `check_gh_stack_extension_installed()` for the extension preflight.
 - **`ensure-feature-branch(<feature-work-item-id>)`** — bootstraps an epic's feature branch, spec
   PR, and anchored stack; every step check-before-act.
@@ -177,6 +190,9 @@ refined an assumption the spec started with.
   `monitor-stack` calls after `resolve-rebase-conflict` reports `"resolved"`; runs
   `gh_stack.rebase_continue()` (`gh stack rebase --continue`) to resume the cascade across
   downstream branches, and reports whether it hit a further conflict or reached a clean state.
+- **`stack_checkout.py`'s `checkout(pr_number)`** — one-shot bootstrap `monitor-stack` calls in
+  step 2, before the poll loop starts; runs `gh_stack.checkout(pr_number)` (`gh stack checkout
+  <pr-number>`) to materialize the stack in a fresh worktree and land on a real member branch.
 - **`concurrent_schedule.py`'s `compute_next_batch(target) -> dict`** — computes the next batch of
   tasks to spawn for an "up to" or explicit-list target, including a live check for whether the
   epic's feature branch is bootstrapped yet (`"bootstrap_needed"`) and the repo-wide concurrency
@@ -213,10 +229,13 @@ refined an assumption the spec started with.
    resolves the task's own new PR URL via a direct `gh pr list` lookup.
 5. **Epic-wide monitoring.** The moment the first task in an epic's target set reaches hand-off,
    `concurrent-orchestrate` auto-starts one `monitor-stack` session for that epic (or a human
-   starts it manually via `/watch-stack`). It runs from the epic's own shared worktree and loops
-   on `stack_pr_poll.py`: each call runs `sync` first, then checks for a rebase conflict, then
-   consults `detect_next_stack_event` for the first review-comment/CI-failure/merge event across
-   the whole stack.
+   starts it manually via `/watch-stack`). It runs from its own freshly spawned worktree, which
+   has no local `gh stack` state of its own yet: step 2 finds the one open PR based directly on
+   the trunk and runs `stack_checkout.py` to materialize the stack there and land on that real
+   member branch (never the trunk itself, which `gh-stack` doesn't consider a member) before the
+   poll loop starts. It then loops on `stack_pr_poll.py`: each call runs `sync` first, then checks
+   for a rebase conflict, then consults `detect_next_stack_event` for the first review-comment/
+   CI-failure/merge event across the whole stack.
 6. **Reacting to poll outcomes.** A `{"task_work_item_id", "event"}` result spawns `fix-pr` against
    that task's already-checked-out branch. A `"conflict"` result hands off to the developer agent
    running `resolve-rebase-conflict` against the currently-conflicted branch; on `"resolved"`, the
