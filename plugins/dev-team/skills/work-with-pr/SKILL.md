@@ -83,6 +83,30 @@ any, and append it to the `body` argument.
 mcp__plugin_github_github__pull_request_review_write(method="resolve_thread", owner=<owner>, repo=<repo>, pullNumber=<number>, threadId=<PRRT_... node ID>)
 ```
 
+## Posting a plain comment
+
+### post-comment
+
+Given a PR URL and body text, post a plain, freestanding status comment on the PR — distinct
+from the structured review and thread-reply mechanics above. Used by `user-approve-posts` to
+dispatch an approved `pr-comment`-channel entry.
+
+Use the `message-attribution` skill first to get the configured attribution line, if any, and
+append it to `<text>`, matching the pattern already used in "Posting a review" and "Responding
+to and resolving threads."
+
+GitHub treats a PR number as an issue number for commenting, so this reuses the same tool
+`work-with-github-issues` uses for a plain issue comment:
+```
+mcp__plugin_github_github__add_issue_comment(owner=<owner>, repo=<repo>, issue_number=<pullNumber>, body=<text>)
+```
+
+If that tool is unavailable, fall back to the `gh` CLI, matching `work-with-github-issues`'s own
+documented fallback pattern:
+```bash
+gh pr comment <pullNumber> --repo <owner>/<repo> --body "<text>"
+```
+
 ## Hand-off operations
 
 These three operations are bare, mechanical, and independently callable — each is invoked on
