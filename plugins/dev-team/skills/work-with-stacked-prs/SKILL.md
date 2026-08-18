@@ -4,7 +4,7 @@ user-invocable: false
 description: >
   Use when you are working with a stack of dependent GitHub PRs via GitHub's `gh stack` CLI
   extension (`github/gh-stack`). Provides the exact command/flags for each operation
-  (init, add, submit, sync, view, merge) and the extension preflight check.
+  (init, add, submit, sync, view, merge, rebase --continue) and the extension preflight check.
 ---
 
 Use this skill when:
@@ -15,16 +15,17 @@ Use this skill when:
 This skill is the **sole owner** of every direct `gh stack` CLI invocation in this feature — no
 other skill invokes `gh stack` directly; they all reference this skill's named operations
 instead. This isolation is deliberate risk mitigation for a days-old public-preview GitHub CLI
-feature (see `_spec_StackedPRs.md`'s "Known upstream risk" decision). The same six operations are
-also exposed as plain Python functions in the sibling `scripts/gh_stack.py` module — both this
+feature (see `_spec_StackedPRs.md`'s "Known upstream risk" decision). The same seven operations
+are also exposed as plain Python functions in the sibling `scripts/gh_stack.py` module — both this
 skill's prose (for agent-driven calls) and `gh_stack.py` (imported directly by bare scripts like
-`concurrent_schedule.py`/`stack_pr_poll.py`) shell out to the identical underlying commands, so
-there is still exactly one place to change if the CLI does.
+`concurrent_schedule.py`/`stack_pr_poll.py`/`stack_rebase_continue.py`) shell out to the identical
+underlying commands, so there is still exactly one place to change if the CLI does.
 
 Every invocation is non-interactive: explicit positional arguments and flags always, the
 interactive TUI never — per `github/gh-stack`'s own `skills/gh-stack/SKILL.md` guidance for
-agentic use. `--json` output is only available from `view`; `init`/`add`/`submit`/`sync`/`merge`
-have no `--json` support, so their outcome must be read from exit code and stderr text.
+agentic use. `--json` output is only available from `view`; `init`/`add`/`submit`/`sync`/`merge`/
+`rebase --continue` have no `--json` support, so their outcome must be read from exit code and
+stderr text.
 
 ## General guidance
 
@@ -152,10 +153,33 @@ gh stack sync [--prune] [--remote <name>]
   `.git/rebase-merge` is left in place with standard git conflict markers — `resolve-rebase-
   conflict`'s existing plain-git contract handles the currently-conflicted branch unchanged, but
   a multi-branch stack needs a follow-up `gh stack rebase --continue` call afterward to resume the
-  cascade across any remaining downstream branches (this module does not implement that
-  follow-up; see `_findings_GhStackSpike.md` section 3).
+  cascade across any remaining downstream branches — see the `rebase --continue` operation below,
+  which `monitor-stack` calls for exactly this (see `_findings_GhStackSpike.md` section 3).
 - `--prune` deletes local branches for merged PRs.
 - No `--json` support — read the outcome from exit code and stderr text.
+
+### rebase --continue
+
+Resumes gh-stack's own cascading rebase across the remaining downstream branches after the
+currently-conflicted branch's own git-level rebase has already been completed via a plain
+`git rebase --continue` (`resolve-rebase-conflict`'s unchanged contract).
+
+```
+gh stack rebase --continue
+```
+
+- Per ADR-370's spike (`_findings_GhStackSpike.md` section 3): a plain `git rebase --continue`
+  only finishes the currently-conflicted branch's own rebase — downstream branches are left
+  un-rebased (shown as a drift warning in `gh stack view`) until this call specifically resumes
+  the cascade. A fresh `sync` call is **not** an equivalent substitute for this step.
+- Exit 0 means the whole cascade reached a clean state. A further non-zero exit (confirmed exit
+  code 3 in the spike, matching `sync`'s own conflict exit code) means the cascade hit another
+  conflict higher in the stack — `.git/rebase-merge` is left in place again, with the same
+  standard git conflict shape as the first conflict; callers should loop back into another
+  conflict-resolution round exactly as they do for the first one.
+- No `--json` support — read the outcome from exit code and stderr text.
+- `monitor-stack`'s step 5 calls this (via `stack_rebase_continue.py`) immediately after
+  `resolve-rebase-conflict` reports `"resolved"`, before returning to the poll loop.
 
 ### view
 
@@ -192,7 +216,7 @@ gh stack merge [<stack-number>|<pr-number>] [-y/--yes] [--merge|--squash|--rebas
 
 Every operation above is also exposed as a plain Python function in
 `scripts/gh_stack.py`, importable directly (no MCP involved) by any bare script:
-`init()`, `add()`, `submit()`, `sync()`, `view()`, `merge()`, and
+`init()`, `add()`, `submit()`, `sync()`, `view()`, `merge()`, `rebase_continue()`, and
 `check_gh_stack_extension_installed()`. Each function returns `("ok" | "error", detail)` — for
-`view`, `detail` is the parsed `--json` dict on success; for the other five, `detail` is stdout
+`view`, `detail` is the parsed `--json` dict on success; for the other six, `detail` is stdout
 text on success or stderr text on failure. See the module's own docstring for the full contract.

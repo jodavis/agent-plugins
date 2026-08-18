@@ -8,9 +8,9 @@ returns a typed `("ok" | "error", detail)` tuple, mirroring `task_readiness.py`'
 `pr_event_detector.py`'s existing `Literal`-status pattern in this codebase, rather than letting
 `subprocess.CalledProcessError` propagate the way `rebase_mechanic.py` does. `view` is the only
 operation `gh stack` itself supports `--json` for; its `detail` carries the parsed dict on
-success. The other five operations (`init`, `add`, `submit`, `sync`, `merge`) have no `--json`
-support — their outcome must be read from exit code/stderr text; `detail` carries stripped
-stdout on success or stderr (falling back to stdout) on failure.
+success. The other six operations (`init`, `add`, `submit`, `sync`, `merge`, `rebase_continue`)
+have no `--json` support — their outcome must be read from exit code/stderr text; `detail` carries
+stripped stdout on success or stderr (falling back to stdout) on failure.
 
 Caller contract (ADR-370 finding #1 — `_findings_GhStackSpike.md`): `gh stack`'s local
 stack-membership state lives in the worktree-private `.git/worktrees/<name>/gh-stack` file, not
@@ -127,6 +127,23 @@ def sync(
     if remote:
         args += ["--remote", remote]
     return _text_result(_run_gh_stack(args, cwd=cwd, timeout=timeout), "sync")
+
+
+def rebase_continue(
+    cwd: Path | str | None = None, timeout: int = DEFAULT_TIMEOUT
+) -> tuple[GhStackStatus, str]:
+    """Resume gh-stack's own cascading rebase across the remaining downstream branches after the
+    currently-conflicted branch's git-level rebase has itself already been completed via a plain
+    `git rebase --continue` (`resolve-rebase-conflict`'s own contract, unchanged). Per ADR-370's
+    spike (`_findings_GhStackSpike.md`, section 3), this is not the same as a fresh `sync` call —
+    `gh stack rebase --continue` specifically detects the git-level rebase is already done and
+    resumes the cascade onto every branch still above it. Exit 0 means the whole cascade reached a
+    clean state; a further non-zero exit means the cascade hit another conflict higher in the
+    stack (same `.git/rebase-merge`/`.git/rebase-apply` shape as the first conflict) — callers
+    should loop back into another conflict-resolution round exactly as they do for the first one."""
+    return _text_result(
+        _run_gh_stack(["rebase", "--continue"], cwd=cwd, timeout=timeout), "rebase_continue"
+    )
 
 
 def view(

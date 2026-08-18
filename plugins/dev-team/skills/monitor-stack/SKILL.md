@@ -24,10 +24,11 @@ Do NOT use this skill when:
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an
-environment variable. `stack_pr_poll.py` lives in the sibling `workflow-orchestrate` skill's
-`scripts/` directory, so it is invoked as
-`<skill-dir>/../workflow-orchestrate/scripts/stack_pr_poll.py` — still anchored to `<skill-dir>`,
-never to an assumed repo-root CWD.
+environment variable. `stack_pr_poll.py` and `stack_rebase_continue.py` both live in the sibling
+`workflow-orchestrate` skill's `scripts/` directory, so they are invoked as
+`<skill-dir>/../workflow-orchestrate/scripts/stack_pr_poll.py` and
+`<skill-dir>/../workflow-orchestrate/scripts/stack_rebase_continue.py` — still anchored to
+`<skill-dir>`, never to an assumed repo-root CWD.
 
 ## Role
 
@@ -39,9 +40,9 @@ react to whatever single outcome it returns, and repeat, until `stack_pr_poll.py
 
 **Never attempt to:**
 - Call `gh stack` yourself, directly or indirectly — `work-with-stacked-prs` (via
-  `stack_pr_poll.py`, which imports `gh_stack.py`) is the sole owner of every `gh stack`
-  invocation in this feature. Every operation this skill needs comes indirectly through
-  `stack_pr_poll.py`'s own return value.
+  `stack_pr_poll.py` and `stack_rebase_continue.py`, which both import `gh_stack.py`) is the sole
+  owner of every `gh stack` invocation in this feature. Every operation this skill needs comes
+  indirectly through one of those two scripts' own return values.
 - Resolve a rebase conflict yourself — spawn the developer agent to run `resolve-rebase-conflict`
 - Fix a review comment or CI failure yourself — spawn `fix-pr` (nested, via the developer agent)
 - Ask the user a question — `AskUserQuestion` is unavailable to any `Agent`-spawned sub-agent
@@ -177,12 +178,13 @@ stop and report that error in detail.
 - **`"conflict"`** — go to step 5.
 - **`"no_change"`** — return to step 4a immediately.
 
-### 5 — Resolve a rebase conflict
+### 5 — Resolve a rebase conflict (repeat for each conflict the cascade hits)
 
-`stack_pr_poll.py` leaves the currently-conflicting task's branch mid-rebase (same
-`.git/rebase-merge`/`.git/rebase-apply` state `rebase_onto()` used to leave, just now reached via
-`gh stack sync`'s own cascade). Determine which task that is — `stack_pr_poll.py`'s `"conflict"`
-result names no task, since the conflict can belong to any entry in the stack:
+`stack_pr_poll.py` (or, on a repeat of this step, `stack_rebase_continue.py`) leaves the
+currently-conflicting task's branch mid-rebase (same `.git/rebase-merge`/`.git/rebase-apply`
+state `rebase_onto()` used to leave, just now reached via `gh stack`'s own cascade). Determine
+which task that is — neither script's `"conflict"` result names one, since the conflict can
+belong to any entry in the stack:
 
 ```bash
 git_dir="$(git rev-parse --git-dir)"
@@ -222,10 +224,22 @@ Otherwise, read the content the spawned agent wrote to `Rebase Conflict <n>` in
 `<task_context_file>` — this is `resolve-rebase-conflict`'s own `"resolved"` or `"unresolved"`
 verdict, distinct from the spawn's generic `successful` status:
 
-- **`"resolved"`** — do not push or run any further git command yourself. Return directly to
-  step 4a: the very next `stack_pr_poll.py` call runs the `sync` operation as its own first
-  action, which pushes and keeps `gh stack`'s own PR-position bookkeeping consistent — a raw
-  `git push --force-with-lease` here would update the git ref but leave that bookkeeping stale.
+- **`"resolved"`** — do not push or run any further plain git command yourself. Per ADR-370's
+  spike (`_findings_GhStackSpike.md`, section 3), completing only this one branch's own rebase is
+  not enough to reconcile a multi-branch stack — downstream branches are left un-rebased until
+  gh-stack's own cascade is explicitly resumed. Run:
+  ```bash
+  python3 "<skill-dir>/../workflow-orchestrate/scripts/stack_rebase_continue.py"
+  ```
+  Parse stdout as JSON. It is exactly one of `"ok"` or `"conflict"`. If the script exits non-zero,
+  it prints a clear `Error: ...` message to stderr instead of JSON — stop and report that error in
+  detail.
+  - **`"ok"`** — the cascade reached a clean state (this may have rebased and pushed further
+    branches beyond the one just resolved). Return directly to step 4a.
+  - **`"conflict"`** — the cascade hit another conflict further up the stack. Repeat step 5 from
+    its own top: re-run the `head-name` lookup above (it now names the *new* conflicting branch,
+    not the one just resolved) and spawn `resolve-rebase-conflict` against it the same way,
+    incrementing `<n>` again.
 - **`"unresolved"`** — run `git rebase --abort` to leave a clean worktree (no rebase in
   progress), then **stop this agent** — this halts monitoring for the whole epic, deliberately:
   `gh stack sync`'s cascading rebase already means one stuck task blocks every later task in the
