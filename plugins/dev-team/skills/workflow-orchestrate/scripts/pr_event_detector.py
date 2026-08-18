@@ -57,8 +57,12 @@ def _review_comment_and_ci_events(ctx: PipelineContext) -> list[Literal["review_
         comments = json.loads(result.stdout)
     except json.JSONDecodeError:
         comments = []
-    if comments:
-        max_id = max(c["id"] for c in comments)
+    # Exclude replies (in_reply_to_id present) — fix-pr posts its own replies within the review
+    # threads it just addressed, and those must not re-trip this detector on the next poll. Only
+    # a new top-level/new-thread comment counts as a genuinely new review-comment signal.
+    top_level_comments = [c for c in comments if not c.get("in_reply_to_id")]
+    if top_level_comments:
+        max_id = max(c["id"] for c in top_level_comments)
         last_seen = int(ctx.extra_frontmatter.get("last_seen_review_comment_id") or 0)
         if max_id > last_seen:
             events.append("review_comment")

@@ -105,6 +105,28 @@ class TestDetectPrEventsSingleSignal:
                 id="review_comment_max_id_already_seen",
             ),
             pytest.param(
+                json.dumps([{"id": 101}, {"id": 310, "in_reply_to_id": 101}]),
+                json.dumps([]),
+                json.dumps({"state": "OPEN", "baseRefName": "main"}),
+                {"last_seen_review_comment_id": "101"},
+                [],
+                id="own_reply_to_review_thread_does_not_retrigger",
+            ),
+            pytest.param(
+                json.dumps(
+                    [
+                        {"id": 101},
+                        {"id": 150},
+                        {"id": 999, "in_reply_to_id": 101},
+                    ]
+                ),
+                json.dumps([]),
+                json.dumps({"state": "OPEN", "baseRefName": "main"}),
+                {"last_seen_review_comment_id": "101"},
+                ["review_comment"],
+                id="new_top_level_comment_fires_even_though_a_reply_has_the_highest_id",
+            ),
+            pytest.param(
                 json.dumps([]),
                 "no checks reported",
                 json.dumps({"state": "OPEN", "baseRefName": "main"}),
