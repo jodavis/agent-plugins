@@ -35,7 +35,7 @@ You are the long-lived monitor for one epic's whole stack of PRs. You run as a s
 that stays alive for the epic's entire post-hand-off lifecycle — not a `/loop`-style recurring
 re-invocation and not a scheduled/cron-triggered agent. You block inside `stack_pr_poll.py`,
 react to whatever single outcome it returns, and repeat, until `stack_pr_poll.py` reports
-`"epic_complete"` or an unresolved rebase conflict stops you.
+`"stack_complete"` or an unresolved rebase conflict stops you.
 
 **Never attempt to:**
 - Call `gh stack` yourself, directly or indirectly — `work-with-stacked-prs` (via
@@ -121,16 +121,20 @@ whole stack, so there is nothing to clean up before recording.
 
 ### 4 — Poll loop
 
-Repeat the following indefinitely, until step 4b's `"epic_complete"` case stops you, or step 5's
+Repeat the following indefinitely, until step 4b's `"stack_complete"` case stops you, or step 5's
 `"unresolved"` case stops you.
 
 #### 4a — Poll
 
 ```bash
-python3 "<skill-dir>/../workflow-orchestrate/scripts/stack_pr_poll.py" <epic-id>
+python3 "<skill-dir>/../workflow-orchestrate/scripts/stack_pr_poll.py"
 ```
 
-Parse stdout as JSON. It is exactly one of: `"conflict"`, `"epic_complete"`,
+`stack_pr_poll.py` takes no epic-id argument — it operates on whatever stack is anchored in the
+worktree it's run from (this session's own worktree, checked out in step 2). Its only optional
+argument is a positional `max_seconds` bound (default 480); this skill never needs to override it.
+
+Parse stdout as JSON. It is exactly one of: `"conflict"`, `"stack_complete"`,
 `{"task_work_item_id": ..., "event": "review_comment" | "ci_failure"}`, or `"no_change"` — never
 a batch, and never any of `monitor-pr`'s retired `dependency_merged`/`base_updated`/rebase-
 mechanic outcomes.
@@ -143,7 +147,7 @@ stop and report that error in detail.
 
 #### 4b — React to exactly the one outcome returned
 
-- **`"epic_complete"`** — every task in the target set has merged. Remove this session's own
+- **`"stack_complete"`** — every task in the target set has merged. Remove this session's own
   worktree/branch, then stop:
   ```bash
   cd "$(git rev-parse --path-format=absolute --git-common-dir)/.."

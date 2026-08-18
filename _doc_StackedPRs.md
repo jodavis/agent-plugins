@@ -144,9 +144,8 @@ refined an assumption the spec started with.
   `max_seconds` argument — no epic id — and its `poll()` function returns `"stack_complete"` on
   completion; it operates on whatever stack is anchored in the worktree it's run from, which is
   why `monitor-stack` must run from the epic's own shared worktree (see the cross-worktree
-  decision above). `monitor-stack/SKILL.md`'s own prose has not yet been updated to match this
-  exactly (see [issue #180](https://github.com/jodavis/agent-plugins/issues/180)); this doc
-  describes the actually-shipped script behavior.
+  decision above). `monitor-stack/SKILL.md`'s own prose was updated to match this exactly (closed
+  [issue #180](https://github.com/jodavis/agent-plugins/issues/180)).
 
 ## Key Classes / Interfaces
 
