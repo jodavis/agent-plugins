@@ -98,6 +98,15 @@ Then on its own line: `{"status": "reproduced"}`
 
 **If not reproduced**: brief explanation, then: `{"status": "not_reproduced", "reason": "<one sentence>"}`
 
+Use the `write-scratch-deliverable` skill to write this whole report (including the trailing
+JSON status line) in place of returning it as chat text — do this immediately, as the same action
+that composes the report, before moving on to step 11. You still have the report's content in
+mind for step 11's own use even though it's no longer part of your eventual chat response.
+
 ### 11 — Comment on the GitHub issue
 
 Use the `work-with-GitHub-issues` skill to add a comment summarizing the confirmed root cause that the fix will address.
+
+### 12 — Return
+
+Return exactly one word: `successful`.

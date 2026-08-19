@@ -57,10 +57,16 @@ not stop to ask whether you should post it.
 
 ### 8 — Output
 
-Write a concise plain-text summary of all issues found — one bullet per issue, Priority 1–4 first, style issues last.
+Compose a concise plain-text summary of all issues found — one bullet per issue, Priority 1–4
+first, style issues last.
 
-Then output the following JSON object as the very last line of your response. Write it as a bare JSON object — do not wrap it in a code block or add any text after it:
+Then compose the following JSON object as the very last line, as a bare JSON object with no code
+block or trailing text:
 
 {"status": "approved|changes_requested", "pr_url": "https://github.com/..."}
 
-Use `"approved"` if no Priority 1–4 issues were found; `"changes_requested"` otherwise. Always include the PR URL.
+Use `"approved"` if no Priority 1–4 issues were found; `"changes_requested"` otherwise. Always
+include the PR URL.
+
+Use the `write-scratch-deliverable` skill to write the summary and JSON object together in place
+of returning them as chat text.

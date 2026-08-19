@@ -68,6 +68,81 @@ def compute_context_path(work_item_id: str, repo_slug: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Pending scratch-file deliverables (see issue #191)
+# ---------------------------------------------------------------------------
+#
+# Nested skills invoked via `workflow-worker` used to be asked to both produce a large
+# deliverable as their final chat message *and* remember to write it to the shared context file
+# afterward, in the same turn. That reliably failed: producing the deliverable is the model's
+# natural stopping point, and no "keep going after this" instruction survived reaching it. Skills
+# now compose their deliverable directly as the content of a `Write` call to a private scratch
+# file instead — never printed as chat text, so there is no separate "also remember to..." step to
+# skip — then return a single word (`successful`) as their entire final message. This
+# preprocessing step is the deterministic (non-LLM) counterpart that actually lands that content
+# in the shared context file, run once at the start of every orchestration-loop iteration, before
+# the context file is loaded.
+
+_PENDING_DIR_NAME = ".pending"
+_SECTION_SENTINEL_PREFIX = "<!-- section:"
+_SECTION_SENTINEL_SUFFIX = " -->"
+
+
+def _replace_or_append_section(context_text: str, section_name: str, content: str) -> str:
+    """Deterministic counterpart to the Edit-based sentinel-replace-or-append convention
+    `workflow-worker`/`use-context-file` describe for agent-driven writes: replace everything
+    between `<!-- section:<section_name> -->` and the next `<!-- section:` marker (or end of
+    file), or append a new sentinel + content if it doesn't already exist."""
+    sentinel = f"{_SECTION_SENTINEL_PREFIX}{section_name}{_SECTION_SENTINEL_SUFFIX}"
+    lines = context_text.splitlines()
+    new_block = [sentinel, "", content.strip(), ""]
+
+    start = next((i for i, line in enumerate(lines) if line.strip() == sentinel), None)
+    if start is None:
+        if lines and lines[-1].strip() != "":
+            lines.append("")
+        lines.extend(new_block)
+        return "\n".join(lines) + "\n"
+
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        stripped = lines[j].strip()
+        if stripped.startswith(_SECTION_SENTINEL_PREFIX) and stripped.endswith(_SECTION_SENTINEL_SUFFIX):
+            end = j
+            break
+    lines[start:end] = new_block
+    return "\n".join(lines) + "\n"
+
+
+def merge_pending_deliverables(context_path: Path, work_item_id: str) -> None:
+    """Merge every pending `<work-item-id>__<section-name>.md` scratch file in the context
+    file's sibling `.pending/` directory into the context file itself, then delete each one.
+
+    `<section-name>` is the scratch filename's stem after the `<work-item-id>__` prefix, with
+    underscores standing in for the spaces in the real section name (no shipped section name
+    contains a literal underscore, so this mapping is unambiguous to reverse). A no-op — cheap
+    and safe to call unconditionally — when the `.pending/` directory doesn't exist or holds
+    nothing for this work item."""
+    pending_dir = context_path.parent / _PENDING_DIR_NAME
+    if not pending_dir.is_dir():
+        return
+
+    prefix = f"{work_item_id}__"
+    scratch_paths = sorted(p for p in pending_dir.glob(f"{prefix}*.md") if p.is_file())
+    if not scratch_paths:
+        return
+
+    context_text = context_path.read_text(encoding="utf-8") if context_path.exists() else ""
+    for scratch_path in scratch_paths:
+        section_name = scratch_path.stem[len(prefix):].replace("_", " ")
+        content = scratch_path.read_text(encoding="utf-8")
+        context_text = _replace_or_append_section(context_text, section_name, content)
+    context_path.write_text(context_text, encoding="utf-8")
+
+    for scratch_path in scratch_paths:
+        scratch_path.unlink()
+
+
+# ---------------------------------------------------------------------------
 # Counter helpers
 # ---------------------------------------------------------------------------
 
@@ -1403,6 +1478,8 @@ def main() -> None:
 
     context_path = Path(args.context_file)
     log_dir = context_path.parent / "logs"
+
+    merge_pending_deliverables(context_path, work_item_id)
 
     if context_path.exists():
         ctx = PipelineContext.load(context_path)

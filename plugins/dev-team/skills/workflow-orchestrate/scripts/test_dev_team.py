@@ -133,6 +133,132 @@ class TestComputeContextPath:
 
 
 # ---------------------------------------------------------------------------
+# _replace_or_append_section — deterministic sentinel-replace-or-append
+# ---------------------------------------------------------------------------
+
+class TestReplaceOrAppendSection:
+    def test_sentinel_absent_appends_after_last_line(self):
+        from dev_team import _replace_or_append_section
+        context_text = "---\nstate: researching\n---\n\nSome preamble.\n"
+        result = _replace_or_append_section(context_text, "Researcher Brief", "The brief text.")
+        assert result == (
+            "---\nstate: researching\n---\n\nSome preamble.\n\n"
+            "<!-- section:Researcher Brief -->\n\nThe brief text.\n\n"
+        )
+
+    def test_sentinel_present_replaces_content_up_to_next_sentinel(self):
+        from dev_team import _replace_or_append_section
+        context_text = (
+            "---\nstate: reviewing\n---\n\n"
+            "<!-- section:Researcher Brief -->\n\nOld brief.\n\n"
+            "<!-- section:Review Notes -->\n\nOld notes.\n"
+        )
+        result = _replace_or_append_section(context_text, "Researcher Brief", "New brief.")
+        assert result == (
+            "---\nstate: reviewing\n---\n\n"
+            "<!-- section:Researcher Brief -->\n\nNew brief.\n\n"
+            "<!-- section:Review Notes -->\n\nOld notes.\n"
+        )
+
+    def test_sentinel_present_as_last_section_replaces_to_end_of_file(self):
+        from dev_team import _replace_or_append_section
+        context_text = "---\nstate: reviewing\n---\n\n<!-- section:Review Notes -->\n\nOld notes.\n"
+        result = _replace_or_append_section(context_text, "Review Notes", "New notes.")
+        assert result == "---\nstate: reviewing\n---\n\n<!-- section:Review Notes -->\n\nNew notes.\n\n"
+
+    def test_content_is_stripped_of_surrounding_whitespace(self):
+        from dev_team import _replace_or_append_section
+        result = _replace_or_append_section("", "Fix 1", "\n\n  Fixed the bug.  \n\n")
+        assert result == "<!-- section:Fix 1 -->\n\nFixed the bug.\n\n"
+
+
+# ---------------------------------------------------------------------------
+# merge_pending_deliverables — scratch-file merge preprocessing step (issue #191)
+# ---------------------------------------------------------------------------
+
+class TestMergePendingDeliverables:
+    def test_no_pending_directory_is_a_silent_no_op(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        context_path.write_text("---\nstate: researching\n---\n")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        assert context_path.read_text() == "---\nstate: researching\n---\n"
+
+    def test_no_matching_scratch_files_for_this_work_item_is_a_no_op(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        context_path.write_text("---\nstate: researching\n---\n")
+        pending_dir = tmp_path / ".pending"
+        pending_dir.mkdir()
+        (pending_dir / "ADR-111__Researcher_Brief.md").write_text("someone else's brief")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        assert context_path.read_text() == "---\nstate: researching\n---\n"
+        assert (pending_dir / "ADR-111__Researcher_Brief.md").exists()
+
+    def test_matching_scratch_file_is_merged_in_and_deleted(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        context_path.write_text("---\nstate: researching\n---\n")
+        pending_dir = tmp_path / ".pending"
+        pending_dir.mkdir()
+        scratch_path = pending_dir / "ADR-999__Researcher_Brief.md"
+        scratch_path.write_text("The researched brief.")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        assert "<!-- section:Researcher Brief -->" in context_path.read_text()
+        assert "The researched brief." in context_path.read_text()
+        assert not scratch_path.exists()
+
+    def test_section_name_underscore_to_space_reconstruction(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        context_path.write_text("---\nstate: researching\n---\n")
+        pending_dir = tmp_path / ".pending"
+        pending_dir.mkdir()
+        (pending_dir / "ADR-999__Post-Handoff_Fix_3.md").write_text("Fixed the review comment.")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        assert "<!-- section:Post-Handoff Fix 3 -->" in context_path.read_text()
+
+    def test_multiple_matching_scratch_files_are_all_merged_and_deleted(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        context_path.write_text("---\nstate: reviewing\n---\n")
+        pending_dir = tmp_path / ".pending"
+        pending_dir.mkdir()
+        brief_path = pending_dir / "ADR-999__Researcher_Brief.md"
+        notes_path = pending_dir / "ADR-999__Review_Notes.md"
+        brief_path.write_text("The brief.")
+        notes_path.write_text("The notes.")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        final_text = context_path.read_text()
+        assert "<!-- section:Researcher Brief -->" in final_text
+        assert "<!-- section:Review Notes -->" in final_text
+        assert not brief_path.exists()
+        assert not notes_path.exists()
+
+    def test_context_file_does_not_yet_exist_treats_it_as_empty(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        pending_dir = tmp_path / ".pending"
+        pending_dir.mkdir()
+        (pending_dir / "ADR-999__Researcher_Brief.md").write_text("The brief.")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        assert context_path.exists()
+        assert "<!-- section:Researcher Brief -->" in context_path.read_text()
+
+
+# ---------------------------------------------------------------------------
 # signoff_cycle_count counter
 # ---------------------------------------------------------------------------
 
