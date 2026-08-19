@@ -46,6 +46,11 @@ confirmed upstream `isolation: "worktree"` bug (Claude Code issues #51596, #3787
 can silently reuse a stale worktree/branch on an 8-hex-char ID-prefix collision — a dirty
 worktree at this point means it isn't the fresh one this task expects.
 
+(A properly isolated worktree never sees another concurrent session's `.claude/worktrees/`
+bookkeeping — that only shows up when this check is run from the main checkout instead. See
+`workflow-orchestrate`'s own preflight check, which stops before this skill would ever run in
+that situation.)
+
 ### 2 — Check the context file for already-known values
 
 Use the `use-context-file` skill with the `work-item-id` to locate and read the context file.

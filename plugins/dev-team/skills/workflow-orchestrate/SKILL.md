@@ -42,7 +42,33 @@ compress your own report of a genuinely unexpected failure down to one line.
 
 ## Steps
 
-### 0 — Verify `python3` is available
+### 0 — Preflight checks
+
+#### 0a — Verify this session is running from an isolated worktree, not the main checkout
+
+Every later step — branch checkouts, commits, and every downstream skill's own worktree-
+freshness check — assumes this session's own working directory is a linked `git worktree`
+dedicated to this one task, never the main checkout shared by every other session and every
+other concurrent task. Confirm that before anything else, even before step 0b:
+
+```bash
+git rev-parse --git-dir
+git rev-parse --git-common-dir
+```
+
+If both commands print the same path, this session is running from the **main checkout** — stop
+immediately: do not proceed to step 0b or touch any repository state. Report clearly that this
+pipeline must be spawned into its own isolated worktree (`isolation: "worktree"` on the `Agent`
+call — the same way `concurrent-orchestrate` already spawns both `workflow-orchestrate` and
+`monitor-stack`) before it starts, and recommend the caller re-invoke it that way. Running
+directly from the main checkout risks mutating the user's own working directory, and produces
+false-positive dirty-worktree signals downstream from other concurrent sessions' own
+`.claude/worktrees/<agent-id>` bookkeeping (which is only ever visible from the main checkout's
+own working directory in the first place — a properly isolated worktree never sees it).
+
+If the two paths differ, this session is correctly isolated — continue to step 0b.
+
+#### 0b — Verify `python3` is available
 
 Every step below drives `dev_team.py` (and every script it delegates to) through `python3` —
 nothing in this workflow works without it. Before running step 1 for the first time this
