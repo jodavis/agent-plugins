@@ -84,7 +84,8 @@ non-stack path.
 
 Use the `use-context-file` skill to write the returned PR URL to the `pr_url` frontmatter field in the context file.
 
-Output the PR URL:
+Use the `write-scratch-deliverable` skill to write the following in place of returning it as chat
+text:
 
 ```json
 {"pr_url": "https://github.com/..."}

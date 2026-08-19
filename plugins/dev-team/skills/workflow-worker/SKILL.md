@@ -23,32 +23,28 @@ path; it is not an environment variable.
 ### 1 — Invoke the skill
 
 Use the `Skill` tool to invoke `<skill>` with `<skill-args>` as arguments. Follow the skill's
-instructions and complete all its steps. Capture the output — do not return it to the caller
-yet.
+instructions and complete all its steps.
 
-### 2 — Write output to the context file
+`<skill>`'s own final step writes its deliverable to a scratch file — via the
+`write-scratch-deliverable` skill — instead of returning it as chat text; `dev_team.py`'s
+`merge_pending_deliverables()` picks that file up and merges it into `<context-file>`'s
+`<write-section>` section on the next orchestration-loop iteration. `<context-file>` and
+`<write-section>` (this skill's own arguments, above) are exactly what `write-scratch-deliverable`
+needs to compute that scratch file's path — they stay in scope for `<skill>`'s own steps since
+`<skill>` runs inside this same session, not a separate one, so there is nothing further for you
+to pass along explicitly.
 
-Write the captured output to the `<write-section>` section of `<context-file>`.
-Use `Edit`, never `Write` — concurrent agents share this file and `Write` would overwrite their sections.
+**Do not** write to `<context-file>` yourself, with `Edit` or otherwise — `<skill>`'s own final
+step already did (via the scratch file), and a direct `Edit` here would race with the
+deterministic merge step over the same content.
 
-The section format is:
-```
-<!-- section:<write-section> -->
+### 2 — Return status
 
-<content>
-```
+This is the *only* step that returns a result. Return exactly `<skill>`'s own final chat output,
+verbatim:
+- `successful` — if `<skill>` completed and wrote its deliverable to the scratch file
+- A detailed description of the failure — if `<skill>` itself failed to complete
 
-**If the sentinel `<!-- section:<write-section> -->` already exists:** use `Edit` to replace all
-content between the sentinel and the next `<!-- section:` marker or end of file.
-
-**If the sentinel does not exist:** use `Edit` to append the sentinel and content after the last
-line of the file.
-
-### 3 — Return status
-
-This is the *only* step that returns a result. Return exactly one of:
-- `successful` — if `<skill>` completed and its output was written to the context file
-- A detailed description of the failure — if `<skill>` itself failed to complete or write its
-  output
-
-**Never return intermediate messages, skill output, or anything else.** All output goes to the context file only.
+**Never return intermediate messages, skill deliverable content, or your own summary of what
+`<skill>` did.** The deliverable itself already went to the scratch file in step 1, not through
+you.

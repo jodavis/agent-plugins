@@ -115,9 +115,13 @@ commit's own message carries forward unless the rebase specifically demands a ne
 ### 6 — Report the result
 
 - **The rebase reports complete and `git status` shows a clean working tree with no rebase in
-  progress:** return `"resolved"`.
+  progress:** your verdict is `"resolved"`.
 - **Step 4 stopped on a conflict that couldn't be resolved with confidence, or a rebase is
-  still in progress for any other reason:** return `"unresolved"`.
+  still in progress for any other reason:** your verdict is `"unresolved"`.
+
+Use the `write-scratch-deliverable` skill to write that single word (`resolved` or `unresolved`)
+in place of returning it as chat text — this is your deliverable, even though it's short; the
+caller (`monitor-stack`) reads it back from the merged context file, not from your chat response.
 
 Either way, stop here. Do not run `git rebase --abort` or `git push` — the caller
 (`dev-team:monitor-stack`) runs `git rebase --abort` on `"unresolved"` to return to a clean
