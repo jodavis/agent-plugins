@@ -61,11 +61,30 @@ If the filter matches zero tests, run the full test project without `--filter`.
 
 **Commit each fix separately** using the `commit-changes` skill with a message describing the specific issue resolved. One commit per issue — do not batch multiple fixes into a single commit.
 
-### 6 — Self-review
+### 6 — Update the last-seen review comment id
+
+Skip this step if step 5 addressed no code review comments (only build/test failures) — there is
+nothing new to account for.
+
+Otherwise, the `review_comment` poll detector (`pr_event_detector.py`) re-trips whenever the max
+comment id across the whole PR — replies included — exceeds `last_seen_review_comment_id`. The
+replies you just posted in step 5 would themselves trip it on the very next poll unless you
+account for them now:
+
+```bash
+gh api "repos/<owner>/<repo>/pulls/<number>/comments" --jq '[.[].id] | max // empty'
+```
+
+(`<owner>`, `<repo>`, `<number>` — the same values you parsed from `pr_url` for step 4.) Write the
+result to the context file's `last_seen_review_comment_id` frontmatter field via the
+`use-context-file` skill — it already exists there (whatever `review_comment` event triggered this
+run set it before spawning you), so this is a straightforward existing-line update.
+
+### 7 — Self-review
 
 Review the diff for unintended scope, missed issues, and convention violations.
 
-### 7 — Report
+### 8 — Report
 
 Compose a fix summary as structured prose: for each issue, one sentence describing what was
 changed and why. Use the `write-scratch-deliverable` skill to write it in place of returning it
