@@ -24,11 +24,12 @@ Do NOT use this skill when:
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an
-environment variable. `stack_pr_poll.py` and `stack_rebase_continue.py` both live in the sibling
-`workflow-orchestrate` skill's `scripts/` directory, so they are invoked as
-`<skill-dir>/../workflow-orchestrate/scripts/stack_pr_poll.py` and
-`<skill-dir>/../workflow-orchestrate/scripts/stack_rebase_continue.py` — still anchored to
-`<skill-dir>`, never to an assumed repo-root CWD.
+environment variable. `stack_pr_poll.py`, `stack_rebase_continue.py`, and `stack_checkout.py` all
+live in the sibling `workflow-orchestrate` skill's `scripts/` directory, so they are invoked as
+`<skill-dir>/../workflow-orchestrate/scripts/stack_pr_poll.py`,
+`<skill-dir>/../workflow-orchestrate/scripts/stack_rebase_continue.py`, and
+`<skill-dir>/../workflow-orchestrate/scripts/stack_checkout.py` — still anchored to `<skill-dir>`,
+never to an assumed repo-root CWD.
 
 ## Role
 
@@ -40,17 +41,17 @@ react to whatever single outcome it returns, and repeat, until `stack_pr_poll.py
 
 **Never attempt to:**
 - Call `gh stack` yourself, directly or indirectly — `work-with-stacked-prs` (via
-  `stack_pr_poll.py` and `stack_rebase_continue.py`, which both import `gh_stack.py`) is the sole
-  owner of every `gh stack` invocation in this feature. Every operation this skill needs comes
-  indirectly through one of those two scripts' own return values.
+  `stack_pr_poll.py`, `stack_rebase_continue.py`, and `stack_checkout.py`, which all import
+  `gh_stack.py`) is the sole owner of every `gh stack` invocation in this feature. Every operation
+  this skill needs comes indirectly through one of those three scripts' own return values.
 - Resolve a rebase conflict yourself — spawn the developer agent to run `resolve-rebase-conflict`
 - Fix a review comment or CI failure yourself — spawn `fix-pr` (nested, via the developer agent)
 - Ask the user a question — `AskUserQuestion` is unavailable to any `Agent`-spawned sub-agent
   (confirmed experimentally); stop instead and let the harness's background-task notification
   surface the situation
 - Reuse the implement-phase worktree of whichever task happened to trigger your auto-start — you
-  run in your own, freshly spawned worktree, checked out on the epic's feature branch, not any
-  one task's branch
+  run in your own, freshly spawned worktree, checked out on a real stack member branch (step 2),
+  never the epic's trunk itself and never any one task's own implement-phase worktree
 - Reason about which task's branch the worktree should be on, or batch more than one fired event
   in a single pass — `stack_pr_poll.py` already resolved that ambiguity before returning; this
   skill only reacts to exactly the one thing it returned
@@ -73,7 +74,7 @@ confirmed upstream `isolation: "worktree"` bug (Claude Code issues #51596, #3787
 can silently reuse a stale worktree/branch on an 8-hex-char ID-prefix collision — a dirty
 worktree at this point means it isn't the fresh one this task expects.
 
-### 2 — Resolve the epic's context file and check out the feature branch
+### 2 — Resolve the epic's context file and check out a real stack member branch
 
 Use the `use-context-file` skill with `<epic-id>` (this skill's own `--work-item-id` argument)
 to locate and read (creating if necessary) the epic's own context file — per the spec's own
@@ -96,10 +97,32 @@ skill runs, a task in this epic has already reached hand-off, so `ensure-feature
 already created it; a missing match here is a **hard stop** — report the failure in detail rather
 than guessing a branch name.
 
+**Do not check out `<feature-branch>` itself and stop there** — `gh-stack` does not consider the
+trunk a stack member, so `gh stack view`/`sync` (and therefore `stack_pr_poll.py`) fail from a
+checkout of it. This session's own worktree is also freshly spawned and has never run
+`init`/`add` for this stack itself, so it has no local stack-membership state to fall back on
+either (ADR-370 finding #1 — that state is worktree-private). Materialize the stack in this
+worktree and land on a real member instead:
+
 ```bash
-git checkout <feature-branch>
-git pull origin <feature-branch>
+gh pr list --base <feature-branch> --state open --json number --jq '.[0].number'
 ```
+
+In a linear stack, exactly one open PR bases directly off the trunk — the bottom-most entry, the
+one whose task triggered this monitor's own auto-start. A missing result here is a **hard stop**
+(the "a task has already reached hand-off" precondition this skill requires wasn't actually met)
+— report the failure in detail. Otherwise call this `<member-pr-number>` and run:
+
+```bash
+python3 "<skill-dir>/../workflow-orchestrate/scripts/stack_checkout.py" <member-pr-number>
+```
+
+Per `gh stack checkout --help`, a PR number not yet tracked locally is discovered from the GitHub
+API and its branches fetched, so this works even though this worktree never registered any branch
+of its own — this is the one operation that can bootstrap `gh stack` awareness into a brand-new
+worktree. If the script exits non-zero, it prints a clear `Error: ...` message to stderr instead
+of JSON — stop and report that error in detail. On success, HEAD is now a real stack member branch
+with the whole stack materialized locally.
 
 From this point on, plain git commands work directly (no `git -C`) — the whole session's cwd is
 already this worktree.

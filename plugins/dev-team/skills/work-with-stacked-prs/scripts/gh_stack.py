@@ -8,9 +8,9 @@ returns a typed `("ok" | "error", detail)` tuple, mirroring `task_readiness.py`'
 `pr_event_detector.py`'s existing `Literal`-status pattern in this codebase, rather than letting
 `subprocess.CalledProcessError` propagate the way `rebase_mechanic.py` does. `view` is the only
 operation `gh stack` itself supports `--json` for; its `detail` carries the parsed dict on
-success. The other six operations (`init`, `add`, `submit`, `sync`, `merge`, `rebase_continue`)
-have no `--json` support — their outcome must be read from exit code/stderr text; `detail` carries
-stripped stdout on success or stderr (falling back to stdout) on failure.
+success. The other seven operations (`init`, `add`, `submit`, `sync`, `merge`, `rebase_continue`,
+`checkout`) have no `--json` support — their outcome must be read from exit code/stderr text;
+`detail` carries stripped stdout on success or stderr (falling back to stdout) on failure.
 
 Caller contract (ADR-370 finding #1 — `_findings_GhStackSpike.md`): `gh stack`'s local
 stack-membership state lives in the worktree-private `.git/worktrees/<name>/gh-stack` file, not
@@ -144,6 +144,19 @@ def rebase_continue(
     return _text_result(
         _run_gh_stack(["rebase", "--continue"], cwd=cwd, timeout=timeout), "rebase_continue"
     )
+
+
+def checkout(
+    target: str | int, cwd: Path | str | None = None, timeout: int = DEFAULT_TIMEOUT
+) -> tuple[GhStackStatus, str]:
+    """Check out a stack by stack number, PR number, PR URL, or branch name, materializing that
+    stack's membership in the *current* worktree if it isn't already tracked there. Per `gh stack
+    checkout --help`: a PR number or PR URL not yet tracked locally is discovered from the GitHub
+    API and its branches fetched, so it works from a worktree that has never run `init`/`add` for
+    this stack (unlike a branch name, which only resolves against locally tracked stacks). This is
+    the only operation that can bootstrap `gh stack` awareness into a brand-new worktree — see
+    ADR-370 finding #1 on why every worktree needs its own local stack-membership state."""
+    return _text_result(_run_gh_stack(["checkout", str(target)], cwd=cwd, timeout=timeout), "checkout")
 
 
 def view(
