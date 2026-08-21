@@ -1,24 +1,21 @@
 """Tests for stack_registration.py — the two pieces of genuinely branching decision logic
-`ensure-working-branch`'s prose SKILL.md invokes via `Bash` for ADR-375's lazy, recursive stack
-branch registration:
+`ensure-working-branch`'s prose SKILL.md invokes via `Bash`:
 
-- compute_registration_plan(): walks backward from a task's position in the epic's validated
-  stack order until it finds an already-registered ancestor, returning the ordered list of
-  tasks that still need a branch registered (oldest first) plus the already-registered task to
-  anchor the first of them on.
-- is_added_to_stack(): reads a task's own context file to check its `added_to_stack` field,
-  false for a task with no context file yet (an unstarted human task).
+- compute_stack_anchor(): picks which of a task's own declared dependencies its working branch
+  should be based on — whichever sorts latest in the epic's validated document order — or `None`
+  when the task has no dependencies (base on the feature branch instead). Every dependency is
+  guaranteed already `done` by the time a task starts (`task_readiness.py`'s `is_task_eligible`),
+  so there is no backfill/placeholder concern the way the old eager-registration design had.
 - verify_branch_identity(): the closes-#126 guardrail — confirms the branch actually checked
   out after registration is genuinely the task's own working branch, and never the shared
   feature branch.
 
 Covers:
-- compute_registration_plan: no backfill needed, one-level backfill, multi-level backfill, the
-  first task in the stack (no predecessor at all), and a target task missing from the order
-- is_added_to_stack: no context file, added_to_stack true, added_to_stack false (default)
+- compute_stack_anchor: no dependencies, one dependency, multiple dependencies (picks the one
+  latest in document order regardless of listed order)
 - verify_branch_identity: matching branch (no error), current branch is the feature branch
   (closes #126), current branch is neither the working branch nor the feature branch
-- main() CLI wrapper ('plan' and 'verify' subcommands): one narrow integration test per
+- main() CLI wrapper ('anchor' and 'verify' subcommands): one narrow integration test per
   subcommand's primary happy path, plus their primary error paths, covering the wiring
   `ensure-working-branch` relies on to call this script via `Bash`
 """
@@ -46,144 +43,55 @@ def spec_text_for(order_with_dependencies: list[tuple[str, str]]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# compute_registration_plan — no backfill needed (predecessor already registered)
+# compute_stack_anchor — no declared dependencies
 # ---------------------------------------------------------------------------
 
-class TestComputeRegistrationPlanNoBackfillNeeded:
-    def test_predecessor_already_registered_returns_plan_of_just_this_task(self):
+class TestComputeStackAnchorNoDependencies:
+    def test_no_dependencies_returns_none(self):
         # Arrange
-        from stack_registration import compute_registration_plan
+        from stack_registration import compute_stack_anchor
         order = ["ADR-1", "ADR-2", "ADR-3"]
-        registered = {"ADR-1", "ADR-2"}
 
         # Act
-        result = compute_registration_plan("ADR-3", order, is_registered=lambda t: t in registered)
+        result = compute_stack_anchor("ADR-1", [], order)
 
         # Assert
-        assert result.plan == ["ADR-3"]
-        assert result.anchor_task == "ADR-2"
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
-# compute_registration_plan — one-level backfill (predecessor unregistered, its own
-# predecessor already registered)
+# compute_stack_anchor — a single declared dependency
 # ---------------------------------------------------------------------------
 
-class TestComputeRegistrationPlanOneLevelBackfill:
-    def test_unregistered_predecessor_backfilled_before_this_task(self):
+class TestComputeStackAnchorSingleDependency:
+    def test_single_dependency_returns_it(self):
         # Arrange
-        from stack_registration import compute_registration_plan
+        from stack_registration import compute_stack_anchor
         order = ["ADR-1", "ADR-2", "ADR-3"]
-        registered = {"ADR-1"}
 
         # Act
-        result = compute_registration_plan("ADR-3", order, is_registered=lambda t: t in registered)
+        result = compute_stack_anchor("ADR-3", ["ADR-1"], order)
 
         # Assert
-        assert result.plan == ["ADR-2", "ADR-3"]
-        assert result.anchor_task == "ADR-1"
+        assert result == "ADR-1"
 
 
 # ---------------------------------------------------------------------------
-# compute_registration_plan — multi-level backfill (walks back to the start of the stack)
+# compute_stack_anchor — multiple dependencies picks the one latest in document order,
+# regardless of the order they're listed in
 # ---------------------------------------------------------------------------
 
-class TestComputeRegistrationPlanMultiLevelBackfill:
-    def test_no_registered_ancestor_backfills_all_the_way_to_the_first_task(self):
+class TestComputeStackAnchorMultipleDependencies:
+    def test_multiple_dependencies_picks_latest_in_document_order(self):
         # Arrange
-        from stack_registration import compute_registration_plan
+        from stack_registration import compute_stack_anchor
         order = ["ADR-1", "ADR-2", "ADR-3", "ADR-4"]
 
         # Act
-        result = compute_registration_plan("ADR-4", order, is_registered=lambda t: False)
+        result = compute_stack_anchor("ADR-4", ["ADR-3", "ADR-1"], order)
 
         # Assert
-        assert result.plan == ["ADR-1", "ADR-2", "ADR-3", "ADR-4"]
-        assert result.anchor_task is None
-
-
-# ---------------------------------------------------------------------------
-# compute_registration_plan — this task is first in the stack (no predecessor at all)
-# ---------------------------------------------------------------------------
-
-class TestComputeRegistrationPlanFirstTaskInStack:
-    def test_first_task_in_stack_returns_plan_of_just_itself_with_no_anchor(self):
-        # Arrange
-        from stack_registration import compute_registration_plan
-        order = ["ADR-1", "ADR-2", "ADR-3"]
-
-        # Act
-        result = compute_registration_plan("ADR-1", order, is_registered=lambda t: False)
-
-        # Assert
-        assert result.plan == ["ADR-1"]
-        assert result.anchor_task is None
-
-
-# ---------------------------------------------------------------------------
-# compute_registration_plan — target task missing from the stack order
-# ---------------------------------------------------------------------------
-
-class TestComputeRegistrationPlanTargetNotInOrder:
-    def test_target_task_not_in_order_raises_value_error(self):
-        # Arrange
-        from stack_registration import compute_registration_plan
-        order = ["ADR-1", "ADR-2"]
-
-        # Act / Assert
-        with pytest.raises(ValueError, match="ADR-99"):
-            compute_registration_plan("ADR-99", order, is_registered=lambda t: False)
-
-
-# ---------------------------------------------------------------------------
-# is_added_to_stack — no context file yet
-# ---------------------------------------------------------------------------
-
-class TestIsAddedToStackNoContextFile:
-    def test_no_context_file_returns_false(self, tmp_path, monkeypatch):
-        # Arrange
-        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
-        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
-        from stack_registration import is_added_to_stack
-
-        # Act
-        result = is_added_to_stack("ADR-999")
-
-        # Assert
-        assert result is False
-
-
-# ---------------------------------------------------------------------------
-# is_added_to_stack — existing context file, true vs. default false
-# ---------------------------------------------------------------------------
-
-class TestIsAddedToStackExistingContextFile:
-    @pytest.mark.parametrize(
-        "added_to_stack, expected",
-        [
-            pytest.param(True, True, id="added_to_stack_true"),
-            pytest.param(False, False, id="added_to_stack_false_default"),
-        ],
-    )
-    def test_existing_context_file_returns_its_added_to_stack_value(
-        self, tmp_path, monkeypatch, added_to_stack, expected
-    ):
-        # Arrange
-        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
-        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
-        from dev_team import compute_context_path
-        from get_context_path import get_repo_slug
-        from pipeline_context import PipelineContext
-        from stack_registration import is_added_to_stack
-
-        path = compute_context_path("ADR-1", get_repo_slug())
-        PipelineContext(work_item_id="ADR-1", added_to_stack=added_to_stack).save(path)
-
-        # Act
-        result = is_added_to_stack("ADR-1")
-
-        # Assert
-        assert result is expected
+        assert result == "ADR-3"
 
 
 # ---------------------------------------------------------------------------
@@ -240,21 +148,14 @@ class TestVerifyBranchIdentityGenericMismatch:
 
 
 # ---------------------------------------------------------------------------
-# main() CLI wrapper — 'plan' subcommand
+# main() CLI wrapper — 'anchor' subcommand
 # ---------------------------------------------------------------------------
 
-class TestMainPlanCliWrapper:
-    def test_main_plan_no_backfill_needed_prints_plan_and_anchor_task(self, tmp_path, monkeypatch):
+class TestMainAnchorCliWrapper:
+    def test_main_anchor_with_dependency_prints_anchor_task(self, tmp_path, monkeypatch):
         # Arrange
         monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
         monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
-        from dev_team import compute_context_path
-        from get_context_path import get_repo_slug
-        from pipeline_context import PipelineContext
-
-        PipelineContext(work_item_id="ADR-1", added_to_stack=True).save(
-            compute_context_path("ADR-1", get_repo_slug())
-        )
         spec_path = tmp_path / "spec.md"
         spec_path.write_text(
             spec_text_for([("ADR-1", "— none —"), ("ADR-2", "ADR-1")]), encoding="utf-8"
@@ -262,15 +163,32 @@ class TestMainPlanCliWrapper:
 
         # Act
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS_DIR / "stack_registration.py"), "plan", "ADR-2", str(spec_path)],
+            [sys.executable, str(SCRIPTS_DIR / "stack_registration.py"), "anchor", "ADR-2", str(spec_path)],
             capture_output=True, text=True, timeout=15,
         )
 
         # Assert
         assert result.returncode == 0
-        assert json.loads(result.stdout) == {"plan": ["ADR-2"], "anchor_task": "ADR-1"}
+        assert json.loads(result.stdout) == {"anchor_task": "ADR-1"}
 
-    def test_main_plan_missing_spec_file_prints_error_and_exits_nonzero(self, tmp_path, monkeypatch):
+    def test_main_anchor_first_task_in_stack_prints_null_anchor(self, tmp_path, monkeypatch):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        spec_path = tmp_path / "spec.md"
+        spec_path.write_text(spec_text_for([("ADR-1", "— none —")]), encoding="utf-8")
+
+        # Act
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "stack_registration.py"), "anchor", "ADR-1", str(spec_path)],
+            capture_output=True, text=True, timeout=15,
+        )
+
+        # Assert
+        assert result.returncode == 0
+        assert json.loads(result.stdout) == {"anchor_task": None}
+
+    def test_main_anchor_missing_spec_file_prints_error_and_exits_nonzero(self, tmp_path, monkeypatch):
         # Arrange
         monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
         monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
@@ -278,13 +196,31 @@ class TestMainPlanCliWrapper:
 
         # Act
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS_DIR / "stack_registration.py"), "plan", "ADR-1", str(missing_spec_path)],
+            [sys.executable, str(SCRIPTS_DIR / "stack_registration.py"), "anchor", "ADR-1", str(missing_spec_path)],
             capture_output=True, text=True, timeout=15,
         )
 
         # Assert
         assert result.returncode != 0
         assert "Error:" in result.stderr
+
+    def test_main_anchor_target_task_not_in_order_prints_error_and_exits_nonzero(self, tmp_path, monkeypatch):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        spec_path = tmp_path / "spec.md"
+        spec_path.write_text(spec_text_for([("ADR-1", "— none —")]), encoding="utf-8")
+
+        # Act
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "stack_registration.py"), "anchor", "ADR-99", str(spec_path)],
+            capture_output=True, text=True, timeout=15,
+        )
+
+        # Assert
+        assert result.returncode != 0
+        assert "Error:" in result.stderr
+        assert "ADR-99" in result.stderr
 
 
 # ---------------------------------------------------------------------------

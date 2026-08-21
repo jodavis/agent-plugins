@@ -6,12 +6,12 @@ status plus the fields a caller needs to judge staleness without a second file r
 Covers:
 - dependency_status: no context file, terminal states (done/failed), pr_url-implies-ready,
   and the in_progress fallback
-- is_task_eligible: empty dependency list, single-dependency ready/not-ready, every
-  dependency ready-or-done in any mix (including all-ready-none-done, the case ADR-296 never
-  allowed), 2+ not-ready-or-done, and a failed dependency short-circuiting to blocked. No
-  `base_branch` is returned — ADR-374 drops the "all but one merged" exception and the
-  branch-substitution special case entirely; a task is eligible once every dependency has
-  reached "ready" (`pr_url` set) or "done" — no merge is ever required.
+- is_task_eligible: empty dependency list, single-dependency done/ready/not-started (all three
+  short of "done" other than done itself return "waiting" — "ready" alone is no longer enough,
+  since a dependency isn't guaranteed linked into the stack until it's fully `done`), every
+  dependency done in any count, 2+ dependencies short of done, and a failed dependency
+  short-circuiting to blocked. No `base_branch` is returned — no merge is ever required, but
+  unlike ADR-374's original "ready or done" rule, an open PR alone is not enough either.
 - task_snapshot: no context file yet, and an existing context file
 - main() CLI wrapper: one narrow integration test covering the primary happy-path — a single
   ready dependency prints `{"status": "eligible", "base_branch": null}` on stdout, exit 0.
@@ -205,7 +205,8 @@ class TestIsTaskEligibleEmptyDependencies:
 
 
 # ---------------------------------------------------------------------------
-# is_task_eligible — single dependency, ready vs. not yet ready
+# is_task_eligible — single dependency, done vs. ready-but-not-done vs. in-progress. Ready alone
+# is no longer enough — only "done" (signed off and linked into the stack) makes it eligible.
 # ---------------------------------------------------------------------------
 
 class TestIsTaskEligibleSingleDependency:
@@ -213,9 +214,14 @@ class TestIsTaskEligibleSingleDependency:
         "dep_context_kwargs, expected_result",
         [
             pytest.param(
-                dict(state="creating_pr", pr_url="https://github.com/example/repo/pull/2"),
+                dict(state="done"),
                 "eligible",
-                id="ready_returns_eligible",
+                id="done_returns_eligible",
+            ),
+            pytest.param(
+                dict(state="creating_pr", pr_url="https://github.com/example/repo/pull/2"),
+                "waiting",
+                id="ready_but_not_done_returns_waiting",
             ),
             pytest.param(
                 dict(state="researching"),
@@ -264,33 +270,59 @@ class TestIsTaskEligibleSingleDependencyNotStarted:
 
 
 # ---------------------------------------------------------------------------
-# is_task_eligible — every dependency ready or done, any mix and any count, is eligible.
-# No merge is ever required, and no "all but one" exception exists any more — any number
-# of dependencies that are all ready and/or done is enough.
+# is_task_eligible — every dependency done, any count, is eligible. No merge is ever required,
+# and no "all but one" exception exists — but a mix including a merely-"ready" (not yet "done")
+# dependency is still "waiting", since an open PR alone doesn't guarantee it's linked into the
+# stack yet.
 # ---------------------------------------------------------------------------
 
-class TestIsTaskEligibleAllReadyOrDone:
+class TestIsTaskEligibleAllDone:
+    def test_is_task_eligible_two_dependencies_all_done_returns_eligible(self, tmp_path, monkeypatch):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        from task_readiness import is_task_eligible
+
+        repo_slug = get_repo_slug()
+        PipelineContext(work_item_id="ADR-2", state="done").save(compute_context_path("ADR-2", repo_slug))
+        PipelineContext(work_item_id="ADR-3", state="done").save(compute_context_path("ADR-3", repo_slug))
+
+        # Act
+        result = is_task_eligible("ADR-1", ["ADR-2", "ADR-3"])
+
+        # Assert
+        assert result == "eligible"
+
+
+# ---------------------------------------------------------------------------
+# is_task_eligible — two or more dependencies short of done (including one merely "ready")
+# ---------------------------------------------------------------------------
+
+class TestIsTaskEligibleTwoOrMoreNotDone:
     @pytest.mark.parametrize(
         "dep2_state, dep2_extra, dep3_state, dep3_extra",
         [
             pytest.param(
-                "done", {},
-                "creating_pr", {"pr_url": "https://github.com/example/repo/pull/3"},
-                id="one_done_one_ready_returns_eligible",
+                "researching", {},
+                "planning", {},
+                id="neither_done_nor_ready_returns_waiting",
             ),
             pytest.param(
                 "done", {},
-                "done", {},
-                id="all_done_returns_eligible",
+                "creating_pr", {"pr_url": "https://github.com/example/repo/pull/3"},
+                id="one_done_one_merely_ready_returns_waiting",
             ),
             pytest.param(
                 "creating_pr", {"pr_url": "https://github.com/example/repo/pull/2"},
                 "creating_pr", {"pr_url": "https://github.com/example/repo/pull/3"},
-                id="all_ready_none_done_returns_eligible",
+                id="all_ready_none_done_returns_waiting",
             ),
         ],
     )
-    def test_is_task_eligible_two_dependencies_all_ready_or_done_returns_eligible(
+    def test_is_task_eligible_two_dependencies_short_of_done_returns_waiting(
         self, tmp_path, monkeypatch, dep2_state, dep2_extra, dep3_state, dep3_extra
     ):
         # Arrange
@@ -308,31 +340,6 @@ class TestIsTaskEligibleAllReadyOrDone:
         PipelineContext(work_item_id="ADR-3", state=dep3_state, **dep3_extra).save(
             compute_context_path("ADR-3", repo_slug)
         )
-
-        # Act
-        result = is_task_eligible("ADR-1", ["ADR-2", "ADR-3"])
-
-        # Assert
-        assert result == "eligible"
-
-
-# ---------------------------------------------------------------------------
-# is_task_eligible — two or more dependencies short of ready or done, none of them ready
-# ---------------------------------------------------------------------------
-
-class TestIsTaskEligibleTwoOrMoreNotDone:
-    def test_is_task_eligible_two_dependencies_neither_done_nor_ready_returns_waiting(self, tmp_path, monkeypatch):
-        # Arrange
-        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
-        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
-        from dev_team import compute_context_path
-        from get_context_path import get_repo_slug
-        from pipeline_context import PipelineContext
-        from task_readiness import is_task_eligible
-
-        repo_slug = get_repo_slug()
-        PipelineContext(work_item_id="ADR-2", state="researching").save(compute_context_path("ADR-2", repo_slug))
-        PipelineContext(work_item_id="ADR-3", state="planning").save(compute_context_path("ADR-3", repo_slug))
 
         # Act
         result = is_task_eligible("ADR-1", ["ADR-2", "ADR-3"])
@@ -368,13 +375,13 @@ class TestIsTaskEligibleFailedDependency:
 
 
 # ---------------------------------------------------------------------------
-# main() CLI wrapper — the only wiring `ensure-working-branch`'s prose SKILL.md can invoke via
-# `Bash`; one narrow integration test for the primary happy-path scenario. `base_branch` stays
-# an unconditional `null` in the JSON shape as a compatibility shim.
+# main() CLI wrapper — one narrow integration test for the primary happy-path scenario.
+# `base_branch` stays an unconditional `null` in the JSON shape; no current skill invokes this
+# CLI form via `Bash` (callers use the Python API directly).
 # ---------------------------------------------------------------------------
 
 class TestMainCliWrapper:
-    def test_main_single_ready_dependency_prints_eligible_with_null_base_branch(self, tmp_path, monkeypatch):
+    def test_main_single_done_dependency_prints_eligible_with_null_base_branch(self, tmp_path, monkeypatch):
         # Arrange
         monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
         monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
@@ -383,11 +390,7 @@ class TestMainCliWrapper:
         from pipeline_context import PipelineContext
 
         dep_path = compute_context_path("ADR-2", get_repo_slug())
-        PipelineContext(
-            work_item_id="ADR-2",
-            state="creating_pr",
-            pr_url="https://github.com/example/repo/pull/2",
-        ).save(dep_path)
+        PipelineContext(work_item_id="ADR-2", state="done").save(dep_path)
 
         # Act
         result = subprocess.run(

@@ -6,7 +6,7 @@ description: >
   lifecycle for every task in an epic's target set: repeatedly polls the whole stack via
   `stack_pr_poll.py`, reacting to exactly the one outcome each call returns — spawning `fix-pr`
   for a review comment or CI failure, resolving a rebase conflict via the developer agent, or
-  halting once every task in the target set has merged. Replaces the per-task `monitor-pr` fleet.
+  halting once every task in the target set has merged.
 argument-hint: --work-item-id <epic-id>
 ---
 
@@ -139,9 +139,8 @@ git rev-parse --show-toplevel   # -> watch_worktree_path
 git rev-parse --abbrev-ref HEAD # -> watch_worktree_branch
 ```
 
-Unlike `monitor-pr`, there is no single task's implement-phase worktree to remove here — this
-skill's own worktree was never used for any one task's implementation, only for monitoring the
-whole stack, so there is nothing to clean up before recording.
+This skill's own worktree was never used for any one task's implementation, only for monitoring
+the whole stack, so there is nothing to clean up before recording.
 
 ### 4 — Poll loop
 
@@ -160,8 +159,7 @@ argument is a positional `max_seconds` bound (default 480); this skill never nee
 
 Parse stdout as JSON. It is exactly one of: `"conflict"`, `"stack_complete"`,
 `{"task_work_item_id": ..., "event": "review_comment" | "ci_failure"}`, or `"no_change"` — never
-a batch, and never any of `monitor-pr`'s retired `dependency_merged`/`base_updated`/rebase-
-mechanic outcomes.
+a batch.
 
 If `"no_change"`, go straight back to step 4a — `stack_pr_poll.py` already blocked internally for
 its own bounded window; no additional wait is needed here.
@@ -208,10 +206,10 @@ stop and report that error in detail.
 ### 5 — Resolve a rebase conflict (repeat for each conflict the cascade hits)
 
 `stack_pr_poll.py` (or, on a repeat of this step, `stack_rebase_continue.py`) leaves the
-currently-conflicting task's branch mid-rebase (same `.git/rebase-merge`/`.git/rebase-apply`
-state `rebase_onto()` used to leave, just now reached via `gh stack`'s own cascade). Determine
-which task that is — neither script's `"conflict"` result names one, since the conflict can
-belong to any entry in the stack:
+currently-conflicting task's branch mid-rebase, in the standard `.git/rebase-merge`/
+`.git/rebase-apply` state — reached via `gh stack`'s own cascade, but resolved the same way any
+plain-git rebase conflict is. Determine which task that is — neither script's `"conflict"` result
+names one, since the conflict can belong to any entry in the stack:
 
 ```bash
 git_dir="$(git rev-parse --git-dir)"

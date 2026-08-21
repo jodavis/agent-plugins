@@ -1363,6 +1363,110 @@ class TestCreatePrStep:
 
 
 # ---------------------------------------------------------------------------
+# AddToPrStackStep
+# ---------------------------------------------------------------------------
+
+class TestAddToPrStackStep:
+    def _make_ctx(self, tmp_path, **kwargs):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-TEST", **kwargs)
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+        return ctx, context_path
+
+    def test_get_actions_returns_descriptor_when_not_added_to_stack(self, tmp_path):
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        step = AddToPrStackStep(ctx, context_path)
+        actions = step.get_actions()
+        assert len(actions) == 1
+        assert actions[0]["skill"] == "add-to-pr-stack"
+
+    def test_get_actions_returns_empty_when_already_added_to_stack(self, tmp_path):
+        """Recovery re-entry: added_to_stack already true — inline step."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path, added_to_stack=True)
+        step = AddToPrStackStep(ctx, context_path)
+        assert step.get_actions() == []
+
+    def test_handle_results_returns_linked_when_already_added_to_stack(self, tmp_path):
+        """Inline path: added_to_stack was set before handle_results() — returns linked."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path, added_to_stack=True)
+        step = AddToPrStackStep(ctx, context_path)
+        trigger = step.handle_results()
+        assert trigger == "linked"
+
+    def test_get_actions_returns_empty_when_stack_link_status_already_resolved(self, tmp_path):
+        """Recovery re-entry for a not-applicable task: added_to_stack never becomes true for
+        it, so stack_link_status (an extra_frontmatter key add_to_pr_stack.py always writes on
+        success) is what actually prevents re-spawning the agent forever."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(
+            tmp_path, extra_frontmatter={"stack_link_status": "not_applicable"}
+        )
+        step = AddToPrStackStep(ctx, context_path)
+        assert step.get_actions() == []
+
+    def test_handle_results_returns_linked_when_stack_link_status_already_resolved(self, tmp_path):
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(
+            tmp_path, extra_frontmatter={"stack_link_status": "not_applicable"}
+        )
+        step = AddToPrStackStep(ctx, context_path)
+        trigger = step.handle_results()
+        assert trigger == "linked"
+        assert ctx.consecutive_failures == 0
+
+    def test_handle_results_extracts_linked_status_from_section(self, tmp_path):
+        """Normal dispatch: agent writes Stack Link Result section; handle_results extracts it."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        text = context_path.read_text(encoding="utf-8")
+        text += '\n<!-- section:Stack Link Result -->\n\n{"status": "linked"}\n'
+        context_path.write_text(text, encoding="utf-8")
+
+        step = AddToPrStackStep(ctx, context_path)
+        trigger = step.handle_results()
+        assert trigger == "linked"
+        assert ctx.consecutive_failures == 0
+
+    def test_handle_results_treats_not_applicable_status_as_success(self, tmp_path):
+        """A task with no epic (or no local spec) reports not_applicable, not linked — still a
+        success, since there was genuinely nothing to register."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        text = context_path.read_text(encoding="utf-8")
+        text += '\n<!-- section:Stack Link Result -->\n\n{"status": "not_applicable"}\n'
+        context_path.write_text(text, encoding="utf-8")
+
+        step = AddToPrStackStep(ctx, context_path)
+        trigger = step.handle_results()
+        assert trigger == "linked"
+        assert ctx.consecutive_failures == 0
+
+    def test_handle_results_increments_failures_when_no_result_written(self, tmp_path):
+        """Failure path: agent ran but did not write a Stack Link Result section."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        step = AddToPrStackStep(ctx, context_path)
+        trigger = step.handle_results()
+        # Still returns linked (no dedicated retry edge, mirroring CreatePrStep's own
+        # precedent), but consecutive_failures is incremented for troubleshooter escalation.
+        assert trigger == "linked"
+        assert ctx.consecutive_failures == 1
+
+    def test_descriptor_includes_required_fields(self, tmp_path):
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        step = AddToPrStackStep(ctx, context_path)
+        actions = step.get_actions()
+        assert actions[0]["action"] == "spawn_agent"
+        assert actions[0]["write_section"] == "Stack Link Result"
+        assert "context_file" in actions[0]
+
+
+# ---------------------------------------------------------------------------
 # PlanStep / ResearchStep — /implement's `planning` state vs /fix's `researching` state
 # ---------------------------------------------------------------------------
 
@@ -1514,6 +1618,7 @@ class TestEventNamePerStep:
         ("FixStep", "fix"),
         ("FixPrStep", "fix"),
         ("SignoffStep", "signoff"),
+        ("AddToPrStackStep", "add-to-pr-stack"),
     ])
     def test_step_declares_expected_event_name(self, step_class_name, expected_event):
         import dev_team
@@ -1872,10 +1977,12 @@ class TestWorkflowAssetSignoffRouting:
     workflow assets let `reviewing --> handoff : approved` bypass `signoff` entirely on a
     clean first-pass review, so a task that never needed a `fixing_pr` cycle skipped the
     signoff parallel checks (and, before this fix, the hand-off hooks tied to them) outright.
-    `reviewing`'s only `approved` exit must be `signoff` — `signoff` is what may reach `done`,
-    never `reviewing` directly. `handoff` no longer exists as its own state (the `signoff`
-    pipeline event now hangs directly off `SignoffStep`'s own resolution), so the invariant is
-    now "only `signoff` reaches `done`" rather than "only `signoff` reaches `handoff`"."""
+    `reviewing`'s only `approved` exit must be `signoff` — `signoff` is what may reach
+    `add_to_pr_stack`, never `reviewing` directly. `handoff` no longer exists as its own state
+    (the `signoff` pipeline event now hangs directly off `SignoffStep`'s own resolution), and
+    `add_to_pr_stack` (registering the signed-off PR into its epic's `gh stack`) is now the only
+    state that reaches `done` — `signoff` itself no longer does, so the invariant is now "only
+    `add_to_pr_stack` reaches `done`, and only `signoff` reaches `add_to_pr_stack`"."""
 
     ASSETS_DIR = SCRIPTS_DIR.parent / "assets"
 
@@ -1892,11 +1999,24 @@ class TestWorkflowAssetSignoffRouting:
         "implement-task-plan.md",
         "fix-issue-plan.md",
     ])
-    def test_only_signoff_reaches_done(self, asset_name):
+    def test_only_add_to_pr_stack_reaches_done(self, asset_name):
         from dev_team import parse_workflow
         workflow = parse_workflow(self.ASSETS_DIR / asset_name)
         sources_reaching_done = [
             src for src, triggers in workflow.transitions.items()
             if "done" in triggers.values()
         ]
-        assert sources_reaching_done == ["signoff"]
+        assert sources_reaching_done == ["add_to_pr_stack"]
+
+    @pytest.mark.parametrize("asset_name", [
+        "implement-task-plan.md",
+        "fix-issue-plan.md",
+    ])
+    def test_only_signoff_reaches_add_to_pr_stack(self, asset_name):
+        from dev_team import parse_workflow
+        workflow = parse_workflow(self.ASSETS_DIR / asset_name)
+        sources_reaching_add_to_pr_stack = [
+            src for src, triggers in workflow.transitions.items()
+            if "add_to_pr_stack" in triggers.values()
+        ]
+        assert sources_reaching_add_to_pr_stack == ["signoff"]

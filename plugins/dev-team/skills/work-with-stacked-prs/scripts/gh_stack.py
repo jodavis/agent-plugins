@@ -8,17 +8,21 @@ returns a typed `("ok" | "error", detail)` tuple, mirroring `task_readiness.py`'
 `pr_event_detector.py`'s existing `Literal`-status pattern in this codebase, rather than letting
 `subprocess.CalledProcessError` propagate the way `rebase_mechanic.py` does. `view` is the only
 operation `gh stack` itself supports `--json` for; its `detail` carries the parsed dict on
-success. The other seven operations (`init`, `add`, `submit`, `sync`, `merge`, `rebase_continue`,
-`checkout`) have no `--json` support — their outcome must be read from exit code/stderr text;
-`detail` carries stripped stdout on success or stderr (falling back to stdout) on failure.
+success. The other eight operations (`init`, `add`, `submit`, `sync`, `merge`, `rebase_continue`,
+`checkout`, `link`) have no `--json` support — their outcome must be read from exit code/stderr
+text; `detail` carries stripped stdout on success or stderr (falling back to stdout) on failure.
 
 Caller contract (ADR-370 finding #1 — `_findings_GhStackSpike.md`): `gh stack`'s local
 stack-membership state lives in the worktree-private `.git/worktrees/<name>/gh-stack` file, not
 the shared common git directory, so it is **not** visible or correct across `git worktree`
-checkouts of the same repository. Every function in this module must be called from within the
-same worktree that owns the branch/stack in question — never from a different worktree than the
-one that last registered it. This module does not assert that contract itself; it is left to
-each caller (e.g. `ensure-working-branch`, `monitor-stack`) to honor.
+checkouts of the same repository. Every function in this module **except `link`** must be called
+from within the same worktree that owns the branch/stack in question — never from a different
+worktree than the one that last registered it. This module does not assert that contract itself;
+it is left to each caller (e.g. `ensure-working-branch`, `monitor-stack`) to honor. `link` is the
+one deliberate exception: per `gh stack link --help`, it "does not rely on gh-stack local
+tracking state" — it operates purely against GitHub (branch names, PR numbers, or PR URLs), so it
+is safe to call from any worktree, including a task's own per-task worktree, with no shared-
+worktree routing required.
 """
 
 import json
@@ -200,6 +204,38 @@ def merge(
     if merge_method:
         args += ["--merge-method", merge_method]
     return _text_result(_run_gh_stack(args, cwd=cwd, timeout=timeout), "merge")
+
+
+def link(
+    *branches_or_prs: str,
+    base: str | None = None,
+    remote: str | None = None,
+    open_prs: bool = False,
+    cwd: Path | str | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> tuple[GhStackStatus, str]:
+    """Create or update a stack on GitHub purely from branch names, PR numbers, or PR URLs, in
+    stack order (bottom to top) — **does not rely on gh-stack local tracking state**, unlike every
+    other operation in this module (see the module docstring's caller contract). Branch arguments
+    without an open PR are pushed and a new PR created automatically, with correct base-branch
+    chaining; branch/PR arguments that already have an open PR just reuse it. If none of the
+    arguments are already in a stack, a new one is created; if some already are, the existing
+    stack is extended to include the rest (existing PRs are never removed).
+
+    As a shortcut for growing an existing stack, pass its stack number (shown in the GitHub stack
+    UI) as the first argument — the remaining arguments are appended to its top; arguments already
+    in that stack are skipped.
+
+    `base` sets the base branch for the bottom of a *new* stack (defaults to the repo's default
+    branch) — irrelevant when growing an existing stack via the stack-number shortcut."""
+    args = ["link", *branches_or_prs]
+    if base:
+        args += ["--base", base]
+    if open_prs:
+        args.append("--open")
+    if remote:
+        args += ["--remote", remote]
+    return _text_result(_run_gh_stack(args, cwd=cwd, timeout=timeout), "link")
 
 
 def check_gh_stack_extension_installed(timeout: int = DEFAULT_TIMEOUT) -> bool:

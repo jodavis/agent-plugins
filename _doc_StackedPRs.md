@@ -1,6 +1,6 @@
-Summary: GitHub-native `gh stack`-based concurrent development pipeline — epic bootstrap, lazy
-recursive branch registration, stack-scoped PR submission, and one epic-wide monitor — that
-replaces ADR-296's dependency-graph/rebase/monitor machinery end to end.
+Summary: GitHub-native `gh stack`-based concurrent development pipeline — epic bootstrap,
+deferred post-signoff stack registration, and one epic-wide monitor — that replaces ADR-296's
+dependency-graph/rebase/monitor machinery end to end.
 
 # Stacked PRs for Concurrent Development
 
@@ -9,11 +9,19 @@ replaces ADR-296's dependency-graph/rebase/monitor machinery end to end.
 This subsystem lets several dependent task-work-items under one epic be implemented concurrently,
 each on its own branch, PR'd and kept in sync against one another via GitHub's native `gh stack`
 CLI extension (`github/gh-stack`) rather than this repo's own bespoke dependency-graph/rebase/
-monitor code. An epic's tasks are serialized into a single linear stack of branches, each based on
-the one before it; a task starts as soon as its real dependencies are "ready" (their PR is open,
-not necessarily merged); its PR is submitted as part of the whole stack; and one long-lived
-monitor per epic keeps every PR in that stack in sync — reacting to review comments, CI failures,
-rebase conflicts cascading down the stack, and merges — until the whole stack has landed.
+monitor code. An epic's tasks form a single linear stack of branches, each based on the one before
+it; a task starts as soon as its real dependencies are fully "done" (signed off *and* linked into
+the stack); its PR is opened directly against its own base branch, then registered into the
+epic's `gh stack` once its own sign-off approves (`add-to-pr-stack`); and one long-lived monitor
+per epic keeps every PR in that stack in sync — reacting to review comments, CI failures, rebase
+conflicts cascading down the stack, and merges — until the whole stack has landed.
+
+Registration is deliberately deferred this late, rather than done eagerly when a task starts:
+`gh stack`'s own local tracking state is worktree-private (see Key Design Decisions below), and a
+task's own implementation runs in its own freshly spawned per-task worktree — registering there
+would race against `monitor-stack`'s shared-worktree view of the same stack. `add-to-pr-stack`
+sidesteps this entirely by using `gh stack link`, the one `gh stack` operation that doesn't need
+local tracking state at all.
 
 This doc is the first architecture-level description of the whole concurrent-development pipeline
 (bootstrap → registration → PR submission → epic-wide monitoring), not a thin delta on top of a
@@ -29,14 +37,13 @@ refined an assumption the spec started with.
 
 ## Responsibilities & Boundaries
 
-- **Owns:** anchoring an epic's `gh stack` to its feature branch (`ensure-feature-branch`);
+- **Owns:** bootstrapping an epic's feature branch and committed spec (`ensure-feature-branch`);
   computing and validating an epic's linear stack order from its spec (`validate_stack_order` in
-  `task_dependencies.py`); registering a task's branch into that stack, including lazily
-  backfilling any not-yet-started ancestor with an empty placeholder branch
-  (`ensure-working-branch`'s `stack_registration.py`); real-dependency readiness independent of
-  stack position (`is_task_eligible` in `task_readiness.py`); submitting PRs through the stack
-  rather than a manually threaded base branch (`create-pr-from-context`); expanding an "up to"
-  target into every task from the start of the epic's document order through the target
+  `task_dependencies.py`); picking which of a task's own dependencies its working branch is based
+  on (`ensure-working-branch`'s `stack_registration.py`); real-dependency readiness gated on full
+  completion, not just an open PR (`is_task_eligible` in `task_readiness.py`); registering a
+  task's already-signed-off PR into the epic's `gh stack` (`add-to-pr-stack`); expanding an "up
+  to" target into every task from the start of the epic's document order through the target
   (`concurrent_schedule.py`'s `compute_next_batch`); and the single epic-wide post-hand-off
   monitor that reacts to review comments, CI failures, rebase conflicts, and merges across the
   whole stack (`monitor-stack`, `stack_pr_poll.py`, `detect_next_stack_event.py`).
@@ -47,14 +54,17 @@ refined an assumption the spec started with.
   spawn/scheduling loop that decides which tasks are eligible to spawn concurrently — that's
   `concurrent-orchestrate`'s own prose, which only reads this subsystem's outputs and never
   computes stack membership or eligibility itself.
-- **Integrates with:** `ensure-working-branch` (branch registration happens as part of the normal
-  pre-implementation branch-setup step every task already runs), `concurrent-orchestrate` (spawns
-  one `monitor-stack` per epic, the moment the first task in that epic's target set reaches
-  hand-off, and invokes `ensure-feature-branch` in-session on a `"bootstrap_needed"` result since
-  it holds real MCP/`gh` credentials that a bare script does not), `create-pr-from-context`
-  (submits through the stack instead of a manually-passed `base`), and `PipelineContext`'s
+- **Integrates with:** `ensure-working-branch` (picks a task's base branch as part of the normal
+  pre-implementation branch-setup step every task already runs, but never touches `gh stack`
+  itself — see Key Design Decisions), `concurrent-orchestrate` (spawns one `monitor-stack` per
+  epic, the moment the first task in that epic's target set reaches hand-off — now correctly
+  after that task's PR is actually linked into the stack, not merely open — and invokes
+  `ensure-feature-branch` in-session on a `"bootstrap_needed"` result since it holds real MCP/`gh`
+  credentials that a bare script does not), `create-pr-from-context` (creates the PR directly
+  against `base_branch`, with no stack involvement at all), and `PipelineContext`'s
   `added_to_stack` field (a named frontmatter field, not a passthrough extra — see
-  `pipeline_context.py` line 34) that records whether a task's branch registration has completed.
+  `pipeline_context.py` line 34) that records whether `add-to-pr-stack` has registered a task's
+  signed-off PR into the stack.
 - **Isolation boundary:** `work-with-stacked-prs`/`gh_stack.py` is the sole owner of every direct
   `gh stack` CLI invocation across this whole feature; every other skill and script references
   its named operations rather than shelling out to `gh stack` itself. This is deliberate risk
@@ -64,46 +74,58 @@ refined an assumption the spec started with.
 ## Key Design Decisions
 
 - **`gh stack` fully replaces ADR-296's dependency-graph/rebase/monitor machinery, rather than
-  layering on top of it.** `ensure-working-branch` no longer computes or searches for a base
-  branch on its own; it registers a task's branch into a GitHub stack via the `add` operation.
-  ADR-296's `rebase_mechanic.py`, `watch_pr_poll.py`, the `monitor-pr` skill, `/watch-pr`, and the
-  base-branch-selection half of `is_task_eligible` are retired outright — confirmed absent from
-  the repo, not merely deprecated.
+  layering on top of it.** `ensure-working-branch` computes a task's base branch itself (from its
+  own dependencies), but the actual GitHub stack object is populated later, entirely by
+  `add-to-pr-stack`. ADR-296's `rebase_mechanic.py`, `watch_pr_poll.py`, the `monitor-pr` skill,
+  `/watch-pr`, and the base-branch-selection half of `is_task_eligible` are retired outright —
+  confirmed absent from the repo, not merely deprecated.
 - **An epic's dependency DAG is serialized into one linear stack using the spec's own task
   document order, validated rather than computed.** `validate_stack_order` (in
   `task_dependencies.py`, extending the existing `parse_task_dependencies`) confirms every task's
   declared dependencies appear earlier in the spec's `## Tasks` section than the task itself, then
   returns the task keys in that document order — the order the spec's author already committed to
-  when writing the task breakdown, not a graph the system computes independently.
-- **`ensure-feature-branch` bootstraps an epic's own trunk.** It creates and pushes the epic's
-  feature branch from `main` if missing, commits and opens a PR for the epic's spec file against
-  that branch if it isn't already committed there, and anchors a `gh stack` to that branch via
-  `init` — every step check-before-act, so the whole skill is safely re-runnable. `init` against
-  an already-anchored trunk is a hard error (exit code 5), confirmed by ADR-370's spike, not an
-  idempotent no-op — this is exactly why every step here checks first rather than relying on
-  `init` itself being safe to repeat.
+  when writing the task breakdown, not a graph the system computes independently. Only used to
+  break ties among a task's *own* dependencies now (`stack_registration.py`'s
+  `compute_stack_anchor`), not to force strict document-order registration — see the deferred-
+  registration decision below.
+- **`ensure-feature-branch` bootstraps an epic's own trunk — but no longer anchors a `gh stack` to
+  it.** It creates and pushes the epic's feature branch from `main` if missing, and commits and
+  opens a PR for the epic's spec file against that branch if it isn't already committed there —
+  every step check-before-act, so the whole skill is safely re-runnable. It used to also anchor an
+  empty stack via `init` (a hard error, exit code 5, against an already-anchored trunk — confirmed
+  by ADR-370's spike); that's no longer necessary now that `link` (see below) creates a stack from
+  scratch itself, and dropping it also removes a real worktree-collision risk this skill used to
+  carry, since it's routinely invoked from a task's own per-task worktree (`ensure-working-branch`'s
+  single-task path), not the epic's shared one.
 - **A task's working branch is always a new, distinct ref, never the feature branch itself**
   (closes GitHub issue #126). `ensure-working-branch`'s `stack_registration.py` module runs a
-  `verify_branch_identity` guardrail immediately after registering a task's own branch, confirming
+  `verify_branch_identity` guardrail immediately after creating a task's own branch, confirming
   `HEAD` is genuinely that branch and not the feature branch — a non-zero exit here is a hard stop.
-- **Task PRs are submitted via the stack's `submit` operation, never a manually threaded
-  `base_branch` value** (closes GitHub issue #129). `create-pr-from-context` checks the context
-  file's `added_to_stack` field and, if true, runs `submit` instead of constructing an explicit
-  `base` — `gh stack` already knows the correct base from the `add` call made at registration
-  time, which is the single source of truth. ADR-370's spike confirmed `submit` is always scoped
-  to the entire active stack (no per-branch flag exists) but only *creates* PRs for entries that
-  don't already have one, so resubmitting the whole stack is safe and idempotent for already-PR'd
-  lower entries.
-- **Branch registration is lazy, recursive, and decoupled from real-dependency readiness.**
-  `ensure-working-branch`'s `compute_registration_plan()` (in `stack_registration.py`) backfills an
-  empty placeholder branch for any not-yet-registered ancestor task before registering the
-  requested task itself, pushing each one in turn and writing `added_to_stack: true` only after
-  each push succeeds — so a task can register into its correct stack position even if an earlier,
-  not-yet-started task in the same epic has never run.
-- **Implementation only starts once every real dependency has reached "ready" (its PR is open) —
-  never an actual merge.** `is_task_eligible` (`task_readiness.py`) was simplified accordingly:
-  its return value no longer carries a `base_branch`, since stack position and real-dependency
-  readiness are now fully decoupled concerns.
+- **A task's PR is opened directly against its own `base_branch`, with no `gh stack` involvement
+  at all** (closes GitHub issue #129, now by construction rather than by branching on
+  `added_to_stack`). `create-pr-from-context` always uses `create-pr` with the `base_branch`
+  `ensure-working-branch` computed — there is no separate stack-relative code path left to drift
+  out of sync with it, since a task's branch is never part of a `gh stack` at PR-creation time in
+  the first place (see the deferred-registration decision below).
+- **Stack registration is deferred to sign-off, not eager — and, once deferred, no longer needs to
+  be recursive.** `ensure-working-branch` never registers a task's branch into the epic's `gh
+  stack` at all; it only picks which of the task's own dependencies to base the branch on
+  (`stack_registration.py`'s `compute_stack_anchor`, whichever sorts latest in document order).
+  Registration itself happens once, later, in `add-to-pr-stack`, right after `signoff` resolves
+  `approved` — at which point every declared dependency is already fully `done` (see the
+  readiness decision below), so there is nothing to backfill: an ancestor that hasn't started yet
+  can never be a real dependency of a task that's already eligible to run. `add-to-pr-stack` calls
+  `link` with just this task's own PR and its anchor dependency's branch (or `--base
+  <feature-branch>` for the epic's first task) — never the whole stack, and never from the
+  feature's shared worktree (see the cross-worktree decision below); `link` "does not rely on
+  gh-stack local tracking state," so no shared-worktree routing is needed for this one operation.
+- **Implementation only starts once every real dependency has reached "done" — fully signed off
+  *and* linked into the stack, never merely an open PR.** `is_task_eligible`
+  (`task_readiness.py`) is stricter than ADR-374's original "ready or done" rule for exactly this
+  reason: since registration no longer happens eagerly at a dependency's own start, an open PR no
+  longer implies that dependency is actually in the stack yet. Its return value still doesn't
+  carry a `base_branch` — stack position and real-dependency readiness remain fully decoupled
+  concerns — and no dependency ever needs to actually *merge*.
 - **"Up to Task X" means "Task X and everything before it" in the epic's document order, not just
   its dependency closure.** `concurrent_schedule.py`'s `compute_next_batch` expands an `up_to`
   target using `validate_stack_order`'s document order — a linear stack means an earlier,
@@ -120,22 +142,26 @@ refined an assumption the spec started with.
   in the worktree-private `.git/worktrees/<name>/gh-stack` file, not the shared common git
   directory, so a second worktree sees a false "not part of a stack" result even for a branch
   genuinely registered from another worktree of the same repo. Every `gh stack` operation for one
-  feature's stack — task-branch registration and the ongoing `sync`/`view` polling in
-  `monitor-stack` — must run from one shared worktree per feature, never a task's own per-task
-  worktree. `work-with-stacked-prs/SKILL.md` documents this explicitly as a structural constraint,
-  not a corner case.
+  feature's stack that relies on this local tracking state — `init`/`add`/`submit`/the ongoing
+  `sync`/`view` polling in `monitor-stack`/`merge`/`rebase --continue`/`checkout` — must run from
+  one shared worktree per feature, never a task's own per-task worktree. `work-with-stacked-prs/
+  SKILL.md` documents this explicitly as a structural constraint, not a corner case. `link` is the
+  deliberate exception (see the deferred-registration decision above): it "does not rely on
+  gh-stack local tracking state" at all, which is exactly why `add-to-pr-stack` uses it instead of
+  `add`/`submit` and can run from a task's own per-task worktree with no shared-worktree routing.
 - **`monitor-stack`'s own worktree lands on a real stack member, never the trunk.** A consequence
   of the previous decision: `monitor-stack` runs in its own freshly spawned worktree, which has
-  never run `init`/`add` for this stack itself — and `gh-stack` doesn't consider the trunk branch
+  never run `add`/`link` for this stack itself — and `gh-stack` doesn't consider the trunk branch
   a stack member in the first place — so simply checking out the trunk there leaves `gh stack
   view`/`sync` erroring (closed [issue #189](https://github.com/jodavis/agent-plugins/issues/189)).
   Step 2 instead finds the one open PR that bases directly off the trunk (the bottom-most stack
   entry, whose task triggered the monitor's own auto-start) and runs `gh stack checkout
   <pr-number>` (via `stack_checkout.py`) — per `gh-stack`'s own behavior, a PR number not yet
   tracked locally is discovered from the GitHub API and used to materialize the stack in this
-  worktree, landing on a real member branch. `ensure-feature-branch`'s own `init` call, run in a
-  *different* worktree, cannot be "propagated" to fix this — the whole point of the previous
-  decision is that this state is worktree-private, so every worktree must independently
+  worktree, landing on a real member branch. The `link` call that registered that PR, run in a
+  *different* worktree (the task's own), cannot be "propagated" to fix this — the whole point of
+  the cross-worktree decision is that local tracking state is worktree-private, so every worktree
+  that needs it must independently
   materialize it.
 - **Rebase/sync conflicts still route through the existing `resolve-rebase-conflict` skill for the
   git-level mechanics of the currently-conflicted branch.** ADR-370's spike confirmed its plain-git
@@ -163,22 +189,37 @@ refined an assumption the spec started with.
 ## Key Classes / Interfaces
 
 - **`work-with-stacked-prs`/`gh_stack.py`** — sole owner of every `gh stack` CLI invocation.
-  Exposes eight operations as plain Python functions (`init`, `add`, `submit`, `sync`, `view`,
-  `merge`, `rebase_continue`, `checkout`), each returning `("ok" | "error", detail)` (`view`'s
-  `detail` is the parsed `--json` dict; the other seven return stdout/stderr text), plus
-  `check_gh_stack_extension_installed()` for the extension preflight.
-- **`ensure-feature-branch(<feature-work-item-id>)`** — bootstraps an epic's feature branch, spec
-  PR, and anchored stack; every step check-before-act.
-- **`ensure-working-branch`'s `stack_registration.py`** — `compute_registration_plan()` (lazy
-  recursive backfill plan), `is_added_to_stack()`, and `verify_branch_identity()` (the #126
-  guardrail).
-- **`create-pr-from-context`'s `pr_from_context.py`** — `should_submit_via_stack()` and
-  `resolve_submitted_pr_url()`, the decision logic behind the #129 fix.
+  Exposes nine operations as plain Python functions (`init`, `add`, `submit`, `sync`, `view`,
+  `merge`, `rebase_continue`, `checkout`, `link`), each returning `("ok" | "error", detail)`
+  (`view`'s `detail` is the parsed `--json` dict; the other eight return stdout/stderr text), plus
+  `check_gh_stack_extension_installed()` for the extension preflight. `link` is the only one that
+  doesn't rely on local `gh stack` tracking state — see the cross-worktree decision above.
+- **`ensure-feature-branch(<feature-work-item-id>)`** — bootstraps an epic's feature branch and
+  spec PR; every step check-before-act. No longer anchors a `gh stack` (see Key Design Decisions).
+- **`ensure-working-branch`'s `stack_registration.py`** — `compute_stack_anchor()` (picks which of
+  a task's own dependencies its branch bases on, by document order) and `verify_branch_identity()`
+  (the #126 guardrail). No longer registers anything into a `gh stack`.
+- **`add-to-pr-stack`/`add_to_pr_stack.py`** — the sole place a task's branch is ever registered
+  into its epic's `gh stack`; runs once, right after `signoff` resolves `approved`, calling `link`
+  with just this task's own PR and its anchor dependency's branch (or `--base <feature-branch>`
+  for the epic's first task). Fully script-driven — the skill's own prose is limited to the
+  interactive `gh` extension preflight; the script also writes an extra-frontmatter
+  `stack_link_status` key (`"linked"` or `"not_applicable"`) so a "nothing to register" outcome
+  is as durable across a crash-and-retry as an actual link, since `added_to_stack` alone (a plain
+  boolean) can't represent that third state.
+- **`checkout-stack-pr-for-review`/`checkout_stack_pr_for_review.py`** — ad hoc/manual escape
+  valve for reading or running a stacked PR's code outside the automated pipeline: creates a
+  disposable `review/<pr-number-or-branch-slug>` branch off the PR's own tip via `gh pr view` +
+  plain `git`, never touching the shared branch or any `gh stack` operation itself (see
+  `work-with-stacked-prs/SKILL.md`'s "Ad hoc/manual use" note).
 - **`task_dependencies.py`'s `validate_stack_order(spec_text) -> list[str]`** — extends
-  `parse_task_dependencies` with the stack-order check; returns task keys in document order.
+  `parse_task_dependencies` with the stack-order check; returns task keys in document order. Used
+  by `compute_stack_anchor` to break ties among a task's own dependencies, not to force strict
+  document-order registration.
 - **`task_readiness.py`'s `is_task_eligible(task_id, dependency_ids) -> "eligible" | "waiting" |
-  "blocked"`** — real-dependency readiness, decoupled from stack position; no longer returns a
-  `base_branch`.
+  "blocked"`** — real-dependency readiness, decoupled from stack position; requires every
+  dependency to have reached "done" (signed off and linked into the stack), not merely "ready"
+  (an open PR); no longer returns a `base_branch`.
 - **`detect_next_stack_event.py`'s `detect_next_stack_event() -> dict | None`** — scans a stack's
   branches (via `gh_stack.view()`) and returns the first actionable event
   (`review_comment`/`ci_failure`/`task_merged`) across the whole stack, or `None`.
@@ -202,32 +243,43 @@ refined an assumption the spec started with.
 - **`/watch-stack <epic-key>`** — manual fallback that spawns `monitor-stack` in its own isolated
   worktree, for when `concurrent-orchestrate`'s auto-start never happened.
 - **`PipelineContext.added_to_stack`** — a named boolean frontmatter field (`pipeline_context.py`
-  line 34), `true` once a task's branch has been successfully registered and pushed into the
-  stack.
+  line 34), `true` once `add-to-pr-stack` has registered a task's signed-off PR into the epic's
+  `gh stack`. `false` for the entire implementation/review/signoff cycle before that, and stays
+  `false` permanently for a task that was never part of a tracked epic in the first place.
 
 ## Data Flow
 
 1. **Epic bootstrap.** The first task under an epic to reach `ensure-working-branch` (either
    directly, in the single-task path, or via `concurrent-orchestrate`'s own
    `"bootstrap_needed"`-triggered call) invokes `ensure-feature-branch`: it creates the epic's
-   feature branch from `main` if missing, commits/PRs the epic's spec file against that branch if
-   needed, and anchors a `gh stack` to it via `init`.
-2. **Task branch registration.** `ensure-working-branch` computes the task's working-branch name,
-   then registers it into the stack: `stack_registration.py`'s `compute_registration_plan()`
-   determines which not-yet-registered ancestor tasks (in stack order) need an empty placeholder
-   branch created first, backfills each one via the `add` operation and pushes it, then registers
-   this task's own branch the same way. The `verify_branch_identity` guardrail confirms `HEAD` is
-   genuinely the new branch, not the feature branch, before `added_to_stack: true` is written.
+   feature branch from `main` if missing, and commits/PRs the epic's spec file against that branch
+   if needed. No `gh stack` is anchored here — there's no longer an empty-stack precondition to
+   set up ahead of time.
+2. **Task base-branch selection.** `ensure-working-branch` computes the task's working-branch
+   name, then picks its base — never registering into a `gh stack`: `stack_registration.py`'s
+   `compute_stack_anchor()` picks whichever of the task's own declared dependencies sorts latest
+   in the epic's document order (or `None`, meaning base on the feature branch directly, for a
+   task with none). The branch is created with a plain `git checkout -b`, and the
+   `verify_branch_identity` guardrail confirms `HEAD` is genuinely the new branch, not the feature
+   branch.
 3. **Eligibility and scheduling.** Independently of stack position, `is_task_eligible` gates when
-   a task's implementation actually starts: once every declared dependency has reached "ready" (PR
-   open) or "done". `concurrent_schedule.py`'s `compute_next_batch` uses this alongside
-   `validate_stack_order`'s document order to decide which tasks are eligible to spawn next, up to
-   the configured concurrency cap.
-4. **PR submission.** Once a task's implementation is complete, `create-pr-from-context` checks
-   `added_to_stack`; if true, it runs the stack's `submit` operation (scoped to the whole stack,
-   but idempotent for already-PR'd lower entries) instead of constructing an explicit base, then
-   resolves the task's own new PR URL via a direct `gh pr list` lookup.
-5. **Epic-wide monitoring.** The moment the first task in an epic's target set reaches hand-off,
+   a task's implementation actually starts: once every declared dependency has reached "done"
+   (fully signed off *and* linked into the stack — not merely "ready," an open PR).
+   `concurrent_schedule.py`'s `compute_next_batch` uses this alongside `validate_stack_order`'s
+   document order to decide which tasks are eligible to spawn next, up to the configured
+   concurrency cap.
+4. **PR creation.** Once a task's implementation is complete, `create-pr-from-context` opens the
+   PR directly via `create-pr`, using `base_branch` (from step 2) as the explicit base — no `gh
+   stack` involvement at all at this point.
+5. **Stack registration.** Once `signoff` resolves `approved`, `add-to-pr-stack` runs `link` once:
+   just this task's own PR and its anchor dependency's branch (resolved the same way step 2 did),
+   or `--base <feature-branch>` and just this task's own PR for the epic's first task. `link`
+   creates the stack from scratch the first time, and extends it every time after — all without
+   needing the feature's shared worktree, since `link` doesn't rely on local tracking state. Only
+   once this succeeds does the task's pipeline reach `done` — the "hand-off" signal
+   `concurrent-orchestrate` waits for to auto-start `monitor-stack`.
+6. **Epic-wide monitoring.** The moment the first task in an epic's target set reaches hand-off
+   (now correctly meaning its PR is actually linked into the stack, not merely open),
    `concurrent-orchestrate` auto-starts one `monitor-stack` session for that epic (or a human
    starts it manually via `/watch-stack`). It runs from its own freshly spawned worktree, which
    has no local `gh stack` state of its own yet: step 2 finds the one open PR based directly on
@@ -236,7 +288,7 @@ refined an assumption the spec started with.
    poll loop starts. It then loops on `stack_pr_poll.py`: each call runs `sync` first, then checks
    for a rebase conflict, then consults `detect_next_stack_event` for the first review-comment/
    CI-failure/merge event across the whole stack.
-6. **Reacting to poll outcomes.** A `{"task_work_item_id", "event"}` result spawns `fix-pr` against
+7. **Reacting to poll outcomes.** A `{"task_work_item_id", "event"}` result spawns `fix-pr` against
    that task's already-checked-out branch. A `"conflict"` result hands off to the developer agent
    running `resolve-rebase-conflict` against the currently-conflicted branch; on `"resolved"`, the
    monitor calls `stack_rebase_continue.py` to resume gh-stack's own cascade across any downstream
@@ -244,5 +296,5 @@ refined an assumption the spec started with.
    further conflict higher in the stack, or returning to polling once it reports a clean state; on
    `"unresolved"`, the monitor aborts the rebase and halts entirely, since one stuck task blocks
    every later task in the stack regardless of how many monitor processes exist.
-7. **Completion.** Once every branch in the stack has merged, `stack_pr_poll.py` reports
+8. **Completion.** Once every branch in the stack has merged, `stack_pr_poll.py` reports
    `"stack_complete"`, and `monitor-stack` removes its own worktree/branch and stops.

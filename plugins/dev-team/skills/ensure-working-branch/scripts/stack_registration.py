@@ -1,85 +1,55 @@
 #!/usr/bin/env python3
-"""Lazy, recursive stack branch registration for `ensure-working-branch` (ADR-375).
+"""Working-branch base selection and branch-identity verification for `ensure-working-branch`.
 
 `ensure-working-branch` is a prose-only skill (its own `SKILL.md`, no Python module of its own)
 that invokes this script via `Bash` for its two pieces of genuinely branching decision logic:
 
-- `plan`: given this task's own work-item id and its epic's spec file, compute which tasks
-  (this one, plus any not-yet-registered ancestors) need a branch registered in the stack
-  before this task's own branch can be created, in the order they must be registered.
-- `verify`: the closes-#126 guardrail — confirm the branch actually checked out after
-  registration is genuinely this task's own working branch, and never the shared feature
-  branch.
+- `anchor`: given this task's own work-item id and its epic's spec file, pick which of this
+  task's own declared dependencies its working branch should be based on (plain git — this task
+  is never registered into the epic's `gh stack` here; see `add-to-pr-stack`, which is the sole
+  place that happens, after sign-off).
+- `verify`: the closes-#126 guardrail — confirm the branch actually checked out is genuinely
+  this task's own working branch, and never the shared feature branch.
 
 Usage:
-    stack_registration.py plan <work-item-id> <spec-path>
+    stack_registration.py anchor <work-item-id> <spec-path>
     stack_registration.py verify <current-branch> <working-branch> <feature-branch>
 
-`plan` prints `{"plan": [...], "anchor_task": <id-or-null>}` as JSON to stdout on success.
-`verify` prints nothing on success. Both print a clear `Error: ...` message to stderr with a
-non-zero exit on failure — the same convention `task_readiness.py`/`task_dependencies.py`
-already use so a prose skill with no other way to call a Python function directly can invoke
-this via `Bash`.
+`anchor` prints `{"anchor_task": <id-or-null>}` as JSON to stdout on success. `verify` prints
+nothing on success. Both print a clear `Error: ...` message to stderr with a non-zero exit on
+failure — the same convention `task_readiness.py`/`task_dependencies.py` already use so a prose
+skill with no other way to call a Python function directly can invoke this via `Bash`.
 """
 
 import json
 import sys
 from pathlib import Path
-from typing import Callable, NamedTuple
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "workflow-orchestrate" / "scripts"))
-from dev_team import compute_context_path  # noqa: E402
-from get_context_path import get_repo_slug  # noqa: E402
-from pipeline_context import PipelineContext  # noqa: E402
-from task_dependencies import TaskDependencyError, validate_stack_order  # noqa: E402
+from task_dependencies import TaskDependencyError, parse_task_dependencies, validate_stack_order  # noqa: E402
 
 
-class RegistrationPlan(NamedTuple):
-    """The result of `compute_registration_plan`.
-
-    `plan` is the ordered list of task-work-item ids that need a branch registered before (and
-    including) the target task, oldest ancestor first. `anchor_task` is the id of the
-    already-registered task whose branch `plan[0]` should be based on, or `None` when `plan[0]`
-    is the very first task in the epic's stack order (base off the feature branch itself
-    instead)."""
-
-    plan: list[str]
-    anchor_task: str | None
-
-
-def compute_registration_plan(
+def compute_stack_anchor(
     task_work_item_id: str,
+    dependency_ids: list[str],
     order: list[str],
-    is_registered: Callable[[str], bool],
-) -> RegistrationPlan:
-    """Walk backward from `task_work_item_id`'s position in `order` until an already-registered
-    ancestor is found (or the start of the stack is reached), then return every task from that
-    point forward through `task_work_item_id` itself — the tasks that need a branch registered,
-    oldest first. Never checks whether any real `Depends on:` dependency is ready; this is
-    purely structural stack position (see ADR-375's "lazy, recursive, and decoupled from real-
-    dependency readiness" design decision).
+) -> str | None:
+    """Pick which of this task's own declared dependencies its working branch (and, later, its
+    `add-to-pr-stack` `link` call) should be based on: whichever dependency sorts latest in the
+    epic's document order (`validate_stack_order`) — a linear stack transitively contains
+    everything sorted before it, so basing on the latest one is sufficient regardless of how many
+    dependencies there are. Returns `None` when the task has no declared dependencies at all — it
+    should be based on the feature branch directly instead.
 
-    Raises ValueError if `task_work_item_id` is not present in `order`.
+    Every dependency named here is guaranteed already `done` (fully signed off and linked into
+    the stack via `add-to-pr-stack`) by the time this task starts — `task_readiness.py`'s
+    `is_task_eligible` gates on exactly that — so there is no backfill/placeholder concern the way
+    the old eager-registration design had: an ancestor that hasn't started yet is never a real
+    dependency of a task that's already eligible to run.
     """
-    if task_work_item_id not in order:
-        raise ValueError(f"'{task_work_item_id}' is not present in the stack order: {order}")
-
-    index = order.index(task_work_item_id)
-    start = index
-    while start > 0 and not is_registered(order[start - 1]):
-        start -= 1
-
-    anchor_task = order[start - 1] if start > 0 else None
-    return RegistrationPlan(plan=order[start : index + 1], anchor_task=anchor_task)
-
-
-def is_added_to_stack(task_work_item_id: str) -> bool:
-    """Whether `task_work_item_id` already has `added_to_stack: true` on its own context file.
-    A task with no context file yet (an unstarted human task) is never registered."""
-    path = compute_context_path(task_work_item_id, get_repo_slug())
-    if not path.exists():
-        return False
-    return PipelineContext.load(path).added_to_stack
+    if not dependency_ids:
+        return None
+    return max(dependency_ids, key=lambda dep_id: order.index(dep_id))
 
 
 class BranchIdentityMismatchError(RuntimeError):
@@ -104,9 +74,9 @@ def verify_branch_identity(current_branch: str, working_branch: str, feature_bra
         )
 
 
-def _run_plan(argv: list[str]) -> None:
+def _run_anchor(argv: list[str]) -> None:
     if len(argv) != 2:
-        print("Usage: stack_registration.py plan <work-item-id> <spec-path>", file=sys.stderr)
+        print("Usage: stack_registration.py anchor <work-item-id> <spec-path>", file=sys.stderr)
         sys.exit(1)
     task_work_item_id, spec_path = argv
 
@@ -118,17 +88,20 @@ def _run_plan(argv: list[str]) -> None:
 
     try:
         order = validate_stack_order(spec_text)
+        dependency_ids = parse_task_dependencies(spec_text).get(task_work_item_id, [])
     except TaskDependencyError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    try:
-        result = compute_registration_plan(task_work_item_id, order, is_registered=is_added_to_stack)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+    if task_work_item_id not in order:
+        print(
+            f"Error: '{task_work_item_id}' is not present in the stack order: {order}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-    print(json.dumps({"plan": result.plan, "anchor_task": result.anchor_task}), flush=True)
+    anchor_task = compute_stack_anchor(task_work_item_id, dependency_ids, order)
+    print(json.dumps({"anchor_task": anchor_task}), flush=True)
 
 
 def _run_verify(argv: list[str]) -> None:
@@ -148,13 +121,13 @@ def _run_verify(argv: list[str]) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) < 2 or sys.argv[1] not in ("plan", "verify"):
-        print("Usage: stack_registration.py <plan|verify> ...", file=sys.stderr)
+    if len(sys.argv) < 2 or sys.argv[1] not in ("anchor", "verify"):
+        print("Usage: stack_registration.py <anchor|verify> ...", file=sys.stderr)
         sys.exit(1)
 
     subcommand, *rest = sys.argv[1:]
-    if subcommand == "plan":
-        _run_plan(rest)
+    if subcommand == "anchor":
+        _run_anchor(rest)
     else:
         _run_verify(rest)
 

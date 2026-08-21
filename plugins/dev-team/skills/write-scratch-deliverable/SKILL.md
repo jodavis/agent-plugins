@@ -23,15 +23,6 @@ Do NOT use this skill when:
 - You were invoked directly, standalone, with no `--context-file`/`--write-section` in scope (e.g.
   ad hoc human use outside the pipeline) — return your deliverable as prose instead, unchanged
 
-## Background
-
-Nested skills used to compose a deliverable and *also* remember to write it to the shared context
-file, as two separate actions in the same turn. That reliably failed: producing the deliverable is
-the model's natural stopping point, and no "keep going after this" instruction — tried both as a
-caveat before invocation and as a persistent `TodoWrite` checklist — survived reaching it. Routing
-the deliverable through a `Write` call instead removes the second action entirely: composing the
-content *is* the act of persisting it, with nothing left to forget afterward.
-
 ## Steps
 
 ### 1 — Compute the scratch file path
@@ -50,7 +41,8 @@ Use the `Write` tool to write your complete, already-composed deliverable — ex
 you would otherwise have returned as your final chat message, including any trailing status
 marker your own skill's instructions specify (e.g. a JSON status line) — as the entire content of
 that scratch file. Compose the content directly as this `Write` call's own content; never produce
-it as chat text first and write it in a later action.
+it as chat text first and write it in a later action — composing the deliverable and persisting it
+must be the same action, with nothing left to remember afterward.
 
 If a scratch file already exists at that exact path (a rare re-run of the same step), overwrite it
 — `merge_pending_deliverables()` only ever reads the latest content before deleting it.

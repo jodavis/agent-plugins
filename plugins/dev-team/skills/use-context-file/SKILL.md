@@ -52,6 +52,7 @@ Read `<context-file>` and extract these YAML frontmatter fields:
 | `base_branch` | Base branch this task-work-item's working branch was created from (may be empty) |
 | `parent_work_item` | The parent feature-work-item ID, if one was found (may be empty) |
 | `pr_url` | URL of the GitHub PR (may be empty) |
+| `added_to_stack` | Whether this task's PR has been registered into the epic's `gh stack` via `add-to-pr-stack` (default `false` — only ever set once, after sign-off) |
 | `state` | Current workflow state |
 
 Fields marked "may be empty" are not guaranteed to be set — a caller that needs one and finds it
