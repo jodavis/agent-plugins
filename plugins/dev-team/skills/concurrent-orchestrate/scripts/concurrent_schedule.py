@@ -129,18 +129,43 @@ def _parse_epic_id(spec_text: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _feature_branch_prefix(repo_root: Path) -> str:
+    """Compute the literal prefix `ensure-feature-branch` step 1 derives from `git-repo.working-
+    branches.task` — the same template task branches use, with `<user-alias>` substituted and
+    everything from `<task-work-item-id>` onward dropped (e.g. `dev/<user-alias>/<task-work-
+    item-id>-<slug>` with `user-alias: claude` becomes `dev/claude/`). There is no separate
+    "feature" branch template — a feature's own branch is this same template with
+    `<feature-work-item-id>-spec` standing in for `<task-work-item-id>` (see
+    `_feature_branch_exists` below and `ensure-feature-branch`'s own step 1)."""
+    result = subprocess.run(
+        [sys.executable, str(_MERGE_CONFIG_SCRIPT), "--repo-root", str(repo_root)],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to load project configuration: {result.stderr.strip()}")
+    config = json.loads(result.stdout)
+    git_repo = config.get("git-repo") or {}
+    template = (git_repo.get("working-branches") or {}).get("task", "")
+    user_alias = git_repo.get("user-alias") or "claude"
+    template = template.replace("<user-alias>", user_alias)
+    prefix, _, _ = template.partition("<task-work-item-id>")
+    return prefix
+
+
 def _feature_branch_exists(epic_id: str, repo_root: Path) -> bool:
     """Live check — never a data-file check — for whether `<epic-id>`'s feature branch already
     exists on the remote, mirroring the same `git branch -r` check `ensure-feature-branch`
     itself runs as its own first step. A live check avoids both looping forever (nothing ever
     writes a persisted bootstrap signal) and forcing a second, different target landing on an
     already-bootstrapped epic to needlessly re-invoke `ensure-feature-branch`."""
+    prefix = _feature_branch_prefix(repo_root)
     result = subprocess.run(
         ["git", "branch", "-r"], cwd=repo_root, capture_output=True, text=True, timeout=30,
     )
     if result.returncode != 0:
         raise RuntimeError(f"'git branch -r' failed: {result.stderr.strip()}")
-    return bool(re.search(rf"feature/{re.escape(epic_id)}(-|$)", result.stdout, re.MULTILINE))
+    pattern = rf"{re.escape(prefix)}{re.escape(epic_id)}-spec(-|$)"
+    return bool(re.search(pattern, result.stdout, re.MULTILINE))
 
 
 def _validate_explicit_list(tasks: list[str], graph: dict[str, list[str]]) -> None:

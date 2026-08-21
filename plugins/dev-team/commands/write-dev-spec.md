@@ -29,6 +29,18 @@ behavior questions. Record its path for `dev-spec-first-draft`'s `> **Design:**`
 
 If `gather-brief-sources` could not resolve any sources at all, tell the user and stop.
 
+### 1.5 — Bootstrap the feature branch
+
+Skip this step if step 1 resolved no `work-item-id` at all — there is no feature-work-item to
+bootstrap a branch for yet; the user just keeps drafting on whatever branch they're already on,
+and this happens later instead, in step 6, once (or if) a feature-work-item exists.
+
+Otherwise, use the `ensure-feature-branch` skill with the resolved `work-item-id`. This creates
+(or finds) the feature's own branch and checks it out — before any draft exists yet, so the spec
+can be staged and committed directly onto it as drafting happens, with no separate root-branch or
+spec-commit-branch step required first. If it does not respond `successful`, stop and report the
+failure in detail.
+
 ### 2 — Write the first draft
 
 Use the `dev-spec-first-draft` skill with the feature brief (and design doc, if found) to gather
@@ -58,6 +70,13 @@ complete.
 Use the `dev-spec-create-work-items` skill to create tracked work items for the approved tasks
 (and any related features), link task dependencies in the tracker, and update the spec with the
 assigned keys.
+
+If this step resolved (or created) a feature-work-item — whether or not step 1.5 already ran for
+it — use the `ensure-feature-branch` skill with that feature-work-item's id. This guarantees the
+spec is committed and PR'd by the end of this command even if the user never staged/committed it
+themselves while drafting, and is a no-op if step 1.5 already left everything in order. Skip this
+if no feature-work-item exists at all (the user chose to skip work-item tracking entirely) — there
+is nothing to bootstrap a branch for.
 
 ### 7 — Update work items
 

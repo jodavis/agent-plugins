@@ -118,17 +118,19 @@ If a parent feature-work-item ID was found in step 4a or 4c, write it to the con
 Skip this sub-step and go straight to 4f if no parent feature-work-item ID is known at all
 (neither 4a nor 4c found one) — there is no epic to bootstrap.
 
-Otherwise:
+The epic's feature branch is named like a task branch, not a special "feature" one — see
+`ensure-feature-branch`'s own step 1 for why. Otherwise:
 
-1. Take the literal prefix of `git-repo.working-branches.feature` up to its first `<placeholder>`
-   (e.g. `feature/` from `feature/<feature-work-item-id>-<slug>`) — call this `<feature-prefix>`.
+1. Take `git-repo.working-branches.task`, substitute `<user-alias>` with `git-repo.user-alias`,
+   then take the literal prefix up to its next `<placeholder>` (`<task-work-item-id>`) — e.g.
+   `dev/claude/` — call this `<feature-prefix>`.
 2. ```bash
    git fetch origin
-   git branch -r --sort=-committerdate | grep -E "<feature-prefix><parent-feature-work-item-id>(-|$)"
+   git branch -r --sort=-committerdate | grep -E "<feature-prefix><parent-feature-work-item-id>-spec(-|$)"
    ```
    (Anchored the same way `ensure-feature-branch`'s own existence check is — tolerant of a
-   missing or different slug, but anchored so the epic id must end at a `-` or the branch name's
-   end.)
+   missing or different slug, but anchored so `<parent-feature-work-item-id>-spec` must end at a
+   `-` or the branch name's end.)
 3. If one or more matches are found, take the first line (most recently pushed), strip the
    `origin/` prefix — that is `<feature-branch>`. Skip to 4e.
 4. If no match is found, this epic hasn't been bootstrapped yet — this is the single-task-path

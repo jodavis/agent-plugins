@@ -90,13 +90,25 @@ refined an assumption the spec started with.
   registration decision below.
 - **`ensure-feature-branch` bootstraps an epic's own trunk — but no longer anchors a `gh stack` to
   it.** It creates and pushes the epic's feature branch from `main` if missing, and commits and
-  opens a PR for the epic's spec file against that branch if it isn't already committed there —
+  opens a PR for that branch itself, against `main`, if its spec isn't already committed there —
   every step check-before-act, so the whole skill is safely re-runnable. It used to also anchor an
   empty stack via `init` (a hard error, exit code 5, against an already-anchored trunk — confirmed
   by ADR-370's spike); that's no longer necessary now that `link` (see below) creates a stack from
   scratch itself, and dropping it also removes a real worktree-collision risk this skill used to
   carry, since it's routinely invoked from a task's own per-task worktree (`ensure-working-branch`'s
   single-task path), not the epic's shared one.
+- **The feature branch is named like a task branch, not a special "feature" scheme, and is the
+  spec's own branch — not a separate spec-commit branch PR'd against it** (closes GitHub issue
+  #218). Built from `git-repo.working-branches.task`, substituting `<feature-work-item-id>-spec`
+  for `<task-work-item-id>`; the spec is committed directly onto it, for as long as the epic is in
+  flight, rather than onto a dedicated `docs/<id>-spec` branch merged separately. `write-dev-spec`
+  calls `ensure-feature-branch` right after resolving a feature-work-item id — before any draft
+  exists — so the working tree is already on this branch for the whole drafting session, and again
+  at the end (after work items are created) to guarantee the spec is committed and PR'd even if
+  the user never staged anything themselves. This removes the old three-manual-step bootstrap
+  (create a root branch and push it; create a separate spec branch, push it, and PR it against the
+  root branch; merge that PR or redirect the first `/implement` call at the spec branch instead)
+  the user previously had to do by hand before implementation could start.
 - **A task's working branch is always a new, distinct ref, never the feature branch itself**
   (closes GitHub issue #126). `ensure-working-branch`'s `stack_registration.py` module runs a
   `verify_branch_identity` guardrail immediately after creating a task's own branch, confirming
@@ -249,11 +261,14 @@ refined an assumption the spec started with.
 
 ## Data Flow
 
-1. **Epic bootstrap.** The first task under an epic to reach `ensure-working-branch` (either
-   directly, in the single-task path, or via `concurrent-orchestrate`'s own
-   `"bootstrap_needed"`-triggered call) invokes `ensure-feature-branch`: it creates the epic's
-   feature branch from `main` if missing, and commits/PRs the epic's spec file against that branch
-   if needed. No `gh stack` is anchored here — there's no longer an empty-stack precondition to
+1. **Epic bootstrap.** `write-dev-spec` invokes `ensure-feature-branch` right after resolving a
+   feature-work-item id, before any spec draft exists, and again after work items are created —
+   or, for an epic whose spec predates this, the first task under it to reach
+   `ensure-working-branch` (directly, in the single-task path, or via `concurrent-orchestrate`'s
+   own `"bootstrap_needed"`-triggered call) triggers it instead. Either way, `ensure-feature-
+   branch` creates the epic's feature branch from `main` if missing, and commits/pushes/PRs the
+   spec directly onto that same branch (against `main`) if needed — there is no separate spec-
+   commit branch. No `gh stack` is anchored here either — there's no empty-stack precondition to
    set up ahead of time.
 2. **Task base-branch selection.** `ensure-working-branch` computes the task's working-branch
    name, then picks its base — never registering into a `gh stack`: `stack_registration.py`'s

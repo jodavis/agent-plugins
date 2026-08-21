@@ -83,13 +83,14 @@ record, not any single task's context file, since one session now spans every ta
 stack.
 
 Determine the epic's own feature branch — the trunk `gh stack` is anchored to — the same way
-`ensure-feature-branch` step 2 does: read `git-repo.working-branches.feature` from the context
-file's `Project Configuration` section, take its literal prefix up to the first `<placeholder>`
-(`feature/`), then:
+`ensure-feature-branch` step 1/2 does: read `git-repo.working-branches.task` and
+`git-repo.user-alias` from the context file's `Project Configuration` section, substitute
+`<user-alias>` into the template, take the literal prefix up to the next `<placeholder>`
+(`<task-work-item-id>`) — e.g. `dev/claude/` — then:
 
 ```bash
 git fetch origin
-git branch -r --sort=-committerdate | grep -E "<feature-prefix><epic-id>(-|$)"
+git branch -r --sort=-committerdate | grep -E "<feature-prefix><epic-id>-spec(-|$)"
 ```
 
 Take the first line, strip the `origin/` prefix — that is `<feature-branch>`. By the time this

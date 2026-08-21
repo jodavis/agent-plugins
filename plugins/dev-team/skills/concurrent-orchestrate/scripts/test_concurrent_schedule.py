@@ -601,37 +601,63 @@ class TestBootstrapNeeded:
 
 
 # ---------------------------------------------------------------------------
+# _feature_branch_prefix — derived from git-repo.working-branches.task, not a separate
+# "feature" template
+# ---------------------------------------------------------------------------
+
+class TestFeatureBranchPrefix:
+    def test_defaults_to_dev_claude(self, tmp_path):
+        from concurrent_schedule import _feature_branch_prefix
+
+        assert _feature_branch_prefix(tmp_path) == "dev/claude/"
+
+    def test_uses_project_override(self, tmp_path):
+        config_dir = tmp_path / ".dev-team"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text(
+            "git-repo:\n"
+            "  user-alias: bot\n"
+            "  working-branches:\n"
+            "    task: work/<user-alias>/<task-work-item-id>-<slug>\n",
+            encoding="utf-8",
+        )
+        from concurrent_schedule import _feature_branch_prefix
+
+        assert _feature_branch_prefix(tmp_path) == "work/bot/"
+
+
+# ---------------------------------------------------------------------------
 # _feature_branch_exists — live `git branch -r` check
 # ---------------------------------------------------------------------------
 
 class TestFeatureBranchExists:
     def test_feature_branch_exists_exact_match_returns_true(self, tmp_path):
         # Arrange
-        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-369")
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-369-spec")
 
         # Act & Assert
         assert _real_feature_branch_exists("ADR-369", tmp_path) is True
 
     def test_feature_branch_exists_suffixed_match_returns_true(self, tmp_path):
-        # Arrange — a branch like `feature/ADR-369-stack` must still match: the anchoring only
-        # needs to rule out a *different*, longer epic id sharing this prefix, not a
-        # hyphen-suffixed variant of this same epic id.
-        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-369-stack")
+        # Arrange — a branch like `dev/claude/ADR-369-spec-stack` must still match: the
+        # anchoring only needs to rule out a *different*, longer epic id sharing this prefix, not
+        # a hyphen-suffixed variant of this same epic id.
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-369-spec-stack")
 
         # Act & Assert
         assert _real_feature_branch_exists("ADR-369", tmp_path) is True
 
     def test_feature_branch_exists_prefix_of_a_different_epic_id_returns_false(self, tmp_path):
-        # Arrange — regression test for the unanchored substring bug: `feature/ADR-3690` (a
-        # different epic's branch) must not be mistaken for `feature/ADR-369`'s own branch.
-        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-3690")
+        # Arrange — regression test for the unanchored substring bug: `dev/claude/ADR-3690-spec`
+        # (a different epic's branch) must not be mistaken for `ADR-369`'s own branch.
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-3690-spec")
 
         # Act & Assert
         assert _real_feature_branch_exists("ADR-369", tmp_path) is False
 
     def test_feature_branch_exists_no_matching_branch_returns_false(self, tmp_path):
         # Arrange
-        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-999")
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-999-spec")
 
         # Act & Assert
         assert _real_feature_branch_exists("ADR-369", tmp_path) is False
@@ -875,7 +901,7 @@ class TestMainCliWrapper:
         # checkout. This also gives `dev_team.py`'s own repo-root discovery a genuine `.git` to
         # resolve to `tmp_path` (where the fake spec lives).
         _write_spec(tmp_path, {"ADR-1": []})
-        _init_git_repo_with_remote_branch(tmp_path, f"feature/{_DEFAULT_EPIC_ID}")
+        _init_git_repo_with_remote_branch(tmp_path, f"dev/claude/{_DEFAULT_EPIC_ID}-spec")
         import os
         full_env = {**os.environ, "DEV_TEAM_STATE_DIR": str(tmp_path),
                      "GIT_REMOTE_URL_OVERRIDE": "https://github.com/example/repo.git"}
