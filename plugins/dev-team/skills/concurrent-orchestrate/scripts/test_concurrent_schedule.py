@@ -203,6 +203,51 @@ class TestComputeNextBatchUpToDocumentOrder:
 
 
 # ---------------------------------------------------------------------------
+# compute_next_batch — human-labeled (🧑) tasks must never be spawned
+# ---------------------------------------------------------------------------
+
+class TestComputeNextBatchHumanTasks:
+    def test_compute_next_batch_up_to_never_spawns_a_human_labeled_task(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — ADR-1 is a human-required task (🧑, e.g. infra/access provisioning) with no
+        # dependencies; ADR-2 is a normal agent task (🤖) that depends on it. Issue #219: `/implement
+        # up to <key>` must never attempt to implement a task the spec itself marked human — such a
+        # task must never appear in compute_next_batch's own "spawn" list, the exact list
+        # concurrent-orchestrate's spawn loop hands off to the Developer agent with no further
+        # filtering of its own.
+        _set_repo_root(tmp_path, monkeypatch)
+        epic_id = _DEFAULT_EPIC_ID
+        spec_path = tmp_path / "_spec_Test.md"
+        spec_path.write_text(
+            "\n".join([
+                f"> **Epic:** [{epic_id}](https://example.atlassian.net/browse/{epic_id})",
+                "",
+                "### [ADR-1: Provision access](https://example.atlassian.net/browse/ADR-1) \U0001F9D1",
+                "",
+                "**Depends on:** — none —",
+                "",
+                "### [ADR-2: Wire up the client](https://example.atlassian.net/browse/ADR-2) \U0001F916",
+                "",
+                "**Depends on:** ADR-1",
+                "",
+            ]),
+            encoding="utf-8",
+        )
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-2",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert — the bug: ADR-1 (human) is currently spawned exactly like ADR-2 (agent) would
+        # be, because nothing between task_dependencies.parse_task_dependencies and
+        # compute_next_batch ever records which emoji a heading carried.
+        assert {entry["task_id"] for entry in result["spawn"]} != {"ADR-1"}
+
+
+# ---------------------------------------------------------------------------
 # compute_next_batch — "up to" target not a valid task heading
 # ---------------------------------------------------------------------------
 
