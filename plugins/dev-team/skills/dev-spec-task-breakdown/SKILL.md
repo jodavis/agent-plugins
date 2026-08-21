@@ -15,7 +15,7 @@ Use this skill when:
 
 Each task should be sized to roughly one PR — an appropriate amount of work for an agent to handle in one session. When in doubt, err on the side of smaller tasks.
 
-Separate **human-required tasks** (configuration, infrastructure setup, access provisioning) from **agent tasks** (coding, writing documents). Label them clearly in the spec.
+Separate **human-required tasks** (configuration, infrastructure setup, access provisioning) from **agent tasks** (coding, writing documents). Label every task's heading with a trailing marker — 🧑 for a human-required task, 🤖 for an agent task — this is the required labeling mechanism `task_dependencies.py`'s parser depends on to tell the two apart, not just a stylistic suggestion.
 
 ## Steps
 
@@ -23,7 +23,10 @@ Separate **human-required tasks** (configuration, infrastructure setup, access p
 
 Add a `## Tasks` section at the end of the spec file. For each task write:
 
-- A short title
+- A short title, with a trailing 🧑 (human-required) or 🤖 (agent) marker on the same heading
+  line — the mechanism from the Sizing rules above, and the same marker
+  `dev-spec-create-work-items` step 3 later preserves when it rewrites the title into a
+  hyperlink
 - A `**Depends on:** <ref>[, <ref>...]` line directly under the title, naming the other tasks in
   this breakdown it depends on — or `**Depends on:** — none —` when it has none. `<ref>` is the
   task's local number (e.g. `Task 3`, matching this same section's `### Task N: ...` heading
