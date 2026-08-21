@@ -64,6 +64,11 @@ class TestPollActionableEventFiresImmediately:
                 {"task_work_item_id": "ADR-51", "event": "ci_failure"},
                 id="ci_failure",
             ),
+            pytest.param(
+                {"type": "human_comment", "task_work_item_id": "ADR-54"},
+                {"task_work_item_id": "ADR-54", "event": "human_comment"},
+                id="human_comment",
+            ),
         ],
     )
     def test_poll_actionable_event_renames_type_key_to_event_without_sleeping(

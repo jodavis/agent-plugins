@@ -5,8 +5,9 @@ description: >
   Long-lived, one-per-epic PR monitor for a GitHub stack. Owns the entire post-hand-off
   lifecycle for every task in an epic's target set: repeatedly polls the whole stack via
   `stack_pr_poll.py`, reacting to exactly the one outcome each call returns — spawning `fix-pr`
-  for a review comment or CI failure, resolving a rebase conflict via the developer agent, or
-  halting once every task in the target set has merged.
+  for a review comment or CI failure, notifying the user instead of auto-fixing a human-authored
+  PR comment, resolving a rebase conflict via the developer agent, or halting once every task in
+  the target set has merged.
 argument-hint: --work-item-id <epic-id>
 ---
 
@@ -46,6 +47,8 @@ react to whatever single outcome it returns, and repeat, until `stack_pr_poll.py
   this skill needs comes indirectly through one of those three scripts' own return values.
 - Resolve a rebase conflict yourself — spawn the developer agent to run `resolve-rebase-conflict`
 - Fix a review comment or CI failure yourself — spawn `fix-pr` (nested, via the developer agent)
+- Auto-fix a human-authored PR comment — a human comment deserves a personal response, not a bot
+  edit; notify the user instead (step 4b) and never spawn `fix-pr` for it
 - Ask the user a question — `AskUserQuestion` is unavailable to any `Agent`-spawned sub-agent
   (confirmed experimentally); stop instead and let the harness's background-task notification
   surface the situation
@@ -159,8 +162,8 @@ worktree it's run from (this session's own worktree, checked out in step 2). Its
 argument is a positional `max_seconds` bound (default 480); this skill never needs to override it.
 
 Parse stdout as JSON. It is exactly one of: `"conflict"`, `"stack_complete"`,
-`{"task_work_item_id": ..., "event": "review_comment" | "ci_failure"}`, or `"no_change"` — never
-a batch.
+`{"task_work_item_id": ..., "event": "review_comment" | "human_comment" | "ci_failure"}`, or
+`"no_change"` — never a batch.
 
 If `"no_change"`, go straight back to step 4a — `stack_pr_poll.py` already blocked internally for
 its own bounded window; no additional wait is needed here.
@@ -182,10 +185,11 @@ stop and report that error in detail.
   the failure in detail instead of reporting success — a failed cleanup here must never be
   reported as a clean halt. Only once both commands succeed, report success: every task in the
   epic's target set has merged and the monitor has stopped.
-- **`{"task_work_item_id", "event"}`** — a review comment or CI failure fired for that task.
-  `stack_pr_poll.py` has already checked out that task's own branch itself — no checkout of your
-  own is needed. Use the `use-context-file` skill to compute that task's own context file path
-  (`<task_context_file>`), then spawn `fix-pr` against it (nested, via the developer agent):
+- **`{"task_work_item_id", "event": "review_comment" | "ci_failure"}`** — a review comment or CI
+  failure fired for that task. `stack_pr_poll.py` has already checked out that task's own branch
+  itself — no checkout of your own is needed. Use the `use-context-file` skill to compute that
+  task's own context file path (`<task_context_file>`), then spawn `fix-pr` against it (nested,
+  via the developer agent):
   ```
   Agent(
     subagent_type: "dev-team:developer",
@@ -201,6 +205,16 @@ stop and report that error in detail.
   for each such spawn, regardless of which task it's for (one counter for the whole epic-wide
   session, not one per task). If the spawn reports anything other than `successful`, stop and
   report the failure in detail — do not retry automatically. Otherwise, return to step 4a.
+- **`{"task_work_item_id", "event": "human_comment"}`** — someone other than this pipeline's own
+  automation account (the `gh` identity `pr_event_detector.py` checked) posted a new PR comment.
+  This needs a personal response, not an automatic fix — **never spawn `fix-pr` for this event**.
+  Use the `use-context-file` skill to compute that task's own context file path
+  (`<task_context_file>`) and read `pr_url` from it, then call `PushNotification` with a message
+  naming the task and PR, e.g. `"Human comment on <task_work_item_id>'s PR needs a response:
+  <pr_url>"`. `pr_event_detector.py` already advanced `last_seen_review_comment_id` past this
+  comment, so it won't re-fire on the next poll. A human comment doesn't block the rest of the
+  stack the way a rebase conflict does, so return to step 4a immediately afterward — do not stop
+  this agent.
 - **`"conflict"`** — go to step 5.
 - **`"no_change"`** — return to step 4a immediately.
 

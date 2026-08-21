@@ -1,9 +1,12 @@
 """PR event detector.
 
-Given a task's context file and its PR's current GitHub/git state, determines which of the three
-monitor conditions (review_comment, ci_failure, task_merged) have newly fired. base_updated and
-dependency_merged have been retired — they are subsumed by `gh stack sync` — see
-detect_next_stack_event.py.
+Given a task's context file and its PR's current GitHub/git state, determines which of the four
+monitor conditions (review_comment, human_comment, ci_failure, task_merged) have newly fired.
+review_comment and human_comment are mutually exclusive per call — a batch of new comments fires
+human_comment if any of them was posted by someone other than this pipeline's own automation
+account (`gh api user`), review_comment otherwise — so a genuine human reply never gets silently
+auto-fixed. base_updated and dependency_merged have been retired — they are subsumed by
+`gh stack sync` — see detect_next_stack_event.py.
 """
 
 import json
@@ -42,10 +45,25 @@ def _parse_pr_url(pr_url: str) -> tuple[str, str, str]:
     return match.groups()
 
 
-def _review_comment_and_ci_events(ctx: PipelineContext) -> list[Literal["review_comment", "ci_failure"]]:
+def _current_login() -> str:
+    """The GitHub login `gh` is authenticated as — this pipeline's own automation account, distinct
+    from any human's personal account. Not cached: callers span long-lived poll loops, and each
+    call is one cheap `gh api` round trip."""
+    result = subprocess.run(
+        ["gh", "api", "user", "--jq", ".login"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return result.stdout.strip()
+
+
+def _review_comment_and_ci_events(
+    ctx: PipelineContext,
+) -> list[Literal["review_comment", "human_comment", "ci_failure"]]:
     events: list[str] = []
 
-    # 1. review_comment
+    # 1. review_comment / human_comment
     owner, repo, number = _parse_pr_url(ctx.pr_url)
     result = subprocess.run(
         ["gh", "api", f"repos/{owner}/{repo}/pulls/{number}/comments"],
@@ -60,8 +78,13 @@ def _review_comment_and_ci_events(ctx: PipelineContext) -> list[Literal["review_
     if comments:
         max_id = max(c["id"] for c in comments)
         last_seen = int(ctx.extra_frontmatter.get("last_seen_review_comment_id") or 0)
-        if max_id > last_seen:
-            events.append("review_comment")
+        new_comments = [c for c in comments if c["id"] > last_seen]
+        if new_comments:
+            own_login = _current_login()
+            if any(c.get("user", {}).get("login") != own_login for c in new_comments):
+                events.append("human_comment")
+            else:
+                events.append("review_comment")
             ctx.extra_frontmatter["last_seen_review_comment_id"] = str(max_id)
 
     # 2. ci_failure
@@ -93,7 +116,7 @@ def _review_comment_and_ci_events(ctx: PipelineContext) -> list[Literal["review_
 
 def detect_pr_events(
     task_work_item_id: str,
-) -> list[Literal["review_comment", "ci_failure", "task_merged"]]:
+) -> list[Literal["review_comment", "human_comment", "ci_failure", "task_merged"]]:
     path = compute_context_path(task_work_item_id, get_repo_slug())
     if not path.exists():
         return []

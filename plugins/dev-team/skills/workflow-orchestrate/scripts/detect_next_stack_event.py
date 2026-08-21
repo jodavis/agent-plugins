@@ -2,8 +2,8 @@
 
 `detect_next_stack_event()` scans a stack's branches (via `gh_stack.view()`, already in
 stack-position order) and returns the first actionable event across the whole stack — one of
-review_comment, ci_failure, or task_merged — or `None` if nothing fired this call. Operates on
-whatever stack is anchored in the current worktree (no feature-scoped filter exists in
+review_comment, human_comment, ci_failure, or task_merged — or `None` if nothing fired this call.
+Operates on whatever stack is anchored in the current worktree (no feature-scoped filter exists in
 `gh_stack.py`); the caller is responsible for running from the correct worktree.
 """
 

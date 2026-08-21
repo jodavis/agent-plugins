@@ -1,7 +1,7 @@
 """Tests for detect_next_stack_event.py — detect_next_stack_event() scans a stack's
 branches (via gh_stack.view(), already in stack-position order) and returns the first actionable
-event across the whole stack — one of review_comment, ci_failure, or task_merged — or None if
-nothing fired this call.
+event across the whole stack — one of review_comment, human_comment, ci_failure, or task_merged —
+or None if nothing fired this call.
 """
 
 import json
@@ -24,10 +24,20 @@ class TestDetectNextStackEventSingleSignal:
                 "https://github.com/acme/widget/pull/57",
                 "dev/claude/ADR-50",
                 False,
-                json.dumps([{"id": 101}]),
+                json.dumps([{"id": 101, "user": {"login": "autobot"}}]),
                 json.dumps([]),
                 "review_comment",
                 id="new_review_comment",
+            ),
+            pytest.param(
+                "ADR-54",
+                "https://github.com/acme/widget/pull/64",
+                "dev/claude/ADR-54",
+                False,
+                json.dumps([{"id": 104, "user": {"login": "a-human"}}]),
+                json.dumps([]),
+                "human_comment",
+                id="new_comment_from_a_human",
             ),
             pytest.param(
                 "ADR-51",
@@ -88,6 +98,8 @@ class TestDetectNextStackEventSingleSignal:
         )
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
                 return MagicMock(returncode=0, stdout=comments_json, stderr="")
             if cmd[:3] == ["gh", "pr", "checks"]:
@@ -192,6 +204,8 @@ class TestDetectNextStackEventNoneFired:
         )
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
                 return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
             if cmd[:3] == ["gh", "pr", "checks"]:
@@ -252,10 +266,14 @@ class TestDetectNextStackEventChecksOutFiringBranch:
         checkout_calls = []
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
                 if "74" in cmd[2]:
                     return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
-                return MagicMock(returncode=0, stdout=json.dumps([{"id": 900}]), stderr="")
+                return MagicMock(
+                    returncode=0, stdout=json.dumps([{"id": 900, "user": {"login": "autobot"}}]), stderr=""
+                )
             if cmd[:3] == ["gh", "pr", "checks"]:
                 return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
             if cmd[:2] == ["git", "checkout"]:
@@ -318,9 +336,13 @@ class TestDetectNextStackEventStackPositionPrecedence:
         queried_prs = []
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
                 queried_prs.append(cmd[2])
-                return MagicMock(returncode=0, stdout=json.dumps([{"id": 901}]), stderr="")
+                return MagicMock(
+                    returncode=0, stdout=json.dumps([{"id": 901, "user": {"login": "autobot"}}]), stderr=""
+                )
             if cmd[:3] == ["gh", "pr", "checks"]:
                 return MagicMock(returncode=0, stdout=json.dumps([{"bucket": "fail"}]), stderr="")
             if cmd[:2] == ["git", "checkout"]:
@@ -429,8 +451,12 @@ class TestDetectNextStackEventBranchNameWithSlug:
         )
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
-                return MagicMock(returncode=0, stdout=json.dumps([{"id": 903}]), stderr="")
+                return MagicMock(
+                    returncode=0, stdout=json.dumps([{"id": 903, "user": {"login": "autobot"}}]), stderr=""
+                )
             if cmd[:3] == ["gh", "pr", "checks"]:
                 return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
             if cmd[:2] == ["git", "checkout"]:
@@ -486,8 +512,12 @@ class TestDetectNextStackEventNoContextFile:
         )
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
-                return MagicMock(returncode=0, stdout=json.dumps([{"id": 902}]), stderr="")
+                return MagicMock(
+                    returncode=0, stdout=json.dumps([{"id": 902, "user": {"login": "autobot"}}]), stderr=""
+                )
             if cmd[:3] == ["gh", "pr", "checks"]:
                 return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
             if cmd[:2] == ["git", "checkout"]:
@@ -546,6 +576,8 @@ class TestDetectNextStackEventMergedAlreadySeen:
         )
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
                 return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
             if cmd[:3] == ["gh", "pr", "checks"]:
