@@ -384,6 +384,43 @@ it — step 1's worktree-freshness hard stop, and step 2b's own epic-derivation 
 issue, not a pipeline bug: the current branch itself has no recorded epic to derive one from),
 both stay plain hard stops regardless.
 
+## Running the troubleshooter agent
+
+Several points above say to "run the troubleshooter agent" for a specific problem string, instead
+of stopping outright — just like `workflow-orchestrate` and `concurrent-orchestrate` do for their
+own pipeline anomalies, this keeps the actual debugging investigation, and any bug it files,
+out of the top-level session's own context. Every one of those points is reached after step 2 has
+resolved the epic's own context file, so it's always available to pass along:
+
+```
+Agent(
+  subagent_type="dev-team:troubleshooter",
+  prompt="""Invoke the `dev-team:workflow-troubleshoot` skill with arguments:
+--context-file <epic's own context file, resolved in step 2>
+--problem "<the problem string that point named>"
+"""
+)
+```
+
+Handle the outcome (a JSON object with an `action` field):
+- `"continue"` — the troubleshooter applied a fix. Retry exactly the operation that triggered this
+  dispatch, from scratch, once. If it fails again the same way, treat that second failure as a
+  plain hard stop — stop and report the failure in detail, do not dispatch the troubleshooter a
+  second time for the same occurrence. This bounds the loop to one retry per occurrence.
+- `"terminate"` — report the reason to the user and stop this agent entirely, the same as any
+  other hard stop.
+- `"needs_user_input"` — `AskUserQuestion` is unavailable here (see "Never attempt to" above);
+  stop and report the troubleshooter's question in detail so it surfaces via the harness's
+  background-task notification, the same way step 5's `"unresolved"` case does. A human answers
+  by writing the answer to the epic's context file's `troubleshooter_input` field (the same
+  mechanism `concurrent-orchestrate`'s own troubleshooter handling documents) and resuming this
+  same agent via `SendMessage`.
+
+This dispatch needs the epic's own context file, so it's never available before step 2 resolves
+it — step 1's worktree-freshness hard stop, and step 2b's own epic-derivation hard stop (a usage
+issue, not a pipeline bug: the current branch itself has no recorded epic to derive one from),
+both stay plain hard stops regardless.
+
 ## Skills
 
 - `use-context-file` — reading/creating the epic's own context file, recording
