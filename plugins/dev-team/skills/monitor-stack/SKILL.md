@@ -52,7 +52,9 @@ react to whatever single outcome it returns, and repeat, until `stack_pr_poll.py
 - Auto-fix a human-authored PR comment — a human comment deserves a personal response, not a bot
   edit; notify the user instead (step 4b) and never spawn `fix-pr` for it
 - Ask the user a question — `AskUserQuestion` is unavailable to any `Agent`-spawned sub-agent
-  (confirmed experimentally); stop instead and let the harness's background-task notification
+  (confirmed experimentally), which this skill may or may not currently be (step 2a covers both
+  an isolated auto-started spawn and a direct in-session invocation); treat it as unavailable
+  either way for consistency. Stop instead and let the harness's background-task notification
   surface the situation
 - Reuse the implement-phase worktree of whichever task happened to trigger your auto-start when
   running your own dedicated worktree (step 2a) — checked out on a real stack member branch,
@@ -108,8 +110,10 @@ git branch -r --sort=-committerdate | grep -E "<feature-prefix><epic-id>-spec(-|
 
 Take the first line, strip the `origin/` prefix — that is `<feature-branch>`. By the time this
 skill runs, a task in this epic has already reached hand-off, so `write-dev-spec` has already
-created it; a missing match here is a **hard stop** — report the failure in detail rather than
-guessing a branch name.
+created it; a missing match here does not square with that precondition — run the troubleshooter
+agent (see "Running the troubleshooter agent" below) with problem
+`"monitor-stack step 2a: no feature branch found for epic <epic-id> matching
+<feature-prefix><epic-id>(-|$)"` rather than guessing a branch name.
 
 **Do not check out `<feature-branch>` itself and stop there** — `gh-stack` does not consider the
 trunk a stack member, so `gh stack view`/`sync` (and therefore `stack_pr_poll.py`) fail from a
@@ -123,9 +127,10 @@ gh pr list --base <feature-branch> --state open --json number --jq '.[0].number'
 ```
 
 In a linear stack, exactly one open PR bases directly off the trunk — the bottom-most entry, the
-one whose task triggered this monitor's own auto-start. A missing result here is a **hard stop**
-(the "a task has already reached hand-off" precondition this skill requires wasn't actually met)
-— report the failure in detail. Otherwise call this `<member-pr-number>` and run:
+one whose task triggered this monitor's own auto-start. A missing result here means the "a task
+has already reached hand-off" precondition this skill requires wasn't actually met — run the
+troubleshooter agent with problem `"monitor-stack step 2a: no open PR based directly on
+<feature-branch> for epic <epic-id>"`. Otherwise call this `<member-pr-number>` and run:
 
 ```bash
 python3 "<skill-dir>/../workflow-orchestrate/scripts/stack_checkout.py" <member-pr-number>
@@ -135,7 +140,8 @@ Per `gh stack checkout --help`, a PR number not yet tracked locally is discovere
 API and its branches fetched, so this works even though this worktree never registered any branch
 of its own — this is the one operation that can bootstrap `gh stack` awareness into a brand-new
 worktree. If the script exits non-zero, it prints a clear `Error: ...` message to stderr instead
-of JSON — stop and report that error in detail. On success, HEAD is now a real stack member branch
+of JSON — run the troubleshooter agent with problem `"monitor-stack step 2a: stack_checkout.py
+<member-pr-number> failed: <stderr text>"`. On success, HEAD is now a real stack member branch
 with the whole stack materialized locally.
 
 #### 2b — No `--work-item-id` given
@@ -210,7 +216,8 @@ If `"no_change"`, go straight back to step 4a — `stack_pr_poll.py` already blo
 its own bounded window; no additional wait is needed here.
 
 If the script exits non-zero, it prints a clear `Error: ...` message to stderr instead of JSON —
-stop and report that error in detail.
+run the troubleshooter agent (see "Running the troubleshooter agent" below) with problem
+`"monitor-stack step 4a: stack_pr_poll.py failed: <stderr text>"`.
 
 #### 4b — React to exactly the one outcome returned
 
@@ -223,8 +230,9 @@ stop and report that error in detail.
     git branch -D <watch_worktree_branch>
     ```
     (`cd` out first — a worktree cannot reliably remove itself while it's still the process's own
-    cwd.) If either command exits non-zero, this is a **hard stop**: stop immediately and report
-    the failure in detail instead of reporting success — a failed cleanup here must never be
+    cwd.) If either command exits non-zero, run the troubleshooter agent (see "Running the
+    troubleshooter agent" below) with problem `"monitor-stack step 4b: stack_complete cleanup
+    failed: <error text>"` instead of reporting success — a failed cleanup here must never be
     reported as a clean halt.
   - **You took step 2b** — this worktree is the user's own, not this monitor's to delete; skip
     both commands entirely (step 3 never recorded a `watch_worktree_path`/`watch_worktree_branch`
@@ -249,8 +257,10 @@ stop and report that error in detail.
   `Post-Handoff Fix <n>` is a section name on that task's own context file, distinct from the
   pre-hand-off pipeline's own `Fix N` numbering — start `<n>` at 1 for this run and increment it
   for each such spawn, regardless of which task it's for (one counter for the whole epic-wide
-  session, not one per task). If the spawn reports anything other than `successful`, stop and
-  report the failure in detail — do not retry automatically. Otherwise, return to step 4a.
+  session, not one per task). If the spawn reports anything other than `successful`, run the
+  troubleshooter agent with problem `"monitor-stack step 4b: fix-pr spawn for task
+  <task_work_item_id> reported <status>"` — do not retry automatically yourself. Otherwise,
+  return to step 4a.
 - **`{"task_work_item_id", "event": "human_comment"}`** — someone other than this pipeline's own
   automation account (the `gh` identity `pr_event_detector.py` checked) posted a new PR comment.
   This needs a personal response, not an automatic fix — **never spawn `fix-pr` for this event**.
@@ -304,7 +314,8 @@ Agent(
 
 (`<n>` increments the same way `Post-Handoff Fix <n>` does — once per conflict resolved during
 this run, across the whole epic, not per task.) If the spawn itself reports anything other than
-`successful`, stop and report the failure in detail.
+`successful`, run the troubleshooter agent with problem `"monitor-stack step 5:
+resolve-rebase-conflict spawn for task <conflicting_task_id> reported <status>"`.
 
 Otherwise, read the content the spawned agent wrote to `Rebase Conflict <n>` in
 `<task_context_file>` — this is `resolve-rebase-conflict`'s own `"resolved"` or `"unresolved"`
@@ -318,8 +329,8 @@ verdict, distinct from the spawn's generic `successful` status:
   python3 "<skill-dir>/../workflow-orchestrate/scripts/stack_rebase_continue.py"
   ```
   Parse stdout as JSON. It is exactly one of `"ok"` or `"conflict"`. If the script exits non-zero,
-  it prints a clear `Error: ...` message to stderr instead of JSON — stop and report that error in
-  detail.
+  it prints a clear `Error: ...` message to stderr instead of JSON — run the troubleshooter agent
+  with problem `"monitor-stack step 5: stack_rebase_continue.py failed: <stderr text>"`.
   - **`"ok"`** — the cascade reached a clean state (this may have rebased and pushed further
     branches beyond the one just resolved). Return directly to step 4a.
   - **`"conflict"`** — the cascade hit another conflict further up the stack. Repeat step 5 from
@@ -336,6 +347,43 @@ verdict, distinct from the spawn's generic `successful` status:
   background-task notification. A human resumes this same agent via `SendMessage`, or restarts
   fresh via `/watch-stack` from the same worktree.
 
+## Running the troubleshooter agent
+
+Several points above say to "run the troubleshooter agent" for a specific problem string, instead
+of stopping outright — just like `workflow-orchestrate` and `concurrent-orchestrate` do for their
+own pipeline anomalies, this keeps the actual debugging investigation, and any bug it files,
+out of the top-level session's own context. Every one of those points is reached after step 2 has
+resolved the epic's own context file, so it's always available to pass along:
+
+```
+Agent(
+  subagent_type="dev-team:troubleshooter",
+  prompt="""Invoke the `dev-team:workflow-troubleshoot` skill with arguments:
+--context-file <epic's own context file, resolved in step 2>
+--problem "<the problem string that point named>"
+"""
+)
+```
+
+Handle the outcome (a JSON object with an `action` field):
+- `"continue"` — the troubleshooter applied a fix. Retry exactly the operation that triggered this
+  dispatch, from scratch, once. If it fails again the same way, treat that second failure as a
+  plain hard stop — stop and report the failure in detail, do not dispatch the troubleshooter a
+  second time for the same occurrence. This bounds the loop to one retry per occurrence.
+- `"terminate"` — report the reason to the user and stop this agent entirely, the same as any
+  other hard stop.
+- `"needs_user_input"` — `AskUserQuestion` is unavailable here (see "Never attempt to" above);
+  stop and report the troubleshooter's question in detail so it surfaces via the harness's
+  background-task notification, the same way step 5's `"unresolved"` case does. A human answers
+  by writing the answer to the epic's context file's `troubleshooter_input` field (the same
+  mechanism `concurrent-orchestrate`'s own troubleshooter handling documents) and resuming this
+  same agent via `SendMessage`.
+
+This dispatch needs the epic's own context file, so it's never available before step 2 resolves
+it — step 1's worktree-freshness hard stop, and step 2b's own epic-derivation hard stop (a usage
+issue, not a pipeline bug: the current branch itself has no recorded epic to derive one from),
+both stay plain hard stops regardless.
+
 ## Skills
 
 - `use-context-file` — reading/creating the epic's own context file, recording
@@ -345,3 +393,5 @@ verdict, distinct from the spawn's generic `successful` status:
   argument for the currently-conflicting task
 - `workflow-worker` — the mediated spawn pattern (`--context-file`/`--write-section`/`--skill`/
   `--skill-args`) for nested `fix-pr` and `resolve-rebase-conflict` calls
+- `workflow-troubleshoot` (via the `dev-team:troubleshooter` agent) — diagnosing and logging an
+  unexpected failure at one of the points named in "Running the troubleshooter agent" above
