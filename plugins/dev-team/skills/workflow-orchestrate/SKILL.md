@@ -60,7 +60,7 @@ If both commands print the same path, this session is running from the **main ch
 immediately: do not proceed to step 0b or touch any repository state. Report clearly that this
 pipeline must be spawned into its own isolated worktree (`isolation: "worktree"` on the `Agent`
 call — the same way `concurrent-orchestrate` already spawns both `workflow-orchestrate` and
-`monitor-stack`) before it starts, and recommend the caller re-invoke it that way. Running
+`monitor-prs`) before it starts, and recommend the caller re-invoke it that way. Running
 directly from the main checkout risks mutating the user's own working directory, and produces
 false-positive dirty-worktree signals downstream from other concurrent sessions' own
 `.claude/worktrees/<agent-id>` bookkeeping (which is only ever visible from the main checkout's

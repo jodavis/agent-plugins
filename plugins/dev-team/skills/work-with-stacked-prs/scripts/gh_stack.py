@@ -18,7 +18,7 @@ the shared common git directory, so it is **not** visible or correct across `git
 checkouts of the same repository. Every function in this module **except `link`** must be called
 from within the same worktree that owns the branch/stack in question — never from a different
 worktree than the one that last registered it. This module does not assert that contract itself;
-it is left to each caller (e.g. `ensure-working-branch`, `monitor-stack`) to honor. `link` is the
+it is left to each caller (e.g. `ensure-working-branch`, `monitor-prs`) to honor. `link` is the
 one deliberate exception: per `gh stack link --help`, it "does not rely on gh-stack local
 tracking state" — it operates purely against GitHub (branch names, PR numbers, or PR URLs), so it
 is safe to call from any worktree, including a task's own per-task worktree, with no shared-
