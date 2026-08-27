@@ -197,11 +197,11 @@ troubleshooter:
 Defaults to `claude`; overridable per project or per machine (e.g. a human working in another
 team's repo under their own alias, via `.dev-team/config.local.yaml`).
 
-`working-branches.task` — the one branch name template, used for both task branches and feature
-(epic) branches: a feature's own branch is built from this same template, substituting
-`<task-work-item-id>` with `<feature-work-item-id>-spec` (see `ensure-feature-branch`'s own step
-1) rather than from a separate template — there is no dedicated "feature" branch scheme. The
-calling skill performs the substitution; this skill only returns the raw template.
+`working-branches.task` — the one branch name template, used for both task branches and a
+feature's own spec branch: the spec branch is built from this same template, substituting
+`<task-work-item-id>` with `<feature-work-item-id>-spec` (see `write-dev-spec`'s own step 1.5)
+rather than from a separate template — there is no dedicated "feature" branch scheme. The calling
+skill performs the substitution; this skill only returns the raw template.
 
 | Placeholder | Meaning |
 |---|---|

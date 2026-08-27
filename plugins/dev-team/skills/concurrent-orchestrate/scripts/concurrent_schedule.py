@@ -4,24 +4,22 @@
 `compute_next_batch(target)` owns everything `concurrent-orchestrate`'s thin spawn loop needs
 computed for it: the "up to" target's inclusive document-order task set (or the explicit list
 taken as-is, with no expansion), each target task's cached status (via the Task readiness
-checker), a live check for whether the epic's feature branch is bootstrapped yet, and a
-repo-wide concurrency cap enforced across every target's own data file — never just this one.
-It never spawns anything itself, and never invokes `ensure-feature-branch` itself either
-(no MCP/`gh` credentials available to a bare script); that's `concurrent-orchestrate`'s own
-prose, which holds real credentials.
+checker), a live check for whether the epic's spec branch exists yet, and a repo-wide
+concurrency cap enforced across every target's own data file — never just this one. It never
+spawns anything itself.
 
 ADR-374 changes two things from ADR-296's original scheduler: (1) the "up to" target set is now
 every task from the start of the epic's document order (per the Stack order validator) through
 the target inclusive — not just the target's own transitive dependency closure, since one
 linear stack per epic means an earlier, unrelated task still needs implementing regardless of
 whether the target depends on it; (2) `compute_next_batch` first runs a live
-`git branch -r`-based check for whether `<epic-id>`'s feature branch already exists (parsed from
-the spec's own `> **Epic:** [<key>](...)` header line); if not, it returns
-`{"status": "bootstrap_needed", "epic_id": ...}` before doing any batch computation, still
-persisting the target's data file exactly as it always does — the live check is what lets a
-retry (once `concurrent-orchestrate` has invoked `ensure-feature-branch`) or a different target
-against an already-bootstrapped epic proceed straight to normal scheduling instead of looping
-or re-bootstrapping needlessly.
+`git branch -r`-based check for whether `<epic-id>`'s spec branch already exists (parsed from
+the spec's own `> **Epic:** [<key>](...)` header line); if not, it raises `RuntimeError` before
+doing any batch computation — a task can't meaningfully start before its epic's spec does, so a
+missing spec branch here means `/write-dev-spec` was never run for this epic, not something this
+script (or `concurrent-orchestrate`) can remediate on its own. The live check still means a
+different target against an already-bootstrapped epic proceeds straight to normal scheduling
+without re-checking anything stale.
 
 `poll_until_actionable(target)` wraps `compute_next_batch` with the blocking behavior the CLI
 exposes: rather than making the calling agent re-invoke this script itself every 30 seconds
@@ -121,22 +119,21 @@ def _data_file_path(repo_slug: str, target: TargetSpec) -> Path:
 def _parse_epic_id(spec_text: str) -> str | None:
     """Parse `<epic-id>` from the spec's own `> **Epic:** [<key>](...)` header line — the only
     local, MCP-free source of the epic key available to this bare script (mirroring
-    `ensure-feature-branch`'s own bootstrap steps, which it can't invoke directly). Returns
-    `None` if no such header line is present (a spec authored before this convention, or a
-    malformed one) — callers treat that as "nothing to gate bootstrap on" rather than an
-    error."""
+    `write-dev-spec`'s own step 1.5, which it can't invoke directly). Returns `None` if no such
+    header line is present (a spec authored before this convention, or a malformed one) —
+    callers treat that as "nothing to gate on" rather than an error."""
     match = _EPIC_HEADER_RE.search(spec_text)
     return match.group(1) if match else None
 
 
 def _feature_branch_prefix(repo_root: Path) -> str:
-    """Compute the literal prefix `ensure-feature-branch` step 1 derives from `git-repo.working-
+    """Compute the literal prefix `write-dev-spec` step 1.5 derives from `git-repo.working-
     branches.task` — the same template task branches use, with `<user-alias>` substituted and
     everything from `<task-work-item-id>` onward dropped (e.g. `dev/<user-alias>/<task-work-
     item-id>-<slug>` with `user-alias: claude` becomes `dev/claude/`). There is no separate
-    "feature" branch template — a feature's own branch is this same template with
+    "feature" branch template — a feature's own spec branch is this same template with
     `<feature-work-item-id>-spec` standing in for `<task-work-item-id>` (see
-    `_feature_branch_exists` below and `ensure-feature-branch`'s own step 1)."""
+    `_feature_branch_exists` below and `write-dev-spec`'s own step 1.5)."""
     result = subprocess.run(
         [sys.executable, str(_MERGE_CONFIG_SCRIPT), "--repo-root", str(repo_root)],
         capture_output=True, text=True, timeout=30,
@@ -153,11 +150,11 @@ def _feature_branch_prefix(repo_root: Path) -> str:
 
 
 def _feature_branch_exists(epic_id: str, repo_root: Path) -> bool:
-    """Live check — never a data-file check — for whether `<epic-id>`'s feature branch already
-    exists on the remote, mirroring the same `git branch -r` check `ensure-feature-branch`
-    itself runs as its own first step. A live check avoids both looping forever (nothing ever
-    writes a persisted bootstrap signal) and forcing a second, different target landing on an
-    already-bootstrapped epic to needlessly re-invoke `ensure-feature-branch`."""
+    """Live check — never a data-file check — for whether `<epic-id>`'s spec branch already
+    exists on the remote, mirroring the same `git branch -r` check `write-dev-spec`'s own step
+    1.5 runs as its own first step. A live check avoids both looping forever (nothing ever
+    writes a persisted signal) and forcing a second, different target landing on an
+    already-existing epic spec branch to needlessly re-check anything stale."""
     prefix = _feature_branch_prefix(repo_root)
     result = subprocess.run(
         ["git", "branch", "-r"], cwd=repo_root, capture_output=True, text=True, timeout=30,
@@ -289,10 +286,11 @@ def _running_snapshots(
 def compute_next_batch(target: TargetSpec) -> dict:
     """Compute the next batch of tasks to spawn for `target`.
 
-    Returns `{"status": "waiting" | "complete" | "blocked" | "bootstrap_needed", "spawn": [...],
-    "blocked_tasks": [...], "running": [...]}` — plus an `"epic_id"` key on a
-    `"bootstrap_needed"` result. Never spawns anything, and never invokes `ensure-feature-branch`
-    itself — deterministic computation only.
+    Returns `{"status": "waiting" | "complete" | "blocked", "spawn": [...],
+    "blocked_tasks": [...], "running": [...]}`. Never spawns anything — deterministic
+    computation only. Raises `RuntimeError` if the epic's spec branch doesn't exist yet
+    (`/write-dev-spec` was never run for it) — there is nothing this script or its caller can do
+    to remediate that on its own, so it's a hard failure rather than a retryable status.
     """
     spec_path = dev_team.find_spec_file(target.tasks[0])
     spec_text = spec_path.read_text(encoding="utf-8")
@@ -307,10 +305,10 @@ def compute_next_batch(target: TargetSpec) -> dict:
 
     epic_id = _parse_epic_id(spec_text)
     if epic_id is not None and not _feature_branch_exists(epic_id, dev_team.REPO_ROOT):
-        return {
-            "status": "bootstrap_needed", "epic_id": epic_id,
-            "spawn": [], "blocked_tasks": [], "running": [],
-        }
+        raise RuntimeError(
+            f"Epic {epic_id}'s spec branch does not exist yet. Run /write-dev-spec for "
+            f"{epic_id} before starting task-level work."
+        )
 
     tasks: list[str] = data["tasks"]
     spawned: set[str] = set(data.get("spawned", []))
@@ -366,7 +364,8 @@ def poll_until_actionable(
     poll comes back `"waiting"` with an empty `spawn` (nothing newly eligible and the cap isn't
     the reason — there's simply nothing to do yet), sleeps `poll_interval_seconds` and polls
     again, up to `max_poll_cycles` times. Returns as soon as any poll reports `"complete"`,
-    `"blocked"`, `"bootstrap_needed"`, or `"waiting"` with a non-empty `spawn`. If every cycle
+    `"blocked"`, or `"waiting"` with a non-empty `spawn` (a `RuntimeError` from
+    `compute_next_batch` propagates immediately, uncaught). If every cycle
     stays idle, returns the last (still "waiting", still empty) result anyway once
     `max_poll_cycles` is exhausted, so the caller regains control periodically to sanity-check
     the run rather than blocking forever."""

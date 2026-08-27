@@ -51,13 +51,11 @@ and stopping on `"complete"` or `"blocked"`.
 
 **Never attempt to:**
 - Compute the target task set, a task's eligibility, the concurrency cap, or whether the epic's
-  feature branch is bootstrapped yet, yourself — `concurrent_schedule.py` owns all of that
+  spec branch exists yet, yourself — `concurrent_schedule.py` owns all of that
 - Fix build errors, test failures, or code review comments yourself
 - Invoke agent skills directly (other than spawning `workflow-orchestrate` itself, unmodified,
-  per task, `dev-team:monitor-stack` once per epic — the moment the first task in that epic's
-  target set reaches hand-off, not once per task — and `ensure-feature-branch` on a
-  `bootstrap_needed` result — the only skill this session invokes directly in-session rather
-  than spawning, since it needs this session's own real MCP/`gh` credentials)
+  per task, and `dev-team:monitor-stack` once per epic — the moment the first task in that epic's
+  target set reaches hand-off, not once per task)
 - Edit source files or test files
 - Take any action beyond what the script's JSON descriptor instructs
 
@@ -130,11 +128,12 @@ Invoke this `Bash` call with an explicit `timeout` of at least `330000`
 (5.5 minutes) — comfortably past the script's own ~5-minute default polling budget.
 
 Capture stdout — a single JSON object
-`{"status": ..., "spawn": [...], "blocked_tasks": [...], "running": [...]}` (plus an
-`"epic_id"` key on a `"bootstrap_needed"` result). If the script exits non-zero, it prints a
-clear `Error: ...` message to stderr instead — stop and report that error in detail (a
-dangling/cyclic spec, or an explicit-list task whose dependency is neither in the list nor
-already done); do not retry or fall back to guessing.
+`{"status": ..., "spawn": [...], "blocked_tasks": [...], "running": [...]}`. If the script exits
+non-zero, it prints a clear `Error: ...` message to stderr instead — stop and report that error
+in detail (a dangling/cyclic spec, an explicit-list task whose dependency is neither in the list
+nor already done, or the epic's spec branch not existing yet because `/write-dev-spec` was never
+run for it); do not retry or fall back to guessing, and do not attempt to bootstrap a branch
+yourself.
 
 #### 2b — Branch on status
 
@@ -143,13 +142,6 @@ already done); do not retry or fall back to guessing.
 - **`"blocked"`** — every currently-spawned task has also reached a terminal state, but some
   not-yet-started task's dependency chain includes a task that ended in `failed`, so it can
   never become eligible. Go to step 3 and stop — never keep polling once this fires.
-- **`"bootstrap_needed"`** — the epic's feature branch doesn't exist yet (the script can't
-  bootstrap it itself — no MCP/`gh` credentials). Invoke the `ensure-feature-branch` skill with
-  the returned `epic_id`, then re-invoke step 2a right away — the script's own live
-  `git branch -r` check will find the branch this time and proceed to compute a batch, so this
-  never round-trips through `"bootstrap_needed"` a second time for the same epic once
-  `ensure-feature-branch` reports `successful`. If `ensure-feature-branch` reports anything
-  else, stop and report the failure in detail.
 - **`"waiting"`** — continue to step 2c for each entry in `spawn` (possibly empty this cycle:
   the cap is full, or nothing newly eligible), then to step 2d.
 
@@ -311,5 +303,3 @@ section; step 2a's existing stop-and-report handling covers that case unchanged.
 
 - `use-context-file` — recording `worktree_path` / `worktree_branch` on a spawned task's
   context file; reading a handed-off task's `pr_url` and `parent_work_item` fields (step 2e)
-- `ensure-feature-branch` — bootstraps the epic's feature branch, invoked in-session on a
-  `"bootstrap_needed"` result (step 2b)
