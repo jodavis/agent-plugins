@@ -258,10 +258,10 @@ refined an assumption the spec started with.
   repo-wide concurrency cap.
 - **`monitor-stack`** — the epic-wide, long-lived post-hand-off monitor; polls via
   `stack_pr_poll.py` and reacts to exactly one outcome per call.
-- **`/watch-stack [--work-item-id <epic-key>]`** — manual entry point. With no argument, invokes
-  `monitor-stack` directly in the current session from whatever worktree the user is already
-  checked out into (the common case); with `--work-item-id`, for when the user isn't already in
-  the target worktree, for when `concurrent-orchestrate`'s auto-start never happened.
+- **`/watch-stack`** — manual entry point, no arguments. Invokes `monitor-stack` directly in the
+  current session from whatever worktree the user is already checked out into — the only entry
+  point; not being on a stack at all is a hard stop (`monitor-stack` step 2b), not a fallback to
+  an epic-key argument.
 - **`PipelineContext.added_to_stack`** — a named boolean frontmatter field (`pipeline_context.py`
   line 34), `true` once `add-to-pr-stack` has registered a task's signed-off PR into the epic's
   `gh stack`. `false` for the entire implementation/review/signoff cycle before that, and stays
@@ -311,8 +311,8 @@ refined an assumption the spec started with.
    `concurrent-orchestrate` auto-starts one `monitor-stack` session for that epic, always in its
    own freshly spawned worktree passed `--work-item-id` explicitly (it has other pipeline work of
    its own to protect). A human can instead start it manually via `/watch-stack`, in-session, from
-   whatever worktree they're already sitting in — the common case needs no `--work-item-id` at
-   all; `monitor-stack` derives the epic from the current branch instead. Either way, if the
+   whatever worktree they're already sitting in — it takes no `--work-item-id` argument at all;
+   `monitor-stack` always derives the epic from the current branch instead. Either way, if the
    worktree has no local `gh stack` state of its own yet (the auto-started, freshly spawned case),
    step 2 finds the one open PR based directly on the trunk and runs `stack_checkout.py` to
    materialize the stack there and land on that real member branch (never the trunk itself, which

@@ -17,9 +17,8 @@ Use this skill when:
   it merges
 - You were spawned to do exactly this — auto-started by `concurrent-orchestrate` the moment the
   first task in an epic's target set hands off (always with `--work-item-id`, into a fresh
-  isolated worktree), or invoked manually via `/watch-stack`, in-session, either with
-  `--work-item-id <epic-key>` or (the common case) with no argument at all when already checked
-  out on one of the stack's own branches
+  isolated worktree), or invoked manually via `/watch-stack`, in-session, with no argument, when
+  already checked out on one of the stack's own branches
 
 Do NOT use this skill when:
 - No task in the epic's target set has reached hand-off yet — there is no stack entry to monitor
@@ -89,9 +88,9 @@ derived (2b).
 
 #### 2a — `--work-item-id <epic-id>` given
 
-The `concurrent-orchestrate` auto-start path, and the manual `/watch-stack --work-item-id
-<epic-key>` fallback for when this session isn't already sitting in the target worktree. Use the
-`use-context-file` skill with `<epic-id>` to locate and read (creating if necessary) the epic's
+The `concurrent-orchestrate` auto-start path — the only caller that ever passes `--work-item-id`;
+`/watch-stack` never does (see 2b). Use the `use-context-file` skill with `<epic-id>` to locate
+and read (creating if necessary) the epic's
 own context file — per the spec's own Interfaces note, this monitor's bookkeeping lives on the
 epic/feature-work-item's tracked record, not any single task's context file, since one session
 now spans every task in the stack.
@@ -141,10 +140,11 @@ with the whole stack materialized locally.
 
 #### 2b — No `--work-item-id` given
 
-The direct, non-isolated `/watch-stack` invocation, run from whatever worktree the user already
-put this session in. There is no fresh-worktree bootstrap to do — this path's whole premise is
-that the current worktree is already checked out on one of the stack's own branches, so the epic
-id is derived from it instead of taken as an argument:
+`/watch-stack` takes no epic-key argument at all — it always runs this path, direct and
+non-isolated, from whatever worktree the user already put this session in. There is no
+fresh-worktree bootstrap to do — this path's whole premise is that the current worktree is
+already checked out on one of the stack's own branches, so the epic id is derived from it instead
+of taken as an argument:
 
 ```bash
 git rev-parse --abbrev-ref HEAD
@@ -159,8 +159,8 @@ stop**: report that the current branch has no recorded epic to derive an epic id
 than guessing. The most common cause is being checked out on the epic's own trunk branch instead
 of a task branch (`gh-stack` doesn't consider the trunk a stack member, and a trunk's own context
 file has no `parent_work_item` pointing anywhere) — mention this in the report, and that the user
-should `gh stack checkout <pr-number-or-branch>` onto a member branch first, or re-invoke with
-`--work-item-id <epic-key>` instead.
+should `gh stack checkout <pr-number-or-branch>` onto a member branch first, then re-invoke
+`/watch-stack`.
 
 With `<epic-id>` now known, use the `use-context-file` skill with it to locate and read (creating
 if necessary) the epic's own context file, exactly as 2a does. Skip the rest of 2a entirely —
@@ -334,7 +334,7 @@ verdict, distinct from the spawn's generic `successful` status:
   fallback. Your final message must describe the conflict in detail (which task, which files,
   which commit, why it couldn't be resolved with confidence) so it surfaces via the harness's
   background-task notification. A human resumes this same agent via `SendMessage`, or restarts
-  fresh via `/watch-stack` (from the same worktree) or `/watch-stack --work-item-id <epic-id>`.
+  fresh via `/watch-stack` from the same worktree.
 
 ## Skills
 
