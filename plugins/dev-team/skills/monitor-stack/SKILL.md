@@ -8,7 +8,7 @@ description: >
   for a review comment or CI failure, notifying the user instead of auto-fixing a human-authored
   PR comment, resolving a rebase conflict via the developer agent, or halting once every task in
   the target set has merged.
-argument-hint: --work-item-id <epic-id>
+argument-hint: [--work-item-id <epic-id>]
 ---
 
 Use this skill when:
@@ -16,7 +16,9 @@ Use this skill when:
   the epic's `gh stack`) and something needs to keep every task's PR in that stack in sync until
   it merges
 - You were spawned to do exactly this — auto-started by `concurrent-orchestrate` the moment the
-  first task in an epic's target set hands off, or manually via `/watch-stack <epic-key>`
+  first task in an epic's target set hands off (always with `--work-item-id`, into a fresh
+  isolated worktree), or invoked manually via `/watch-stack`, in-session, with no argument, when
+  already checked out on one of the stack's own branches
 
 Do NOT use this skill when:
 - No task in the epic's target set has reached hand-off yet — there is no stack entry to monitor
@@ -52,8 +54,8 @@ react to whatever single outcome it returns, and repeat, until `stack_pr_poll.py
 - Ask the user a question — `AskUserQuestion` is unavailable to any `Agent`-spawned sub-agent
   (confirmed experimentally); stop instead and let the harness's background-task notification
   surface the situation
-- Reuse the implement-phase worktree of whichever task happened to trigger your auto-start — you
-  run in your own, freshly spawned worktree, checked out on a real stack member branch (step 2),
+- Reuse the implement-phase worktree of whichever task happened to trigger your auto-start when
+  running your own dedicated worktree (step 2a) — checked out on a real stack member branch,
   never the epic's trunk itself and never any one task's own implement-phase worktree
 - Reason about which task's branch the worktree should be on, or batch more than one fired event
   in a single pass — `stack_pr_poll.py` already resolved that ambiguity before returning; this
@@ -77,13 +79,21 @@ confirmed upstream `isolation: "worktree"` bug (Claude Code issues #51596, #3787
 can silently reuse a stale worktree/branch on an 8-hex-char ID-prefix collision — a dirty
 worktree at this point means it isn't the fresh one this task expects.
 
-### 2 — Resolve the epic's context file and check out a real stack member branch
+### 2 — Resolve the epic id and land on a real stack member branch
 
-Use the `use-context-file` skill with `<epic-id>` (this skill's own `--work-item-id` argument)
-to locate and read (creating if necessary) the epic's own context file — per the spec's own
-Interfaces note, this monitor's bookkeeping lives on the epic/feature-work-item's tracked
-record, not any single task's context file, since one session now spans every task in the
-stack.
+This step's shape depends on whether `--work-item-id` was given — that argument's presence is
+exactly the signal for whether this session is a fresh, isolated worktree that still needs to
+discover and check out the stack (2a), or an already-correct worktree that just needs its epic id
+derived (2b).
+
+#### 2a — `--work-item-id <epic-id>` given
+
+The `concurrent-orchestrate` auto-start path — the only caller that ever passes `--work-item-id`;
+`/watch-stack` never does (see 2b). Use the `use-context-file` skill with `<epic-id>` to locate
+and read (creating if necessary) the epic's
+own context file — per the spec's own Interfaces note, this monitor's bookkeeping lives on the
+epic/feature-work-item's tracked record, not any single task's context file, since one session
+now spans every task in the stack.
 
 Determine the epic's own spec branch — the trunk `gh stack` is anchored to — the same way
 `write-dev-spec` step 1.5 does: read `git-repo.working-branches.task` and `git-repo.user-alias`
@@ -128,23 +138,54 @@ worktree. If the script exits non-zero, it prints a clear `Error: ...` message t
 of JSON — stop and report that error in detail. On success, HEAD is now a real stack member branch
 with the whole stack materialized locally.
 
+#### 2b — No `--work-item-id` given
+
+`/watch-stack` takes no epic-key argument at all — it always runs this path, direct and
+non-isolated, from whatever worktree the user already put this session in. There is no
+fresh-worktree bootstrap to do — this path's whole premise is that the current worktree is
+already checked out on one of the stack's own branches, so the epic id is derived from it instead
+of taken as an argument:
+
+```bash
+git rev-parse --abbrev-ref HEAD
+```
+
+Take the last `/`-separated segment and extract `<task_work_item_id>` from it the same way
+`detect_next_stack_event.py`'s `_WORK_ITEM_ID_RE` does (the `[A-Za-z]+-\d+` prefix, falling back
+to the whole segment if it doesn't match), then use the `use-context-file` skill to read that
+id's own context file. Read its `parent_work_item` field — the same field `concurrent-orchestrate`
+step 2e reads to learn a task's epic — that is `<epic-id>`. If it's empty, this is a **hard
+stop**: report that the current branch has no recorded epic to derive an epic id from, rather
+than guessing. The most common cause is being checked out on the epic's own trunk branch instead
+of a task branch (`gh-stack` doesn't consider the trunk a stack member, and a trunk's own context
+file has no `parent_work_item` pointing anywhere) — mention this in the report, and that the user
+should `gh stack checkout <pr-number-or-branch>` onto a member branch first, then re-invoke
+`/watch-stack`.
+
+With `<epic-id>` now known, use the `use-context-file` skill with it to locate and read (creating
+if necessary) the epic's own context file, exactly as 2a does. Skip the rest of 2a entirely —
+this worktree is already on a real stack member branch (that's how `<epic-id>` was just derived),
+so there is nothing further to check out.
+
 From this point on, plain git commands work directly (no `git -C`) — the whole session's cwd is
 already this worktree.
 
-### 3 — Record this session's own worktree
+### 3 — Record this session's own worktree (step 2a only)
 
-Record this session's own worktree as `watch_worktree_path`/`watch_worktree_branch` on the
-epic's context file via `use-context-file`, overwriting any values a prior (now-stopped) run of
-this skill for the same epic left behind — this session's worktree is always a fresh one,
-regardless of whether it's the epic's first monitor or a restart:
+**Skip this step entirely if you took step 2b.** Its whole purpose is letting some other process
+find and clean up this monitor's own dedicated worktree if this session dies uncleanly — step 2b
+never allocated one; it's running from a worktree the user already owns and will keep using for
+other things regardless of what this monitor does, so there is nothing of this monitor's own to
+record or later find.
+
+If you took step 2a, record this session's own worktree as `watch_worktree_path`/
+`watch_worktree_branch` on the epic's context file via `use-context-file`, overwriting any values
+a prior (now-stopped) run of this skill for the same epic left behind:
 
 ```bash
 git rev-parse --show-toplevel   # -> watch_worktree_path
 git rev-parse --abbrev-ref HEAD # -> watch_worktree_branch
 ```
-
-This skill's own worktree was never used for any one task's implementation, only for monitoring
-the whole stack, so there is nothing to clean up before recording.
 
 ### 4 — Poll loop
 
@@ -173,18 +214,23 @@ stop and report that error in detail.
 
 #### 4b — React to exactly the one outcome returned
 
-- **`"stack_complete"`** — every task in the target set has merged. Remove this session's own
-  worktree/branch, then stop:
-  ```bash
-  cd "$(git rev-parse --path-format=absolute --git-common-dir)/.."
-  git worktree remove <watch_worktree_path> --force
-  git branch -D <watch_worktree_branch>
-  ```
-  (`cd` out first — a worktree cannot reliably remove itself while it's still the process's own
-  cwd.) If either command exits non-zero, this is a **hard stop**: stop immediately and report
-  the failure in detail instead of reporting success — a failed cleanup here must never be
-  reported as a clean halt. Only once both commands succeed, report success: every task in the
-  epic's target set has merged and the monitor has stopped.
+- **`"stack_complete"`** — every task in the target set has merged.
+  - **You took step 2a** — remove this session's own dedicated worktree/branch (recorded in step
+    3), then stop:
+    ```bash
+    cd "$(git rev-parse --path-format=absolute --git-common-dir)/.."
+    git worktree remove <watch_worktree_path> --force
+    git branch -D <watch_worktree_branch>
+    ```
+    (`cd` out first — a worktree cannot reliably remove itself while it's still the process's own
+    cwd.) If either command exits non-zero, this is a **hard stop**: stop immediately and report
+    the failure in detail instead of reporting success — a failed cleanup here must never be
+    reported as a clean halt.
+  - **You took step 2b** — this worktree is the user's own, not this monitor's to delete; skip
+    both commands entirely (step 3 never recorded a `watch_worktree_path`/`watch_worktree_branch`
+    of this monitor's own to clean up in the first place).
+  - Either way, once cleanup (if any) succeeds, report success: every task in the epic's target
+    set has merged and the monitor has stopped.
 - **`{"task_work_item_id", "event": "review_comment" | "ci_failure"}`** — a review comment or CI
   failure fired for that task. `stack_pr_poll.py` has already checked out that task's own branch
   itself — no checkout of your own is needed. Use the `use-context-file` skill to compute that
@@ -288,7 +334,7 @@ verdict, distinct from the spawn's generic `successful` status:
   fallback. Your final message must describe the conflict in detail (which task, which files,
   which commit, why it couldn't be resolved with confidence) so it surfaces via the harness's
   background-task notification. A human resumes this same agent via `SendMessage`, or restarts
-  fresh via `/watch-stack <epic-id>`.
+  fresh via `/watch-stack` from the same worktree.
 
 ## Skills
 

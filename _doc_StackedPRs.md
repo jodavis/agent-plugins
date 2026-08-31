@@ -258,8 +258,10 @@ refined an assumption the spec started with.
   repo-wide concurrency cap.
 - **`monitor-stack`** — the epic-wide, long-lived post-hand-off monitor; polls via
   `stack_pr_poll.py` and reacts to exactly one outcome per call.
-- **`/watch-stack <epic-key>`** — manual fallback that spawns `monitor-stack` in its own isolated
-  worktree, for when `concurrent-orchestrate`'s auto-start never happened.
+- **`/watch-stack`** — manual entry point, no arguments. Invokes `monitor-stack` directly in the
+  current session from whatever worktree the user is already checked out into — the only entry
+  point; not being on a stack at all is a hard stop (`monitor-stack` step 2b), not a fallback to
+  an epic-key argument.
 - **`PipelineContext.added_to_stack`** — a named boolean frontmatter field (`pipeline_context.py`
   line 34), `true` once `add-to-pr-stack` has registered a task's signed-off PR into the epic's
   `gh stack`. `false` for the entire implementation/review/signoff cycle before that, and stays
@@ -306,14 +308,18 @@ refined an assumption the spec started with.
    `concurrent-orchestrate` waits for to auto-start `monitor-stack`.
 6. **Epic-wide monitoring.** The moment the first task in an epic's target set reaches hand-off
    (now correctly meaning its PR is actually linked into the stack, not merely open),
-   `concurrent-orchestrate` auto-starts one `monitor-stack` session for that epic (or a human
-   starts it manually via `/watch-stack`). It runs from its own freshly spawned worktree, which
-   has no local `gh stack` state of its own yet: step 2 finds the one open PR based directly on
-   the trunk and runs `stack_checkout.py` to materialize the stack there and land on that real
-   member branch (never the trunk itself, which `gh-stack` doesn't consider a member) before the
-   poll loop starts. It then loops on `stack_pr_poll.py`: each call runs `sync` first, then checks
-   for a rebase conflict, then consults `detect_next_stack_event` for the first review-comment/
-   CI-failure/merge event across the whole stack.
+   `concurrent-orchestrate` auto-starts one `monitor-stack` session for that epic, always in its
+   own freshly spawned worktree passed `--work-item-id` explicitly (it has other pipeline work of
+   its own to protect). A human can instead start it manually via `/watch-stack`, in-session, from
+   whatever worktree they're already sitting in — it takes no `--work-item-id` argument at all;
+   `monitor-stack` always derives the epic from the current branch instead. Either way, if the
+   worktree has no local `gh stack` state of its own yet (the auto-started, freshly spawned case),
+   step 2 finds the one open PR based directly on the trunk and runs `stack_checkout.py` to
+   materialize the stack there and land on that real member branch (never the trunk itself, which
+   `gh-stack` doesn't consider a member) before the poll loop starts; a worktree already sitting on
+   a stack member branch skips this bootstrap. It then loops on `stack_pr_poll.py`: each call runs
+   `sync` first, then checks for a rebase conflict, then consults `detect_next_stack_event` for the
+   first review-comment/CI-failure/merge event across the whole stack.
 7. **Reacting to poll outcomes.** A `{"task_work_item_id", "event"}` result spawns `fix-pr` against
    that task's already-checked-out branch. A `"conflict"` result hands off to the developer agent
    running `resolve-rebase-conflict` against the currently-conflicted branch; on `"resolved"`, the

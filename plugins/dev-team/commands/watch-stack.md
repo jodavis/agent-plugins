@@ -1,37 +1,21 @@
 ---
-description: Manually start the epic-wide stack PR monitor for an epic whose first task's PR is already open, when it was not auto-started.
-argument-hint: <epic key, e.g. ADR-369>
+description: Manually start the epic-wide stack PR monitor for the stack already checked out in this worktree.
 ---
-
-## Request
-
-$ARGUMENTS
 
 ## Steps
 
-### 1 — Determine epic id
+### 1 — Invoke the monitor directly, in this session
 
-Extract the `[A-Z]+-\d+` epic key from the arguments. If no match is found, tell the user:
+This command only ever operates on the stack already checked out in this worktree — the only
+entry point is being on the stack already; not being on any stack is a hard stop (`monitor-stack`
+step 2b), not a fallback to an argument. This command is always a direct, user-initiated action —
+unlike `concurrent-orchestrate`'s own auto-start (which spawns `monitor-stack` in a fresh,
+isolated worktree because that orchestrator has other pipeline work of its own to protect), there
+is no other pipeline running in this session for the monitor to collide with, and no reason to
+force it into a worktree you may already be sitting in yourself. Invoke the skill directly — no
+`Agent` spawn, no `isolation: "worktree"`, and no arguments:
 
-> Please provide an epic key (e.g. ADR-369).
+Invoke the `monitor-stack` skill with no arguments.
 
-Then stop.
-
-### 2 — Spawn the monitor
-
-This command's only job is spawning `dev-team:monitor-stack` in its own fresh, isolated
-worktree — the manual fallback for when `concurrent-orchestrate`'s auto-start never happened
-(e.g. its own session was interrupted before the epic's first task reached hand-off). A bare
-skill invocation from this session would get no isolation at all, so the spawn itself is what
-gives the monitor the same isolation guarantee the auto-started path has.
-
-```
-Agent(
-  subagent_type: "claude",
-  isolation: "worktree",
-  prompt: "Invoke the `monitor-stack` skill with arguments:
---work-item-id <epic-id>"
-)
-```
-
-Then stop.
+This session now *is* the monitor for as long as it runs — that's expected; this command has no
+other orchestration duty to get back to.
