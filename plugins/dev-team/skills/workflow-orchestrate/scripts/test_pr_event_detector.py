@@ -1,7 +1,8 @@
-"""Tests for pr_event_detector.py — detect_pr_events() determines which of the three monitor
-conditions (review_comment, ci_failure, task_merged) have newly fired for a task's PR, given its
-own context file and the current GitHub/git state. base_updated and dependency_merged have been
-retired — they are subsumed by `gh stack sync` — see test_detect_next_stack_event.py.
+"""Tests for pr_event_detector.py — detect_pr_events() determines which of the four monitor
+conditions (review_comment, human_comment, ci_failure, task_merged) have newly fired for a task's
+PR, given its own context file and the current GitHub/git state. base_updated and
+dependency_merged have been retired — they are subsumed by `gh stack sync` — see
+test_detect_next_stack_event.py.
 """
 
 import json
@@ -73,12 +74,20 @@ class TestDetectPrEventsSingleSignal:
         "comments_json, checks_json, pr_view_json, extra_frontmatter, expected_events",
         [
             pytest.param(
-                json.dumps([{"id": 101}, {"id": 205}]),
+                json.dumps([{"id": 101, "user": {"login": "autobot"}}, {"id": 205, "user": {"login": "autobot"}}]),
                 json.dumps([]),
                 json.dumps({"state": "OPEN", "baseRefName": "main"}),
                 {},
                 ["review_comment"],
-                id="new_review_comment",
+                id="new_review_comment_from_own_automation_account",
+            ),
+            pytest.param(
+                json.dumps([{"id": 101, "user": {"login": "autobot"}}, {"id": 205, "user": {"login": "a-human"}}]),
+                json.dumps([]),
+                json.dumps({"state": "OPEN", "baseRefName": "main"}),
+                {},
+                ["human_comment"],
+                id="new_review_comment_from_a_human",
             ),
             pytest.param(
                 json.dumps([]),
@@ -141,6 +150,8 @@ class TestDetectPrEventsSingleSignal:
         ).save(path)
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
                 return MagicMock(returncode=0, stdout=comments_json, stderr="")
             if cmd[:3] == ["gh", "pr", "checks"]:
@@ -155,6 +166,99 @@ class TestDetectPrEventsSingleSignal:
 
         # Assert
         assert result == expected_events
+
+
+# ---------------------------------------------------------------------------
+# detect_pr_events — human_comment takes priority over review_comment: one
+# human-authored comment among several new ones is enough to withhold
+# review_comment for the whole batch, and the current login lookup itself
+# failing (e.g. an auth blip) falls back to treating any new comment as human
+# rather than silently auto-fixing on uncertain data.
+# ---------------------------------------------------------------------------
+
+class TestDetectPrEventsHumanCommentPriority:
+    def test_detect_pr_events_one_human_comment_among_new_batch_fires_human_comment_not_review_comment(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        from pr_event_detector import detect_pr_events
+
+        path = compute_context_path("ADR-999", get_repo_slug())
+        PipelineContext(
+            work_item_id="ADR-999",
+            pr_url="https://github.com/acme/widget/pull/57",
+        ).save(path)
+
+        comments = json.dumps(
+            [
+                {"id": 101, "user": {"login": "autobot"}},
+                {"id": 102, "user": {"login": "a-human"}},
+            ]
+        )
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
+            if cmd[:2] == ["gh", "api"]:
+                return MagicMock(returncode=0, stdout=comments, stderr="")
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:3] == ["gh", "pr", "view"]:
+                return MagicMock(
+                    returncode=0, stdout=json.dumps({"state": "OPEN", "baseRefName": "main"}), stderr=""
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        # Act
+        with patch("subprocess.run", side_effect=fake_run):
+            result = detect_pr_events("ADR-999")
+
+        # Assert
+        assert result == ["human_comment"]
+
+    def test_detect_pr_events_own_login_lookup_failure_treats_new_comment_as_human(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+        from pr_event_detector import detect_pr_events
+
+        path = compute_context_path("ADR-999", get_repo_slug())
+        PipelineContext(
+            work_item_id="ADR-999",
+            pr_url="https://github.com/acme/widget/pull/57",
+        ).save(path)
+
+        comments = json.dumps([{"id": 101, "user": {"login": "autobot"}}])
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=1, stdout="", stderr="not authenticated")
+            if cmd[:2] == ["gh", "api"]:
+                return MagicMock(returncode=0, stdout=comments, stderr="")
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            if cmd[:3] == ["gh", "pr", "view"]:
+                return MagicMock(
+                    returncode=0, stdout=json.dumps({"state": "OPEN", "baseRefName": "main"}), stderr=""
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        # Act
+        with patch("subprocess.run", side_effect=fake_run):
+            result = detect_pr_events("ADR-999")
+
+        # Assert
+        assert result == ["human_comment"]
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +286,8 @@ class TestDetectPrEventsReviewCommentsOutputNotJson:
         ).save(path)
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
                 return MagicMock(returncode=1, stdout="", stderr="rate limited")
             if cmd[:3] == ["gh", "pr", "checks"]:
@@ -219,6 +325,8 @@ class TestDetectPrEventsOwnPrViewOutputNotJson:
         ).save(path)
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
                 return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
             if cmd[:3] == ["gh", "pr", "checks"]:
@@ -261,6 +369,8 @@ class TestDetectPrEventsQuietCall:
         text_before = path.read_text()
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
                 return MagicMock(returncode=0, stdout=json.dumps([{"id": 205}]), stderr="")
             if cmd[:3] == ["gh", "pr", "checks"]:
@@ -305,6 +415,8 @@ class TestDetectPrEventsTaskMergedCalledAgain:
         ).save(path)
 
         def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["gh", "api", "user"]:
+                return MagicMock(returncode=0, stdout="autobot", stderr="")
             if cmd[:2] == ["gh", "api"]:
                 return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
             if cmd[:3] == ["gh", "pr", "checks"]:
