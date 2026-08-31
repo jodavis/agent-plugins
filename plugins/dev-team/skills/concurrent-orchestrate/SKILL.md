@@ -4,7 +4,7 @@ user-invocable: false
 description: >
   Orchestration loop for running several dependency-ordered task-work-items concurrently.
   Repeatedly invokes concurrent_schedule.py, spawns an isolated workflow-orchestrate run per
-  newly eligible task, auto-starts a dev-team:monitor-stack monitor once per epic the moment
+  newly eligible task, auto-starts a dev-team:monitor-prs monitor once per epic the moment
   the first task in that epic's target set reaches hand-off, and stops on "complete" or
   "blocked" instead of polling forever.
 argument-hint: --target-mode <up-to|list> --target <key, or comma-separated keys>
@@ -32,7 +32,7 @@ The repo-wide cap on concurrently active task-pipeline spawns, enforced internal
 `concurrent_schedule.py` (via `get-project-configuration`'s merged config) — never something
 this skill's own prose reads or reasons about directly. Counts only active (non-terminal)
 `workflow-orchestrate` spawns tracked across every `concurrent-<target-slug>.json` file under
-this repo's state directory — never a `dev-team:monitor-stack` monitor, which is idle almost all
+this repo's state directory — never a `dev-team:monitor-prs` monitor, which is idle almost all
 the time it's running. Defaults to `3`; override in `.dev-team/config.yaml` for a machine with more
 (or less) headroom for parallel agent sessions:
 
@@ -54,7 +54,7 @@ and stopping on `"complete"` or `"blocked"`.
   spec branch exists yet, yourself — `concurrent_schedule.py` owns all of that
 - Fix build errors, test failures, or code review comments yourself
 - Invoke agent skills directly (other than spawning `workflow-orchestrate` itself, unmodified,
-  per task, and `dev-team:monitor-stack` once per epic — the moment the first task in that epic's
+  per task, and `dev-team:monitor-prs` once per epic — the moment the first task in that epic's
   target set reaches hand-off, not once per task)
 - Edit source files or test files
 - Take any action beyond what the script's JSON descriptor instructs
@@ -210,14 +210,14 @@ is still in flight (in which case you'll see it as soon as that call returns) �
 trigger to run step 2e below for the task_id(s) it names, in addition to whatever re-invocation
 timing applies above.
 
-#### 2e — Auto-start `dev-team:monitor-stack` for the epic of a task that just reached hand-off
+#### 2e — Auto-start `dev-team:monitor-prs` for the epic of a task that just reached hand-off
 
 Keep your own in-session record of which epic_ids you've already spawned a
-`dev-team:monitor-stack` monitor for (start empty; this record lives only in this session's own
+`dev-team:monitor-prs` monitor for (start empty; this record lives only in this session's own
 memory, never written to any file — a restarted `concurrent-orchestrate` run has no spawned
 pipelines finishing anew for an epic whose first task already handed off, so it never
 re-triggers this step for one). This record is keyed by epic_id, not task_id —
-`dev-team:monitor-stack` is spawned once per epic, the moment the *first* task in that epic's
+`dev-team:monitor-prs` is spawned once per epic, the moment the *first* task in that epic's
 target set reaches hand-off, not once per task.
 
 A spawned pipeline finishing successfully (step 2c's `workflow-orchestrate` `Agent` session
@@ -238,7 +238,7 @@ reported as finished *successfully*:
    `parent_work_item`) and skip the rest of this step for this task_id — do not spawn or record
    anything for it. If it's already in your in-session record, this epic already has a monitor
    running; skip the rest of this step for this task_id.
-3. Otherwise, spawn `dev-team:monitor-stack` for the epic as a **local background `Agent`**
+3. Otherwise, spawn `dev-team:monitor-prs` for the epic as a **local background `Agent`**
    (`run_in_background: true`, not a cloud routine), mirroring the exact spawn pattern step 2c
    already uses for `workflow-orchestrate` itself:
    ```
@@ -246,7 +246,7 @@ reported as finished *successfully*:
      subagent_type: "claude",
      isolation: "worktree",
      run_in_background: true,
-     prompt: "Invoke the `monitor-stack` skill with arguments:
+     prompt: "Invoke the `monitor-prs` skill with arguments:
    --work-item-id <epic_id>"
    )
    ```
@@ -254,7 +254,7 @@ reported as finished *successfully*:
    it, even if a later poll re-notices another of its tasks' pipelines as finished.
 
 A pipeline that finished *unsuccessfully* (failed rather than handed off) never reaches this
-step — there is no PR to monitor, so no `dev-team:monitor-stack` spawn is considered for it.
+step — there is no PR to monitor, so no `dev-team:monitor-prs` spawn is considered for it.
 
 ### 3 — Report
 

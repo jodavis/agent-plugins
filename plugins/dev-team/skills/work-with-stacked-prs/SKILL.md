@@ -44,7 +44,7 @@ question.
 **Concurrent workers, concretely:** this repo's usual pattern gives each task its own fresh
 `isolation: "worktree"` — that pattern is unsafe for the eight local-tracking `gh stack`
 operations above. Per the spike's recommendation, every one of those operations for one feature's
-stack (the ongoing `sync`/`view` polling in `monitor-stack`, and anything else that needs the
+stack (the ongoing `sync`/`view` polling in `monitor-prs`, and anything else that needs the
 local `gh-stack` tracking state) must run from **one shared worktree per feature**, never from a
 task's own per-task worktree — a second task calling one of these operations from a different
 worktree would get a false "not part of a stack" result instead of seeing the first task's own
@@ -62,7 +62,7 @@ needs to route a `link` call back through the feature's shared worktree.
 **Ad hoc/manual use** (a human, or any process outside the automated pipeline, wanting to read,
 run, or test a stacked PR's code): never check out a stack member branch directly from whatever
 checkout you happen to already be sitting in — that's a third, uncoordinated location touching a
-branch `implement` or `monitor-stack` may still consider theirs. Use the
+branch `implement` or `monitor-prs` may still consider theirs. Use the
 `checkout-stack-pr-for-review` skill instead; it creates a disposable local branch off the PR's
 own tip rather than touching the shared branch itself.
 
@@ -182,7 +182,7 @@ gh stack sync [--prune] [--remote <name>]
   conflict`'s existing plain-git contract handles the currently-conflicted branch unchanged, but
   a multi-branch stack needs a follow-up `gh stack rebase --continue` call afterward to resume the
   cascade across any remaining downstream branches — see the `rebase --continue` operation below,
-  which `monitor-stack` calls for exactly this (see `_findings_GhStackSpike.md` section 3).
+  which `monitor-prs` calls for exactly this (see `_findings_GhStackSpike.md` section 3).
 - `--prune` deletes local branches for merged PRs.
 - No `--json` support — read the outcome from exit code and stderr text.
 
@@ -206,7 +206,7 @@ gh stack rebase --continue
   standard git conflict shape as the first conflict; callers should loop back into another
   conflict-resolution round exactly as they do for the first one.
 - No `--json` support — read the outcome from exit code and stderr text.
-- `monitor-stack`'s step 5 calls this (via `stack_rebase_continue.py`) immediately after
+- `monitor-prs`'s step 5 calls this (via `stack_rebase_continue.py`) immediately after
   `resolve-rebase-conflict` reports `"resolved"`, before returning to the poll loop.
 
 ### view
@@ -257,7 +257,7 @@ gh stack checkout [<stack-number>|<pr-number>|<pr-url>|<branch>]
   branch name, by contrast, only resolves against stacks already tracked locally.
 - With no argument, opens an interactive picker — never use this form non-interactively.
 - No `--json` support — read the outcome from exit code and stderr text.
-- `monitor-stack`'s step 2 calls this (via `stack_checkout.py`, passing a PR number) to land its
+- `monitor-prs`'s step 2 calls this (via `stack_checkout.py`, passing a PR number) to land its
   own freshly spawned worktree on a real stack member instead of the trunk, which `gh-stack`
   doesn't consider a member.
 
