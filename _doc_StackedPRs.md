@@ -267,19 +267,20 @@ refined an assumption the spec started with.
 
 ## Data Flow
 
-1. **Epic bootstrap.** `write-dev-spec`'s own step 1.5 bootstraps the epic's spec branch right
-   after resolving a feature-work-item id, before any spec draft exists, and again after work
-   items are created — reporting the branch it found (or the currently active branch, for a
-   brand-new one) and pausing for the user's confirmation every time, rather than assuming
-   silently. It creates the epic's spec branch from whichever branch the user confirmed (`main`
-   by default, or a feature branch the user created and checked out themselves beforehand) if
-   missing, and commits/pushes/PRs the spec directly onto that same branch (against the confirmed
-   base) if needed — there is no separate spec-commit branch. This PR becomes the base of the
-   first implementation PR. No `gh stack` is anchored here either — there's no empty-stack
-   precondition to set up ahead of time. A task reaching `ensure-working-branch` (directly, in the
-   single-task path, or via `concurrent-orchestrate`) before this has ever run for its epic is a
-   hard error naming the missing spec branch and directing the user to run `/write-dev-spec`
-   first — neither ever bootstraps one itself.
+1. **Epic bootstrap.** `write-dev-spec`'s own step 1.5 establishes the epic's spec branch right
+   after resolving a feature-work-item id, before any spec draft exists — reporting the branch it
+   found (or the currently checked-out branch, for a brand-new one) and pausing for the user's
+   confirmation every time, rather than assuming silently. It creates the branch from whichever
+   branch the user confirmed (`main` by default, or a feature branch the user created and checked
+   out themselves beforehand) if missing — there is no separate spec-commit branch. Step 6, once
+   work items are created, runs the same branch-confirmation logic again if step 1.5 hasn't
+   already run this session, then commits/pushes/PRs the spec directly onto that same branch
+   (against the confirmed base) using the spec's own already-known path. This PR becomes the base
+   of the first implementation PR. No `gh stack` is anchored at any point here either — there's no
+   empty-stack precondition to set up ahead of time. A task reaching `ensure-working-branch`
+   (directly, in the single-task path, or via `concurrent-orchestrate`) before this has ever run
+   for its epic is a hard error naming the missing spec branch and directing the user to run
+   `/write-dev-spec` first — neither ever bootstraps one itself.
 2. **Task base-branch selection.** `ensure-working-branch` computes the task's working-branch
    name, then picks its base — never registering into a `gh stack`: `stack_registration.py`'s
    `compute_stack_anchor()` picks whichever of the task's own declared dependencies sorts latest

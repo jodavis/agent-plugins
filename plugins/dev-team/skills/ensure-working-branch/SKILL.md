@@ -133,9 +133,7 @@ The epic's spec branch is named like a task branch, not a special "feature" one 
    branch name's end.)
 3. If one or more matches are found, take the first line (most recently pushed), strip the
    `origin/` prefix — that is `<feature-branch>`. Skip to 4e.
-4. If no match is found, this epic's spec hasn't been written yet — there is no branch to base a
-   task on, and this skill never creates one (that's `write-dev-spec`'s own job, not a side effect
-   of starting task-level work). This is a **hard stop**: stop immediately and report that
+4. If no match is found, this is a **hard stop**: stop immediately and report that
    `<parent-feature-work-item-id>` has no spec branch yet, and that `/write-dev-spec` must be run
    for it before this task can start.
 
