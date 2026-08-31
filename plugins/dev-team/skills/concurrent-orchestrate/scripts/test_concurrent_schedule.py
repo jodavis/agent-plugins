@@ -1,8 +1,8 @@
 """Tests for concurrent_schedule.py — compute_next_batch() computes the "up to" target's
 inclusive document-order task set (or takes an explicit list as-is, with no expansion),
 validates an explicit list's dependencies upfront, tracks each target task's cached status via
-the Task readiness checker, gates on a live "is the epic's feature branch bootstrapped yet?"
-check before computing any batch, and enforces a repo-wide concurrency cap across every
+the Task readiness checker, gates on a live "does the epic's spec branch exist yet?" check
+before computing any batch, and enforces a repo-wide concurrency cap across every
 `concurrent-<target-slug>.json` file — never spawning anything itself.
 
 Covers:
@@ -15,15 +15,16 @@ Covers:
 - compute_next_batch: "waiting" with newly eligible spawn, "complete" once all done, "blocked"
   once every spawned task is terminal but a not-yet-started task has a failed ancestor, and
   the not-yet-blocked case where an active (non-terminal) spawn still exists
-- compute_next_batch: "bootstrap_needed" — gated on a live `git branch -r` check, never on the
-  target's own data-file presence, so a retry after the branch is created proceeds normally and
-  a different, already-bootstrapped target never round-trips through it at all
+- compute_next_batch: raises RuntimeError when the epic's spec branch doesn't exist yet — gated
+  on a live `git branch -r` check, never on the target's own data-file presence, so a later call
+  once the branch exists proceeds normally and a different, already-existing target never hits
+  the error at all
 - Repo-wide concurrency cap: enforced across multiple target data files, not just its own
 - _max_parallel_tasks: default (3) and project-configured override
 - compute_next_batch: "running" includes a task_snapshot() entry for each non-terminal
   already-spawned task, and excludes one once it reaches a terminal state
 - main() CLI wrapper: one narrow integration test for the primary happy path, exercising the
-  live bootstrap check for real (via a minimal throwaway git repo) since it can't be
+  live spec-branch-existence check for real (via a minimal throwaway git repo) since it can't be
   monkeypatched across a subprocess boundary
 """
 
@@ -72,9 +73,9 @@ def _stub_feature_branch_exists(monkeypatch, *, exists: bool) -> None:
     """Stub `concurrent_schedule._feature_branch_exists` so tests don't depend on a real git
     remote existing under `tmp_path` — mirroring how `_max_parallel_tasks` is monkeypatched
     wholesale elsewhere in this file rather than stubbing the subprocess call underneath it.
-    Defaults to `exists=True` (already bootstrapped) via the autouse `_env` fixture below, so
-    every test not specifically exercising bootstrap detection behaves as it did before this
-    check existed."""
+    Defaults to `exists=True` (spec branch already exists) via the autouse `_env` fixture below,
+    so every test not specifically exercising spec-branch-existence detection behaves as it did
+    before this check existed."""
     import concurrent_schedule
     monkeypatch.setattr(concurrent_schedule, "_feature_branch_exists", lambda epic_id, repo_root: exists)
 
@@ -82,9 +83,9 @@ def _stub_feature_branch_exists(monkeypatch, *, exists: bool) -> None:
 def _init_git_repo_with_remote_branch(tmp_path: Path, branch_name: str) -> None:
     """Set up a minimal local git repo whose `git branch -r` output includes a remote-tracking
     ref for `branch_name`, without needing a real remote. Used only by the CLI-level (subprocess)
-    test that exercises the live bootstrap check for real, since `_feature_branch_exists` can't
-    be monkeypatched across a subprocess boundary — it also gives `dev_team.py`'s own repo-root
-    discovery a genuine `.git` to resolve to `tmp_path`."""
+    test that exercises the live spec-branch-existence check for real, since
+    `_feature_branch_exists` can't be monkeypatched across a subprocess boundary — it also gives
+    `dev_team.py`'s own repo-root discovery a genuine `.git` to resolve to `tmp_path`."""
     def _run(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(args, cwd=tmp_path, check=True, capture_output=True, text=True, timeout=15)
 
@@ -97,7 +98,7 @@ def _init_git_repo_with_remote_branch(tmp_path: Path, branch_name: str) -> None:
 @pytest.fixture(autouse=True)
 def _env(tmp_path, monkeypatch):
     """Common env seams every test needs: an isolated state dir, a fixed repo slug, and the
-    epic feature branch already treated as bootstrapped by default."""
+    epic's spec branch already treated as existing by default."""
     monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
     monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
     _stub_feature_branch_exists(monkeypatch, exists=True)
@@ -501,11 +502,12 @@ class TestComputeNextBatchRunning:
 
 
 # ---------------------------------------------------------------------------
-# compute_next_batch — "bootstrap_needed": a live check, never a data-file check
+# compute_next_batch — missing spec branch: a live check, never a data-file check, raises
+# RuntimeError rather than returning a retryable status
 # ---------------------------------------------------------------------------
 
-class TestBootstrapNeeded:
-    def test_compute_next_batch_feature_branch_absent_returns_bootstrap_needed_before_computing_batch(
+class TestSpecBranchMissing:
+    def test_compute_next_batch_spec_branch_absent_raises_before_computing_batch(
         self, tmp_path, monkeypatch
     ):
         # Arrange
@@ -517,32 +519,28 @@ class TestBootstrapNeeded:
 
         target = TargetSpec(mode="up_to", tasks=("ADR-1",))
 
-        # Act
-        result = compute_next_batch(target)
+        # Act / Assert
+        with pytest.raises(RuntimeError, match=_DEFAULT_EPIC_ID):
+            compute_next_batch(target)
 
-        # Assert
-        assert result == {
-            "status": "bootstrap_needed", "epic_id": _DEFAULT_EPIC_ID,
-            "spawn": [], "blocked_tasks": [], "running": [],
-        }
-        # The data file is still persisted, independent of the bootstrap signal.
+        # The data file is still persisted, independent of the raised error.
         data = json.loads(_data_file_path(get_repo_slug(), target).read_text(encoding="utf-8"))
         assert data["tasks"] == ["ADR-1"]
 
-    def test_compute_next_batch_same_target_retry_after_branch_created_proceeds_to_batch(
+    def test_compute_next_batch_same_target_later_call_after_branch_created_proceeds_to_batch(
         self, tmp_path, monkeypatch
     ):
-        # Arrange — the same target's second call, once `ensure-feature-branch` has created the
-        # branch in response to the first call's `bootstrap_needed`, must find the branch now
-        # exists and proceed to compute a batch — never report `bootstrap_needed` a second time.
+        # Arrange — the same target's second call, once `/write-dev-spec` has created the spec
+        # branch in response to the first call's error, must find the branch now exists and
+        # proceed to compute a batch — never raise a second time.
         _set_repo_root(tmp_path, monkeypatch)
         _write_spec(tmp_path, {"ADR-1": []})
         _stub_feature_branch_exists(monkeypatch, exists=False)
         from concurrent_schedule import TargetSpec, compute_next_batch
 
         target = TargetSpec(mode="up_to", tasks=("ADR-1",))
-        first = compute_next_batch(target)
-        assert first["status"] == "bootstrap_needed"
+        with pytest.raises(RuntimeError):
+            compute_next_batch(target)
 
         _stub_feature_branch_exists(monkeypatch, exists=True)
 
@@ -553,14 +551,14 @@ class TestBootstrapNeeded:
         assert result["status"] == "waiting"
         assert result["spawn"] == [{"task_id": "ADR-1"}]
 
-    def test_compute_next_batch_different_target_first_call_already_bootstrapped_proceeds_directly(
+    def test_compute_next_batch_different_target_first_call_already_exists_proceeds_directly(
         self, tmp_path, monkeypatch
     ):
-        # Arrange — a second, different target's first call against an already-bootstrapped
-        # epic must find the branch already exists on its very first check, and proceed
-        # directly to computing a batch — no `bootstrap_needed` round-trip at all. A single-task
-        # target keeps this test focused on the bootstrap round-trip itself, not on the
-        # separately-covered inclusive "up to" ordering semantics.
+        # Arrange — a second, different target's first call against an epic whose spec branch
+        # already exists must find that on its very first check, and proceed directly to
+        # computing a batch — no error at all. A single-task target keeps this test focused on
+        # the existence check itself, not on the separately-covered inclusive "up to" ordering
+        # semantics.
         _set_repo_root(tmp_path, monkeypatch)
         _write_spec(tmp_path, {"ADR-5": []})
         from concurrent_schedule import TargetSpec, compute_next_batch
@@ -574,12 +572,12 @@ class TestBootstrapNeeded:
         assert result["status"] == "waiting"
         assert result["spawn"] == [{"task_id": "ADR-5"}]
 
-    def test_compute_next_batch_no_epic_header_line_skips_bootstrap_gating(
+    def test_compute_next_batch_no_epic_header_line_skips_spec_branch_gating(
         self, tmp_path, monkeypatch
     ):
         # Arrange — a spec with no `> **Epic:**` header line at all (predates this convention,
-        # or malformed): there is nothing to gate bootstrap on, so scheduling must proceed
-        # normally rather than erroring or looping.
+        # or malformed): there is nothing to gate on, so scheduling must proceed normally rather
+        # than erroring or looping.
         _set_repo_root(tmp_path, monkeypatch)
         spec_path = tmp_path / "_spec_Test.md"
         spec_path.write_text(
@@ -601,37 +599,63 @@ class TestBootstrapNeeded:
 
 
 # ---------------------------------------------------------------------------
+# _feature_branch_prefix — derived from git-repo.working-branches.task, not a separate
+# "feature" template
+# ---------------------------------------------------------------------------
+
+class TestFeatureBranchPrefix:
+    def test_defaults_to_dev_claude(self, tmp_path):
+        from concurrent_schedule import _feature_branch_prefix
+
+        assert _feature_branch_prefix(tmp_path) == "dev/claude/"
+
+    def test_uses_project_override(self, tmp_path):
+        config_dir = tmp_path / ".dev-team"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text(
+            "git-repo:\n"
+            "  user-alias: bot\n"
+            "  working-branches:\n"
+            "    task: work/<user-alias>/<task-work-item-id>-<slug>\n",
+            encoding="utf-8",
+        )
+        from concurrent_schedule import _feature_branch_prefix
+
+        assert _feature_branch_prefix(tmp_path) == "work/bot/"
+
+
+# ---------------------------------------------------------------------------
 # _feature_branch_exists — live `git branch -r` check
 # ---------------------------------------------------------------------------
 
 class TestFeatureBranchExists:
     def test_feature_branch_exists_exact_match_returns_true(self, tmp_path):
         # Arrange
-        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-369")
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-369-spec")
 
         # Act & Assert
         assert _real_feature_branch_exists("ADR-369", tmp_path) is True
 
     def test_feature_branch_exists_suffixed_match_returns_true(self, tmp_path):
-        # Arrange — a branch like `feature/ADR-369-stack` must still match: the anchoring only
-        # needs to rule out a *different*, longer epic id sharing this prefix, not a
-        # hyphen-suffixed variant of this same epic id.
-        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-369-stack")
+        # Arrange — a branch like `dev/claude/ADR-369-spec-stack` must still match: the
+        # anchoring only needs to rule out a *different*, longer epic id sharing this prefix, not
+        # a hyphen-suffixed variant of this same epic id.
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-369-spec-stack")
 
         # Act & Assert
         assert _real_feature_branch_exists("ADR-369", tmp_path) is True
 
     def test_feature_branch_exists_prefix_of_a_different_epic_id_returns_false(self, tmp_path):
-        # Arrange — regression test for the unanchored substring bug: `feature/ADR-3690` (a
-        # different epic's branch) must not be mistaken for `feature/ADR-369`'s own branch.
-        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-3690")
+        # Arrange — regression test for the unanchored substring bug: `dev/claude/ADR-3690-spec`
+        # (a different epic's branch) must not be mistaken for `ADR-369`'s own branch.
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-3690-spec")
 
         # Act & Assert
         assert _real_feature_branch_exists("ADR-369", tmp_path) is False
 
     def test_feature_branch_exists_no_matching_branch_returns_false(self, tmp_path):
         # Arrange
-        _init_git_repo_with_remote_branch(tmp_path, "feature/ADR-999")
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-999-spec")
 
         # Act & Assert
         assert _real_feature_branch_exists("ADR-369", tmp_path) is False
@@ -870,12 +894,12 @@ class TestMainCliWrapper:
         self, tmp_path, monkeypatch
     ):
         # Arrange — a real minimal git repo whose `git branch -r` output already includes the
-        # epic's feature branch, so the live bootstrap check (which can't be monkeypatched
-        # across this subprocess boundary) finds it bootstrapped, exactly as it would in a real
+        # epic's spec branch, so the live existence check (which can't be monkeypatched across
+        # this subprocess boundary) finds it already exists, exactly as it would in a real
         # checkout. This also gives `dev_team.py`'s own repo-root discovery a genuine `.git` to
         # resolve to `tmp_path` (where the fake spec lives).
         _write_spec(tmp_path, {"ADR-1": []})
-        _init_git_repo_with_remote_branch(tmp_path, f"feature/{_DEFAULT_EPIC_ID}")
+        _init_git_repo_with_remote_branch(tmp_path, f"dev/claude/{_DEFAULT_EPIC_ID}-spec")
         import os
         full_env = {**os.environ, "DEV_TEAM_STATE_DIR": str(tmp_path),
                      "GIT_REMOTE_URL_OVERRIDE": "https://github.com/example/repo.git"}

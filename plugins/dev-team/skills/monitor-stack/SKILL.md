@@ -82,20 +82,21 @@ Interfaces note, this monitor's bookkeeping lives on the epic/feature-work-item'
 record, not any single task's context file, since one session now spans every task in the
 stack.
 
-Determine the epic's own feature branch — the trunk `gh stack` is anchored to — the same way
-`ensure-feature-branch` step 2 does: read `git-repo.working-branches.feature` from the context
-file's `Project Configuration` section, take its literal prefix up to the first `<placeholder>`
-(`feature/`), then:
+Determine the epic's own spec branch — the trunk `gh stack` is anchored to — the same way
+`write-dev-spec` step 1.5 does: read `git-repo.working-branches.task` and `git-repo.user-alias`
+from the context file's `Project Configuration` section, substitute `<user-alias>` into the
+template, take the literal prefix up to the next `<placeholder>` (`<task-work-item-id>`) — e.g.
+`dev/claude/` — then:
 
 ```bash
 git fetch origin
-git branch -r --sort=-committerdate | grep -E "<feature-prefix><epic-id>(-|$)"
+git branch -r --sort=-committerdate | grep -E "<feature-prefix><epic-id>-spec(-|$)"
 ```
 
 Take the first line, strip the `origin/` prefix — that is `<feature-branch>`. By the time this
-skill runs, a task in this epic has already reached hand-off, so `ensure-feature-branch` has
-already created it; a missing match here is a **hard stop** — report the failure in detail rather
-than guessing a branch name.
+skill runs, a task in this epic has already reached hand-off, so `write-dev-spec` has already
+created it; a missing match here is a **hard stop** — report the failure in detail rather than
+guessing a branch name.
 
 **Do not check out `<feature-branch>` itself and stop there** — `gh-stack` does not consider the
 trunk a stack member, so `gh stack view`/`sync` (and therefore `stack_pr_poll.py`) fail from a

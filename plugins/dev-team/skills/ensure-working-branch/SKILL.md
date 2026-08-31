@@ -113,30 +113,29 @@ parent is not an issue key, continue with no parent feature-work-item ID.
 If a parent feature-work-item ID was found in step 4a or 4c, write it to the context file's
 `parent_work_item` field via `use-context-file`.
 
-#### 4d — Ensure the epic's feature branch and stack exist (single-task-path bootstrap trigger)
+#### 4d — Find the epic's spec branch
 
 Skip this sub-step and go straight to 4f if no parent feature-work-item ID is known at all
-(neither 4a nor 4c found one) — there is no epic to bootstrap.
+(neither 4a nor 4c found one) — there is no epic to look for a spec branch under.
 
-Otherwise:
+The epic's spec branch is named like a task branch, not a special "feature" one — see
+`write-dev-spec`'s own step 1.5 for why. Otherwise:
 
-1. Take the literal prefix of `git-repo.working-branches.feature` up to its first `<placeholder>`
-   (e.g. `feature/` from `feature/<feature-work-item-id>-<slug>`) — call this `<feature-prefix>`.
+1. Take `git-repo.working-branches.task`, substitute `<user-alias>` with `git-repo.user-alias`,
+   then take the literal prefix up to its next `<placeholder>` (`<task-work-item-id>`) — e.g.
+   `dev/claude/` — call this `<feature-prefix>`.
 2. ```bash
    git fetch origin
-   git branch -r --sort=-committerdate | grep -E "<feature-prefix><parent-feature-work-item-id>(-|$)"
+   git branch -r --sort=-committerdate | grep -E "<feature-prefix><parent-feature-work-item-id>-spec(-|$)"
    ```
-   (Anchored the same way `ensure-feature-branch`'s own existence check is — tolerant of a
-   missing or different slug, but anchored so the epic id must end at a `-` or the branch name's
-   end.)
+   (Anchored the same way `write-dev-spec`'s own step 1.5 search is — tolerant of a missing or
+   different slug, but anchored so `<parent-feature-work-item-id>-spec` must end at a `-` or the
+   branch name's end.)
 3. If one or more matches are found, take the first line (most recently pushed), strip the
    `origin/` prefix — that is `<feature-branch>`. Skip to 4e.
-4. If no match is found, this epic hasn't been bootstrapped yet — this is the single-task-path
-   trigger (when `/implement <key>` dispatches straight here with no `concurrent-orchestrate`
-   involved, nothing else is running concurrently, so no coordination is needed to bootstrap it
-   directly). Use the `ensure-feature-branch` skill with the parent feature-work-item ID. If it
-   does not respond `successful`, stop and report the failure in detail. Once it completes,
-   re-run the search in sub-step 2 — it must now find a match; take it as `<feature-branch>`.
+4. If no match is found, this is a **hard stop**: stop immediately and report that
+   `<parent-feature-work-item-id>` has no spec branch yet, and that `/write-dev-spec` must be run
+   for it before this task can start.
 
 Once `<feature-branch>` is known, write it to the context file's `base_branch` field via
 `use-context-file`.
