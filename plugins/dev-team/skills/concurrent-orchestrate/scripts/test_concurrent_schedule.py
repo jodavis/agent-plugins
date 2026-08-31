@@ -26,6 +26,8 @@ Covers:
 - main() CLI wrapper: one narrow integration test for the primary happy path, exercising the
   live spec-branch-existence check for real (via a minimal throwaway git repo) since it can't be
   monkeypatched across a subprocess boundary
+- compute_next_batch: a task whose heading is marked 🧑 (human-required) is never spawned, and is
+  instead surfaced via the "human_tasks" field, while a plain 🤖 task is unaffected (Issue #219)
 """
 
 import json
@@ -203,6 +205,135 @@ class TestComputeNextBatchUpToDocumentOrder:
 
 
 # ---------------------------------------------------------------------------
+# compute_next_batch — human-labeled (🧑) tasks must never be spawned
+# ---------------------------------------------------------------------------
+
+def _write_human_agent_spec(tmp_path: Path, epic_id: str = _DEFAULT_EPIC_ID) -> Path:
+    """Write a fake `_spec_Test.md` with ADR-1 marked human-required (🧑, no dependencies) and
+    ADR-2 marked a normal agent task (🤖) that depends on it."""
+    spec_path = tmp_path / "_spec_Test.md"
+    spec_path.write_text(
+        "\n".join([
+            f"> **Epic:** [{epic_id}](https://example.atlassian.net/browse/{epic_id})",
+            "",
+            "### [ADR-1: Provision access](https://example.atlassian.net/browse/ADR-1) \U0001F9D1",
+            "",
+            "**Depends on:** — none —",
+            "",
+            "### [ADR-2: Wire up the client](https://example.atlassian.net/browse/ADR-2) \U0001F916",
+            "",
+            "**Depends on:** ADR-1",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    return spec_path
+
+
+class TestComputeNextBatchHumanTasks:
+    def test_compute_next_batch_up_to_never_spawns_a_human_labeled_task(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — ADR-1 is a human-required task (🧑, e.g. infra/access provisioning) with no
+        # dependencies; ADR-2 is a normal agent task (🤖) that depends on it. Issue #219: `/implement
+        # up to <key>` must never attempt to implement a task the spec itself marked human — such a
+        # task must never appear in compute_next_batch's own "spawn" list, the exact list
+        # concurrent-orchestrate's spawn loop hands off to the Developer agent with no further
+        # filtering of its own.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_human_agent_spec(tmp_path)
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-2",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert — ADR-1 (human) is never spawned exactly like ADR-2 (agent) would be, and is
+        # instead surfaced through the dedicated "human_tasks" field so it isn't silently
+        # dropped from view. ADR-2 depends on ADR-1 (not yet done), so it stays ineligible too —
+        # nothing is spawned, but the run is still "waiting", not wrongly reported "blocked".
+        assert result["status"] == "waiting"
+        assert result["spawn"] == []
+        assert result["human_tasks"] == ["ADR-1"]
+        assert result["blocked_tasks"] == []
+
+    def test_compute_next_batch_multiple_human_tasks_are_all_reported_sorted(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — two independent human-required tasks with no dependencies; both are
+        # otherwise eligible, so both must be reported in "human_tasks", sorted, and neither
+        # ever appears in "spawn".
+        _set_repo_root(tmp_path, monkeypatch)
+        epic_id = _DEFAULT_EPIC_ID
+        spec_path = tmp_path / "_spec_Test.md"
+        spec_path.write_text(
+            "\n".join([
+                f"> **Epic:** [{epic_id}](https://example.atlassian.net/browse/{epic_id})",
+                "",
+                "### [ADR-2: Provision second access](https://example.atlassian.net/browse/ADR-2) \U0001F9D1",
+                "",
+                "**Depends on:** — none —",
+                "",
+                "### [ADR-1: Provision first access](https://example.atlassian.net/browse/ADR-1) \U0001F9D1",
+                "",
+                "**Depends on:** — none —",
+                "",
+            ]),
+            encoding="utf-8",
+        )
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="list", tasks=("ADR-1", "ADR-2"))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["spawn"] == []
+        assert result["human_tasks"] == ["ADR-1", "ADR-2"]
+
+    def test_compute_next_batch_agent_task_with_no_human_ancestor_still_spawns_normally(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — a plain 🤖 task with no dependencies at all must still be spawned exactly as
+        # before this change, with an empty "human_tasks" list — this change must not regress the
+        # existing agent-task path.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["spawn"] == [{"task_id": "ADR-1"}]
+        assert result["human_tasks"] == []
+
+    def test_compute_next_batch_human_task_already_done_lets_dependent_agent_task_spawn(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — once the human task is marked done (however that happens outside this
+        # scheduler's scope), the dependent agent task becomes eligible and is spawned normally,
+        # and no longer appears in "human_tasks" since it's no longer "not yet started".
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_human_agent_spec(tmp_path)
+        _save_context("ADR-1", state="done")
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-2",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["spawn"] == [{"task_id": "ADR-2"}]
+        assert result["human_tasks"] == []
+
+
+# ---------------------------------------------------------------------------
 # compute_next_batch — "up to" target not a valid task heading
 # ---------------------------------------------------------------------------
 
@@ -321,7 +452,10 @@ class TestComputeNextBatchComplete:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "complete", "spawn": [], "blocked_tasks": [], "running": []}
+        assert result == {
+            "status": "complete", "spawn": [], "blocked_tasks": [], "running": [],
+            "human_tasks": [],
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +481,10 @@ class TestComputeNextBatchBlocked:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": []}
+        assert result == {
+            "status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": [],
+            "human_tasks": [],
+        }
 
     def test_compute_next_batch_failed_dependency_with_active_spawn_still_waiting(
         self, tmp_path, monkeypatch
@@ -401,7 +538,10 @@ class TestComputeNextBatchBlocked:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": []}
+        assert result == {
+            "status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": [],
+            "human_tasks": [],
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -917,6 +1057,7 @@ class TestMainCliWrapper:
             "spawn": [{"task_id": "ADR-1"}],
             "blocked_tasks": [],
             "running": [],
+            "human_tasks": [],
         }
 
     def test_main_list_dependency_outside_list_and_not_done_prints_error_and_exits_nonzero(

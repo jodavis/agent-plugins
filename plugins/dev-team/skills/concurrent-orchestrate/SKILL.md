@@ -128,12 +128,14 @@ Invoke this `Bash` call with an explicit `timeout` of at least `330000`
 (5.5 minutes) — comfortably past the script's own ~5-minute default polling budget.
 
 Capture stdout — a single JSON object
-`{"status": ..., "spawn": [...], "blocked_tasks": [...], "running": [...]}`. If the script exits
-non-zero, it prints a clear `Error: ...` message to stderr instead — stop and report that error
-in detail (a dangling/cyclic spec, an explicit-list task whose dependency is neither in the list
-nor already done, or the epic's spec branch not existing yet because `/write-dev-spec` was never
-run for it); do not retry or fall back to guessing, and do not attempt to bootstrap a branch
-yourself.
+`{"status": ..., "spawn": [...], "blocked_tasks": [...], "running": [...], "human_tasks": [...]}`.
+`human_tasks` lists any task the spec marked human-required (🧑) that is otherwise ready to go —
+the script never includes such a task in `spawn`, since a human, not the Developer agent, must do
+it. If the script exits non-zero, it prints a clear `Error: ...` message to stderr instead — stop
+and report that error in detail (a dangling/cyclic spec, an explicit-list task whose dependency is
+neither in the list nor already done, or the epic's spec branch not existing yet because
+`/write-dev-spec` was never run for it); do not retry or fall back to guessing, and do not attempt
+to bootstrap a branch yourself.
 
 #### 2b — Branch on status
 
@@ -143,9 +145,16 @@ yourself.
   not-yet-started task's dependency chain includes a task that ended in `failed`, so it can
   never become eligible. Go to step 3 and stop — never keep polling once this fires.
 - **`"waiting"`** — continue to step 2c for each entry in `spawn` (possibly empty this cycle:
-  the cap is full, or nothing newly eligible), then to step 2d.
+  the cap is full, or nothing newly eligible), then to step 2d. `human_tasks` may also be
+  non-empty here — those tasks are ready but require a human, not the Developer agent, to
+  actually do; never treat a non-empty `human_tasks` as a reason to stop or as equivalent to
+  `blocked_tasks`, it's simply reported so it isn't silently invisible while this loop keeps
+  polling and waiting for that human's own progress by whatever means completes it.
 
 #### 2c — Spawn each newly eligible task
+
+`spawn` never includes a human-labeled (🧑) task — those are reported separately in
+`human_tasks` (step 2b) instead, and this step never spawns anything for them.
 
 For each `{task_id}` in `spawn`:
 
@@ -253,6 +262,10 @@ step — there is no PR to monitor, so no `dev-team:monitor-stack` spawn is cons
 - **`"blocked"`** — tell the user the run stopped, naming `blocked_tasks` and the reason (each
   one's dependency chain includes a task that ended in `failed`, so it can never become
   eligible on its own).
+
+Either way, if the most recent poll's `human_tasks` was non-empty, also tell the user which
+task(s) are still waiting on a human before the rest of the stack can proceed — so a
+human-required task never silently stalls the run without the user knowing to go do it.
 
 ## Running the troubleshooter agent
 

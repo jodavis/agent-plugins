@@ -62,7 +62,13 @@ _WORKFLOW_ORCHESTRATE_SCRIPTS = (
 sys.path.insert(0, str(_WORKFLOW_ORCHESTRATE_SCRIPTS))
 import dev_team  # noqa: E402 — referenced via module attribute so tests can monkeypatch dev_team.REPO_ROOT
 from get_context_path import get_repo_slug  # noqa: E402
-from task_dependencies import TaskDependencyError, parse_task_dependencies, validate_stack_order  # noqa: E402
+from task_dependencies import (  # noqa: E402
+    HUMAN_MARKER,
+    TaskDependencyError,
+    parse_task_dependencies,
+    parse_task_markers,
+    validate_stack_order,
+)
 from task_readiness import (  # noqa: E402
     dependency_status,
     dependency_status_and_context,
@@ -287,14 +293,19 @@ def compute_next_batch(target: TargetSpec) -> dict:
     """Compute the next batch of tasks to spawn for `target`.
 
     Returns `{"status": "waiting" | "complete" | "blocked", "spawn": [...],
-    "blocked_tasks": [...], "running": [...]}`. Never spawns anything — deterministic
-    computation only. Raises `RuntimeError` if the epic's spec branch doesn't exist yet
-    (`/write-dev-spec` was never run for it) — there is nothing this script or its caller can do
-    to remediate that on its own, so it's a hard failure rather than a retryable status.
+    "blocked_tasks": [...], "running": [...], "human_tasks": [...]}`. `"human_tasks"` lists any
+    task that is otherwise eligible (not yet started, all dependencies satisfied) but whose
+    heading is marked 🧑 (human-required, see task_dependencies.HUMAN_MARKER) — such a task is
+    never included in `"spawn"`, since a human, not the Developer agent, must actually do it; it
+    is reported here instead so it isn't silently dropped from view. Never spawns anything —
+    deterministic computation only. Raises `RuntimeError` if the epic's spec branch doesn't exist
+    yet (`/write-dev-spec` was never run for it) — there is nothing this script or its caller can
+    do to remediate that on its own, so it's a hard failure rather than a retryable status.
     """
     spec_path = dev_team.find_spec_file(target.tasks[0])
     spec_text = spec_path.read_text(encoding="utf-8")
     graph = parse_task_dependencies(spec_text)
+    markers = parse_task_markers(spec_text)
     # Only the "up to" form needs document order — the explicit-list form is taken as-is, no
     # expansion, so it never needs the Stack order validator's stricter ordering check.
     order = validate_stack_order(spec_text) if target.mode == "up_to" else []
@@ -316,7 +327,10 @@ def compute_next_batch(target: TargetSpec) -> dict:
     statuses = {task: status for task, (status, _) in statuses_and_contexts.items()}
 
     if all(statuses[task] == "done" for task in tasks):
-        return {"status": "complete", "spawn": [], "blocked_tasks": [], "running": []}
+        return {
+            "status": "complete", "spawn": [], "blocked_tasks": [], "running": [],
+            "human_tasks": [],
+        }
 
     not_yet_started = [
         task for task in tasks if task not in spawned and statuses[task] == "not_started"
@@ -331,12 +345,15 @@ def compute_next_batch(target: TargetSpec) -> dict:
         return {
             "status": "blocked", "spawn": [], "blocked_tasks": blocked_tasks,
             "running": _running_snapshots(spawned, statuses_and_contexts),
+            "human_tasks": [],
         }
 
-    eligible: list[str] = [
+    ready: list[str] = [
         task for task in not_yet_started
         if task not in blocked_tasks and is_task_eligible(task, graph.get(task, [])) == "eligible"
     ]
+    human_tasks = sorted(task for task in ready if markers.get(task) == HUMAN_MARKER)
+    eligible = [task for task in ready if task not in set(human_tasks)]
 
     max_parallel = _max_parallel_tasks(dev_team.REPO_ROOT)
     active = _repo_wide_active_spawn_count(repo_slug)
@@ -350,7 +367,10 @@ def compute_next_batch(target: TargetSpec) -> dict:
         data["spawned"] = sorted(spawned | {entry["task_id"] for entry in spawn})
         data_path.write_text(json.dumps(data), encoding="utf-8")
 
-    return {"status": "waiting", "spawn": spawn, "blocked_tasks": [], "running": running}
+    return {
+        "status": "waiting", "spawn": spawn, "blocked_tasks": [], "running": running,
+        "human_tasks": human_tasks,
+    }
 
 
 def poll_until_actionable(

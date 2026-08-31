@@ -12,7 +12,8 @@ rewrite and never needs to understand the local-numbering form.
 `main()` is a thin CLI wrapper so a prose skill (`spec-task-breakdown`, which has no other way
 to call a Python function directly) can invoke this via `Bash`: it prints the resulting graph as
 JSON to stdout on success, or a clear `Error: ...` message to stderr with a non-zero exit on a
-dangling reference, a dependency cycle, or a missing/unreadable spec file.
+dangling reference, a dependency cycle, a heading missing/malformed on its trailing 🤖/🧑
+marker (see `validate_task_headings`), or a missing/unreadable spec file.
 """
 
 import json
@@ -21,10 +22,25 @@ import sys
 from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 
+# The two markers a task heading must end in: 🤖 for an agent task, 🧑 for a human-required one
+# (configuration, infrastructure setup, access provisioning — see dev-spec-task-breakdown).
+AGENT_MARKER = "🤖"
+HUMAN_MARKER = "🧑"
+
 # Matches an already-rewritten task heading, e.g.:
 #   ### [ADR-307: Dependency declaration and graph parsing](https://jodasoft.atlassian.net/browse/ADR-307) 🤖
 TASK_HEADING_RE = re.compile(
-    r"^### \[([A-Z]+-\d+):[^\]]*\]\([^)]*\)\s*(?:🤖|🧑)\s*$",
+    rf"^### \[([A-Z]+-\d+):[^\]]*\]\([^)]*\)\s*({AGENT_MARKER}|{HUMAN_MARKER})\s*$",
+    re.MULTILINE,
+)
+
+# A looser pattern that matches any line that looks like it was meant to be a task heading —
+# the `### [KEY: Title](url)` prefix — regardless of what (if anything) follows it. Used only by
+# validate_task_headings to positively detect a heading that fails to fully match
+# TASK_HEADING_RE (e.g. a missing or malformed trailing marker) instead of that heading simply
+# vanishing from parse_task_dependencies'/parse_task_markers' output with no error at all.
+_CANDIDATE_HEADING_RE = re.compile(
+    r"^### \[([A-Z]+-\d+):[^\]]*\]\([^)]*\).*$",
     re.MULTILINE,
 )
 
@@ -93,6 +109,42 @@ def parse_task_dependencies(spec_text: str) -> dict[str, list[str]]:
     return graph
 
 
+def parse_task_markers(spec_text: str) -> dict[str, str]:
+    """Parse a spec's rewritten `## Tasks` section into a mapping of each task's key to the
+    human/agent marker (HUMAN_MARKER or AGENT_MARKER) its heading was labeled with.
+
+    A heading that doesn't fully match TASK_HEADING_RE (e.g. missing or malformed marker) is
+    silently absent from the returned mapping, exactly like parse_task_dependencies silently
+    excludes it from its own graph — this function never raises. Use validate_task_headings for
+    the stricter, opt-in check that raises TaskDependencyError naming such a heading.
+    """
+    return {match.group(1): match.group(2) for match in TASK_HEADING_RE.finditer(spec_text)}
+
+
+def validate_task_headings(spec_text: str) -> None:
+    """Raise TaskDependencyError, naming the offending heading, if any line in the spec looks
+    like it was meant to be a task heading (the `### [KEY: Title](url)` prefix) but doesn't
+    fully match the required `### [KEY: Title](url) 🤖`/`🧑` format — most commonly a missing or
+    malformed trailing human/agent marker.
+
+    This is a stricter, opt-in check distinct from parse_task_dependencies/parse_task_markers,
+    which both silently exclude any non-matching heading from their own output rather than
+    raising. Keeping that leniency in the two parsing functions preserves today's behavior for
+    every already-existing spec read at scheduling time (e.g. by compute_next_batch); this
+    function is meant to be invoked once, right when a task's heading is finalized (e.g.
+    dev-spec-create-work-items step 3, immediately after rewriting a task's title into a
+    hyperlink), which is the appropriate point to catch a missing/malformed marker close to its
+    source rather than downstream.
+    """
+    for match in _CANDIDATE_HEADING_RE.finditer(spec_text):
+        heading_line = spec_text[match.start():match.end()]
+        if TASK_HEADING_RE.match(heading_line) is None:
+            raise TaskDependencyError(
+                f"Task {match.group(1)}'s heading is missing or has a malformed trailing "
+                f"🤖/🧑 marker: {heading_line.strip()!r}"
+            )
+
+
 def validate_stack_order(spec_text: str) -> list[str]:
     """Extend parse_task_dependencies with a stack-order check.
 
@@ -130,6 +182,7 @@ def main() -> None:
         sys.exit(1)
 
     try:
+        validate_task_headings(spec_text)
         graph = parse_task_dependencies(spec_text)
     except TaskDependencyError as e:
         print(f"Error: {e}", file=sys.stderr)
