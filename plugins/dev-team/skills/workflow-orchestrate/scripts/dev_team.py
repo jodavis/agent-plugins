@@ -1008,6 +1008,79 @@ class SignoffStep(ParallelSteps):
         return "approved"
 
 
+class AddToPrStackStep(Step):
+    """Runs once `signoff` resolves `approved`: registers this task's already-signed-off PR into
+    its epic's `gh stack` via `add-to-pr-stack` (`gh stack link`) — the sole place that
+    registration ever happens (see that skill's own intro, and `ensure-working-branch`'s, for why
+    it's deferred this late rather than done eagerly at task start).
+
+    No dedicated retry edge exists from `add_to_pr_stack` in the state machine (mirroring
+    `creating_pr`'s own precedent) — a hard failure here still proceeds to `done` with
+    `added_to_stack` left `false`, relying on `consecutive_failures`/the troubleshooter for
+    escalation rather than looping the state machine itself. This task's own epic stack is left
+    missing one entry until someone (or the troubleshooter) re-runs this step by hand; that's a
+    silent gap worth watching for, not a design this step tries to paper over.
+
+    `add_to_pr_stack.py` (the script `add-to-pr-stack`'s own SKILL.md runs) always writes a
+    `stack_link_status` extra-frontmatter key on success — `"linked"` or `"not_applicable"` — even
+    though `added_to_stack` itself only ever becomes `True` for the former. This is deliberately
+    checked ahead of `added_to_stack` below: `added_to_stack` alone can't distinguish "resolved,
+    nothing to register" from "never ran yet" (it's a plain boolean that only ever needs to become
+    `True`), which would otherwise leave `get_actions()` re-spawning the agent forever for a task
+    that legitimately isn't part of any tracked epic.
+    """
+
+    handles = "add_to_pr_stack"
+    EVENT_NAME = "add-to-pr-stack"
+
+    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
+        self._ctx = ctx
+        self._context_path = context_path
+
+    def get_actions(self) -> list[dict]:
+        ctx = self._ctx
+        if ctx.added_to_stack or ctx.extra_frontmatter.get("stack_link_status"):
+            # Recovery re-entry — already registered, or already determined not applicable.
+            return []
+        return [{
+            "action": "spawn_agent",
+            "message": "Sign-off approved. Developer is registering the PR into its epic's stack.",
+            "agent": "dev-team:developer",
+            "skill": "add-to-pr-stack",
+            "args": ctx.work_item_id,
+            "context_file": str(self._context_path),
+            "read_sections": [],
+            "write_section": "Stack Link Result",
+            "result_format": "success | failed",
+        }]
+
+    def handle_results(self) -> str:
+        ctx = self._ctx
+        if ctx.added_to_stack or ctx.extra_frontmatter.get("stack_link_status"):
+            # Inline path: the script's own direct frontmatter write already landed before this
+            # function's own re-entry — the primary, common-case path, since add_to_pr_stack.py
+            # (unlike an LLM-composed deliverable) never "forgets" to persist its result.
+            _handle_agent_success(ctx)
+            return "linked"
+        # Fallback, mirroring CreatePrStep's own "PR URL" section fallback: the frontmatter write
+        # somehow didn't land, but the agent did write the Stack Link Result section.
+        text = self._context_path.read_text(encoding="utf-8")
+        _, body = _parse_frontmatter(text)
+        sections = _parse_sections(body)
+        result_section = sections.get("Stack Link Result", "")
+        if result_section:
+            status = parse_json_output(result_section).get("status", "")
+            if status in ("linked", "not_applicable"):
+                _handle_agent_success(ctx)
+                return "linked"
+        _handle_agent_failure(ctx)
+        _check_and_trigger_troubleshooter(
+            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
+            ctx.consecutive_failures, ctx, self._context_path,
+        )
+        return "linked"
+
+
 class FixStep(Step):
     handles = "fixing"
     EVENT_NAME = "fix"
@@ -1161,6 +1234,7 @@ class DevTeamPipeline:
             "creating_pr": CreatePrStep(ctx, context_path),
             "reviewing": ReviewStep(ctx, context_path),
             "signoff": SignoffStep(ctx, context_path, log_dir),
+            "add_to_pr_stack": AddToPrStackStep(ctx, context_path),
             "fixing_pr": FixPrStep(ctx, context_path),
         }
 

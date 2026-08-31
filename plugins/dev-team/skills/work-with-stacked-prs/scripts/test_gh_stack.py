@@ -1,6 +1,7 @@
 """Tests for gh_stack.py — plain Python wrapper functions around `gh stack` operations, one per
-operation (`init`, `add`, `submit`, `sync`, `view`, `merge`, `rebase_continue`, `checkout`), plus
-the `github/gh-stack` extension presence check the SKILL.md-level preflight calls into.
+operation (`init`, `add`, `submit`, `sync`, `view`, `merge`, `rebase_continue`, `checkout`,
+`link`), plus the `github/gh-stack` extension presence check the SKILL.md-level preflight calls
+into.
 
 Covers:
 - Each operation invokes the exact expected `gh stack <cmd>` argument list for its various
@@ -511,6 +512,76 @@ class TestCheckoutFailure:
         # Assert
         assert status == "error"
         assert detail == "no PR found for that number"
+
+
+# ---------------------------------------------------------------------------
+# link — argument shapes, including the stack-number-shortcut and new-stack forms; the one
+# operation that does not rely on gh-stack local tracking state
+# ---------------------------------------------------------------------------
+
+class TestLinkArguments:
+    @pytest.mark.parametrize(
+        "args, kwargs, expected_args",
+        [
+            pytest.param(
+                ("auth-layer", "api-routes", "ui-components"), {},
+                ["gh", "stack", "link", "auth-layer", "api-routes", "ui-components"],
+                id="branch_names_new_stack",
+            ),
+            pytest.param(
+                ("41", "42", "43"), {},
+                ["gh", "stack", "link", "41", "42", "43"],
+                id="pr_numbers_new_stack",
+            ),
+            pytest.param(
+                ("7", "48", "ui-polish"), {},
+                ["gh", "stack", "link", "7", "48", "ui-polish"],
+                id="stack_number_shortcut_grows_existing_stack",
+            ),
+            pytest.param(
+                ("auth-layer", "api-routes"), {"base": "develop"},
+                ["gh", "stack", "link", "auth-layer", "api-routes", "--base", "develop"],
+                id="custom_base_for_new_stack",
+            ),
+            pytest.param(
+                ("41", "42"), {"open_prs": True, "remote": "upstream"},
+                ["gh", "stack", "link", "41", "42", "--open", "--remote", "upstream"],
+                id="open_and_remote",
+            ),
+        ],
+    )
+    def test_gh_stack_link_invokes_expected_gh_stack_arguments(self, args, kwargs, expected_args):
+        # Arrange
+        mock_run = MagicMock(return_value=expect_gh_stack_result(stdout="Linked 2 PRs into stack 7"))
+
+        # Act
+        with patch("gh_stack.subprocess.run", mock_run):
+            status, detail = gh_stack.link(*args, **kwargs)
+
+        # Assert
+        assert status == "ok"
+        assert detail == "Linked 2 PRs into stack 7"
+        called_args, called_kwargs = mock_run.call_args
+        assert called_args[0] == expected_args
+        assert called_kwargs["timeout"] == gh_stack.DEFAULT_TIMEOUT
+        assert called_kwargs["capture_output"] is True
+        assert called_kwargs["text"] is True
+
+
+class TestLinkFailure:
+    def test_gh_stack_link_command_fails_returns_error_with_stderr(self):
+        # Arrange
+        mock_run = MagicMock(
+            return_value=expect_gh_stack_result(returncode=1, stderr="PR #42 belongs to a different stack")
+        )
+
+        # Act
+        with patch("gh_stack.subprocess.run", mock_run):
+            status, detail = gh_stack.link("41", "42")
+
+        # Assert
+        assert status == "error"
+        assert detail == "PR #42 belongs to a different stack"
 
 
 # ---------------------------------------------------------------------------

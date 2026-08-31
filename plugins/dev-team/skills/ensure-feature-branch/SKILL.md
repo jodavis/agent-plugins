@@ -2,23 +2,29 @@
 name: ensure-feature-branch
 user-invocable: false
 description: >
-  Bootstraps a feature's branch from `main`, commits and opens a PR for the feature's (possibly
-  locally-uncommitted) spec file against that branch, and initializes the feature's `gh stack` —
-  every step check-before-act so the whole skill is safely re-runnable. Invoked by
-  `ensure-working-branch`'s single-task path and by `concurrent-orchestrate`, both of which hold
-  real MCP/`gh` credentials.
+  Bootstraps a feature's branch from `main` and commits and opens a PR for the feature's
+  (possibly locally-uncommitted) spec file against that branch — every step check-before-act so
+  the whole skill is safely re-runnable. Invoked by `ensure-working-branch`'s single-task path and
+  by `concurrent-orchestrate`, both of which hold real MCP/`gh` credentials.
 argument-hint: <feature-work-item-id>
 ---
 
 Use this skill when:
-- A feature's branch, committed spec, and anchored `gh stack` need to exist before any
-  task-level work can register into that stack, and the caller already holds real MCP/`gh`
-  credentials (`ensure-working-branch`'s single-task path, or `concurrent-orchestrate`)
+- A feature's branch and committed spec need to exist before any task-level work can base a
+  working branch on it, and the caller already holds real MCP/`gh` credentials
+  (`ensure-working-branch`'s single-task path, or `concurrent-orchestrate`)
 
 Do NOT use this skill when:
-- You already know (from context already read this session) that the feature branch
-  exists, its spec is committed on that branch, and a stack is already anchored to it — there is
-  nothing left to check
+- You already know (from context already read this session) that the feature branch exists and
+  its spec is committed on that branch — there is nothing left to check
+
+**This skill never touches `gh stack`.** `add-to-pr-stack`'s `link` calls create the epic's stack
+from scratch, on GitHub, the first time any task registers into it, so there's no empty-stack
+precondition for this skill to set up ahead of time. This also matters because this skill is
+routinely invoked from `ensure-working-branch`'s single-task path — i.e. from a task's own
+per-task worktree, not the epic's shared one — and `gh stack` operations that rely on local
+tracking state (like `init`) are unsafe to run from there (`work-with-stacked-prs/SKILL.md`'s
+cross-worktree caveat).
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an
@@ -145,39 +151,19 @@ this worktree — proceed:
    isn't for a task, so there is no per-task brief to pass.
 6. Check `<feature-branch>` back out, leaving the working tree positioned there for step 4.
 
-### 4 — Step 3: check whether a stack is already anchored to this trunk; init it if not
+### 4 — Leave `<feature-branch>` checked out
 
-Unconditionally check out `<feature-branch>` at the start of this step, regardless of which path
+Unconditionally check out `<feature-branch>` at the end of this skill, regardless of which path
 through steps 2 and 3 got here — step 2's "match found" branch and step 3's two skip branches
 ("no spec file found locally" and "spec already committed on the feature branch") never perform a
-checkout themselves, so this step cannot assume one already happened:
+checkout themselves, so this step cannot assume one already happened, and a caller chaining
+straight into more work against `<feature-branch>` shouldn't have to re-check it out itself:
 
 ```bash
 git fetch origin
 git checkout <feature-branch>
 git pull origin <feature-branch>
 ```
-
-With `<feature-branch>` now checked out locally, run `work-with-stacked-prs`'s Preflight check if
-it hasn't already run earlier this session.
-
-Use `work-with-stacked-prs`'s `view` operation (`gh_stack.py`'s `view()`, or the `gh stack view
---json` CLI form) to check current stack membership.
-
-**If `view` returns `"ok"` and its `trunk` field equals `<feature-branch>`**, a stack is already
-anchored to this trunk — skip `init` entirely; this step is a no-op.
-
-**Otherwise** (an `"error"` result — e.g. "not part of a stack" — or an `"ok"` result whose
-`trunk` doesn't match `<feature-branch>`), run the `init` operation with `<feature-branch>` as
-the trunk:
-
-```bash
-gh stack init --base <feature-branch>
-```
-
-(or `gh_stack.py`'s `init(base=<feature-branch>)`). Per ADR-370's confirmed finding, `init`
-against an already-anchored trunk is a hard error (exit 5), not an idempotent no-op — this is
-exactly why this step's `view` check must run first and must never be skipped.
 
 ---
 

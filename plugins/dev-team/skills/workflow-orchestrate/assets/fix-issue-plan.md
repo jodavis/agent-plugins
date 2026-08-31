@@ -13,8 +13,9 @@ stateDiagram-v2
     reviewing --> signoff : approved
     reviewing --> fixing_pr : changes_requested
     fixing_pr --> signoff : fix_done
-    signoff --> done : approved
+    signoff --> add_to_pr_stack : approved
     signoff --> fixing_pr : changes_requested
+    add_to_pr_stack --> done : linked
     fixing --> validating : fix_done
     fixing --> failed : max_retries
     fixing_pr --> failed : max_retries
@@ -50,3 +51,11 @@ before the pipeline finishes.
 work item, requesting a review, etc.) around `SignoffStep`'s own resolution and dispatches them as
 their own pipeline steps, so a project can configure or disable each piece independently without
 needing a separate hand-off state or agent turn.
+
+`add_to_pr_stack` runs `add-to-pr-stack` (`gh stack link`) once sign-off approves. Most GitHub-
+issue-driven fixes aren't part of any tracked epic, so this step is usually a no-op (`ensure-
+working-branch`'s 4f fallback left `parent_work_item` empty, and `add-to-pr-stack` recognizes
+that and reports success without calling `gh stack` at all) — but the state exists here too, since
+a fix task *can* still be epic-scoped (e.g. dispatched against a task-work-item that happens to be
+GitHub-issue-tracked but epic-owned), and the same registration needs to happen for it exactly as
+for `/implement`.
