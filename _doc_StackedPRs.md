@@ -19,7 +19,7 @@ conflicts cascading down the stack, and merges — until the whole stack has lan
 Registration is deliberately deferred this late, rather than done eagerly when a task starts:
 `gh stack`'s own local tracking state is worktree-private (see Key Design Decisions below), and a
 task's own implementation runs in its own freshly spawned per-task worktree — registering there
-would race against `monitor-stack`'s shared-worktree view of the same stack. `add-to-pr-stack`
+would race against `monitor-prs`'s shared-worktree view of the same stack. `add-to-pr-stack`
 sidesteps this entirely by using `gh stack link`, the one `gh stack` operation that doesn't need
 local tracking state at all.
 
@@ -46,7 +46,7 @@ refined an assumption the spec started with.
   to" target into every task from the start of the epic's document order through the target
   (`concurrent_schedule.py`'s `compute_next_batch`); and the single epic-wide post-hand-off
   monitor that reacts to review comments, CI failures, rebase conflicts, and merges across the
-  whole stack (`monitor-stack`, `stack_pr_poll.py`, `detect_next_stack_event.py`).
+  whole stack (`monitor-prs`, `stack_pr_poll.py`, `detect_next_stack_event.py`).
 - **Does not own:** the `gh stack` CLI itself, or any of its internal state/behavior — that's
   upstream, days-old public-preview GitHub tooling (see Known Design Decisions below); resolving
   the git-level content of a rebase conflict once one is left in progress — that's
@@ -56,7 +56,7 @@ refined an assumption the spec started with.
   computes stack membership or eligibility itself.
 - **Integrates with:** `ensure-working-branch` (picks a task's base branch as part of the normal
   pre-implementation branch-setup step every task already runs, but never touches `gh stack`
-  itself — see Key Design Decisions), `concurrent-orchestrate` (spawns one `monitor-stack` per
+  itself — see Key Design Decisions), `concurrent-orchestrate` (spawns one `monitor-prs` per
   epic, the moment the first task in that epic's target set reaches hand-off — now correctly
   after that task's PR is actually linked into the stack, not merely open — and hard-stops with a
   clear error, rather than bootstrapping anything itself, if an epic's spec branch doesn't exist
@@ -78,7 +78,9 @@ refined an assumption the spec started with.
   own dependencies), but the actual GitHub stack object is populated later, entirely by
   `add-to-pr-stack`. ADR-296's `rebase_mechanic.py`, `watch_pr_poll.py`, the `monitor-pr` skill,
   `/watch-pr`, and the base-branch-selection half of `is_task_eligible` are retired outright —
-  confirmed absent from the repo, not merely deprecated.
+  confirmed absent from the repo, not merely deprecated. (`/watch-pr` was later reintroduced,
+  unrelated to this retirement, as `monitor-prs`'s own PR-mode entry point — see "Key Classes /
+  Interfaces" below.)
 - **An epic's dependency DAG is serialized into one linear stack using the spec's own task
   document order, validated rather than computed.** `validate_stack_order` (in
   `task_dependencies.py`, extending the existing `parse_task_dependencies`) confirms every task's
@@ -148,7 +150,7 @@ refined an assumption the spec started with.
   target using `validate_stack_order`'s document order — a linear stack means an earlier,
   unrelated task still needs implementing regardless of whether the target actually depends on
   it.
-- **One `monitor-stack` monitor per epic replaces the per-task `monitor-pr` fleet.** It is
+- **One `monitor-prs` monitor per epic replaces the per-task `monitor-pr` fleet.** It is
   auto-started by `concurrent-orchestrate` the moment the first task in an epic's target set
   reaches hand-off (not once per task), and polls the whole stack via `stack_pr_poll.py`, reacting
   to exactly one outcome per call: a conflict routes to `resolve-rebase-conflict` via the developer
@@ -160,14 +162,14 @@ refined an assumption the spec started with.
   directory, so a second worktree sees a false "not part of a stack" result even for a branch
   genuinely registered from another worktree of the same repo. Every `gh stack` operation for one
   feature's stack that relies on this local tracking state — `init`/`add`/`submit`/the ongoing
-  `sync`/`view` polling in `monitor-stack`/`merge`/`rebase --continue`/`checkout` — must run from
+  `sync`/`view` polling in `monitor-prs`/`merge`/`rebase --continue`/`checkout` — must run from
   one shared worktree per feature, never a task's own per-task worktree. `work-with-stacked-prs/
   SKILL.md` documents this explicitly as a structural constraint, not a corner case. `link` is the
   deliberate exception (see the deferred-registration decision above): it "does not rely on
   gh-stack local tracking state" at all, which is exactly why `add-to-pr-stack` uses it instead of
   `add`/`submit` and can run from a task's own per-task worktree with no shared-worktree routing.
-- **`monitor-stack`'s own worktree lands on a real stack member, never the trunk.** A consequence
-  of the previous decision: `monitor-stack` runs in its own freshly spawned worktree, which has
+- **`monitor-prs`'s own worktree lands on a real stack member, never the trunk.** A consequence
+  of the previous decision: `monitor-prs` runs in its own freshly spawned worktree, which has
   never run `add`/`link` for this stack itself — and `gh-stack` doesn't consider the trunk branch
   a stack member in the first place — so simply checking out the trunk there leaves `gh stack
   view`/`sync` erroring (closed [issue #189](https://github.com/jodavis/agent-plugins/issues/189)).
@@ -184,23 +186,23 @@ refined an assumption the spec started with.
   git-level mechanics of the currently-conflicted branch.** ADR-370's spike confirmed its plain-git
   contract (find `.git/rebase-merge`, resolve conflict markers, `git rebase --continue`) works
   unchanged when the conflict is reached via `gh stack`'s own cascading rebase.
-  `resolve-rebase-conflict/SKILL.md` was updated to name `dev-team:monitor-stack`, not the retired
+  `resolve-rebase-conflict/SKILL.md` was updated to name `dev-team:monitor-prs`, not the retired
   `monitor-pr`, as its caller.
 - **The multi-branch rebase cascade is explicitly resumed after a resolved conflict.** ADR-370's
   spike found that after `resolve-rebase-conflict` finishes the currently-conflicted branch, a
   plain `git rebase --continue` only completes that one branch's own rebase; downstream branches
   in the stack are left un-rebased until a `gh stack rebase --continue` call specifically resumes
-  gh-stack's own cascade — a fresh `sync` call alone is not sufficient. `monitor-stack`'s
+  gh-stack's own cascade — a fresh `sync` call alone is not sufficient. `monitor-prs`'s
   `"resolved"` path calls `stack_rebase_continue.py` (which wraps `gh_stack.rebase_continue()`,
   i.e. `gh stack rebase --continue`) before returning to the poll loop, looping back into another
   `resolve-rebase-conflict` round if that call surfaces a further conflict higher in the stack.
   Closed [issue #179](https://github.com/jodavis/agent-plugins/issues/179).
-- **`monitor-stack` is script-driven and whole-stack, not epic-id-scoped.** `stack_pr_poll.py`
+- **`monitor-prs` is script-driven and whole-stack, not epic-id-scoped.** `stack_pr_poll.py`
   (`plugins/dev-team/skills/workflow-orchestrate/scripts/stack_pr_poll.py`) takes only an optional
   `max_seconds` argument — no epic id — and its `poll()` function returns `"stack_complete"` on
   completion; it operates on whatever stack is anchored in the worktree it's run from, which is
-  why `monitor-stack` must run from the epic's own shared worktree (see the cross-worktree
-  decision above). `monitor-stack/SKILL.md`'s own prose was updated to match this exactly (closed
+  why `monitor-prs` must run from the epic's own shared worktree (see the cross-worktree
+  decision above). `monitor-prs/SKILL.md`'s own prose was updated to match this exactly (closed
   [issue #180](https://github.com/jodavis/agent-plugins/issues/180)).
 
 ## Key Classes / Interfaces
@@ -246,20 +248,35 @@ refined an assumption the spec started with.
   `detect_next_stack_event()`; runs `sync` first each iteration, then checks for a rebase in
   progress (`"conflict"`) before consulting the detector.
 - **`stack_rebase_continue.py`'s `rebase_continue() -> "conflict" | "ok"`** — one-shot follow-up
-  `monitor-stack` calls after `resolve-rebase-conflict` reports `"resolved"`; runs
+  `monitor-prs` calls after `resolve-rebase-conflict` reports `"resolved"`; runs
   `gh_stack.rebase_continue()` (`gh stack rebase --continue`) to resume the cascade across
   downstream branches, and reports whether it hit a further conflict or reached a clean state.
-- **`stack_checkout.py`'s `checkout(pr_number)`** — one-shot bootstrap `monitor-stack` calls in
+- **`stack_checkout.py`'s `checkout(pr_number)`** — one-shot bootstrap `monitor-prs` calls in
   step 2, before the poll loop starts; runs `gh_stack.checkout(pr_number)` (`gh stack checkout
   <pr-number>`) to materialize the stack in a fresh worktree and land on a real member branch.
 - **`concurrent_schedule.py`'s `compute_next_batch(target) -> dict`** — computes the next batch of
   tasks to spawn for an "up to" or explicit-list target, including a live check for whether the
   epic's spec branch exists yet (raises `RuntimeError` if not — no auto-remediation) and the
   repo-wide concurrency cap.
-- **`monitor-stack`** — the epic-wide, long-lived post-hand-off monitor; polls via
-  `stack_pr_poll.py` and reacts to exactly one outcome per call.
-- **`/watch-stack <epic-key>`** — manual fallback that spawns `monitor-stack` in its own isolated
-  worktree, for when `concurrent-orchestrate`'s auto-start never happened.
+- **`pr_list_poll.py`'s `poll(pr_numbers, max_seconds=480, ...) -> "all_complete" | "no_change" |
+  dict`** — `monitor-prs`'s PR-mode counterpart to `stack_pr_poll.py`: bounded polling over a
+  fixed, explicit list of PR numbers, resolving each to its own task via `pr_event_detector.py`'s
+  `detect_pr_events()` directly (no `gh stack` involvement, no rebase-cascade handling — an
+  arbitrary PR list has no cross-branch cascade to reconcile).
+- **`monitor-prs`** — long-lived PR monitor, in two modes: stack mode (default; the epic-wide,
+  long-lived post-hand-off monitor described throughout this doc; polls via `stack_pr_poll.py`)
+  and PR mode (`--pr-numbers`; polls a fixed PR list via `pr_list_poll.py`, no `gh stack`
+  involvement) — reacts to exactly one outcome per call either way. Renamed from `monitor-stack`
+  when PR mode was added (Issue-217); every reference to `monitor-stack` elsewhere in this repo's
+  history refers to the same skill.
+- **`/watch-stack`** — manual entry point for stack mode, no arguments. Invokes `monitor-prs`
+  directly in the current session from whatever worktree the user is already checked out into —
+  the only entry point; not being on a stack at all is a hard stop (`monitor-prs` step 2b), not a
+  fallback to an epic-key argument.
+- **`/watch-pr <PR#> [PR#...]`** — manual entry point for PR mode: invokes `monitor-prs`
+  in-session with `--pr-numbers`, for one or more PRs that aren't part of (or aren't known to be
+  part of) a stack. Distinct from ADR-296's retired `/watch-pr` mentioned above — this is a later,
+  unrelated reintroduction of the same command name for `monitor-prs`'s own lightweight mode.
 - **`PipelineContext.added_to_stack`** — a named boolean frontmatter field (`pipeline_context.py`
   line 34), `true` once `add-to-pr-stack` has registered a task's signed-off PR into the epic's
   `gh stack`. `false` for the entire implementation/review/signoff cycle before that, and stays
@@ -303,17 +320,21 @@ refined an assumption the spec started with.
    creates the stack from scratch the first time, and extends it every time after — all without
    needing the feature's shared worktree, since `link` doesn't rely on local tracking state. Only
    once this succeeds does the task's pipeline reach `done` — the "hand-off" signal
-   `concurrent-orchestrate` waits for to auto-start `monitor-stack`.
+   `concurrent-orchestrate` waits for to auto-start `monitor-prs`.
 6. **Epic-wide monitoring.** The moment the first task in an epic's target set reaches hand-off
    (now correctly meaning its PR is actually linked into the stack, not merely open),
-   `concurrent-orchestrate` auto-starts one `monitor-stack` session for that epic (or a human
-   starts it manually via `/watch-stack`). It runs from its own freshly spawned worktree, which
-   has no local `gh stack` state of its own yet: step 2 finds the one open PR based directly on
-   the trunk and runs `stack_checkout.py` to materialize the stack there and land on that real
-   member branch (never the trunk itself, which `gh-stack` doesn't consider a member) before the
-   poll loop starts. It then loops on `stack_pr_poll.py`: each call runs `sync` first, then checks
-   for a rebase conflict, then consults `detect_next_stack_event` for the first review-comment/
-   CI-failure/merge event across the whole stack.
+   `concurrent-orchestrate` auto-starts one `monitor-prs` session for that epic, always in its
+   own freshly spawned worktree passed `--work-item-id` explicitly (it has other pipeline work of
+   its own to protect). A human can instead start it manually via `/watch-stack`, in-session, from
+   whatever worktree they're already sitting in — it takes no `--work-item-id` argument at all;
+   `monitor-prs` always derives the epic from the current branch instead. Either way, if the
+   worktree has no local `gh stack` state of its own yet (the auto-started, freshly spawned case),
+   step 2 finds the one open PR based directly on the trunk and runs `stack_checkout.py` to
+   materialize the stack there and land on that real member branch (never the trunk itself, which
+   `gh-stack` doesn't consider a member) before the poll loop starts; a worktree already sitting on
+   a stack member branch skips this bootstrap. It then loops on `stack_pr_poll.py`: each call runs
+   `sync` first, then checks for a rebase conflict, then consults `detect_next_stack_event` for the
+   first review-comment/CI-failure/merge event across the whole stack.
 7. **Reacting to poll outcomes.** A `{"task_work_item_id", "event"}` result spawns `fix-pr` against
    that task's already-checked-out branch. A `"conflict"` result hands off to the developer agent
    running `resolve-rebase-conflict` against the currently-conflicted branch; on `"resolved"`, the
@@ -323,4 +344,14 @@ refined an assumption the spec started with.
    `"unresolved"`, the monitor aborts the rebase and halts entirely, since one stuck task blocks
    every later task in the stack regardless of how many monitor processes exist.
 8. **Completion.** Once every branch in the stack has merged, `stack_pr_poll.py` reports
-   `"stack_complete"`, and `monitor-stack` removes its own worktree/branch and stops.
+   `"stack_complete"`, and `monitor-prs` removes its own worktree/branch and stops.
+9. **PR mode (Issue-217).** A human invoking `/watch-pr <PR#> [PR#...]` runs `monitor-prs` in its
+   other mode, always in-session (no auto-start path exists for it, and no worktree of its own to
+   allocate or clean up). It loops on `pr_list_poll.py` instead of `stack_pr_poll.py`: each call
+   resolves every given PR number to its own task via its head branch, checks each for a fired
+   review-comment/CI-failure/human-comment event via the same `pr_event_detector.py` primitive
+   stack mode uses indirectly, and drops a PR from the active set once it merges. It reacts to a
+   fired event exactly as stack mode's step 7 does (`fix-pr` or a human-comment notification), but
+   never sees `"conflict"` — there is no `gh stack` cascade in this mode to conflict in the first
+   place. Once every given PR has merged, `pr_list_poll.py` reports `"all_complete"` and the
+   monitor stops.

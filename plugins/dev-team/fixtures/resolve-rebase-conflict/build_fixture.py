@@ -112,7 +112,7 @@ def _rebase_onto(working_branch: str, base_branch: str, work: Path) -> str:
 
 def _diverge_and_rebase(work: Path) -> str:
     """Push the working branch's commits, then the base branch's diverging commits, then
-    attempt the rebase exactly as `dev-team:monitor-stack` would. Returns `_rebase_onto()`'s
+    attempt the rebase exactly as `dev-team:monitor-prs` would. Returns `_rebase_onto()`'s
     result ("rebased" or "conflict") so callers can assert the scenario actually produced a
     conflict."""
     _run_git(["push", "-u", "origin", WORKING_BRANCH], cwd=work)

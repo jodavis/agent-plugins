@@ -25,7 +25,7 @@ Do NOT use this skill when:
 
 You are working entirely inside a rebase already left mid-flight with conflicts. You never
 call `sync` yourself, and you never run `git push` or `git rebase --abort` yourself — those
-decisions belong to the caller (`dev-team:monitor-stack`), made from whichever of `"resolved"`
+decisions belong to the caller (`dev-team:monitor-prs`), made from whichever of `"resolved"`
 or `"unresolved"` you report at the end.
 
 ## Steps
@@ -121,10 +121,10 @@ commit's own message carries forward unless the rebase specifically demands a ne
 
 Use the `write-scratch-deliverable` skill to write that single word (`resolved` or `unresolved`)
 in place of returning it as chat text — this is your deliverable, even though it's short; the
-caller (`monitor-stack`) reads it back from the merged context file, not from your chat response.
+caller (`monitor-prs`) reads it back from the merged context file, not from your chat response.
 
 Either way, stop here. Do not run `git rebase --abort` or `git push` — the caller
-(`dev-team:monitor-stack`) runs `git rebase --abort` on `"unresolved"` to return to a clean
+(`dev-team:monitor-prs`) runs `git rebase --abort` on `"unresolved"` to return to a clean
 pre-rebase state, and re-runs the `sync` operation (not a raw `git push --force-with-lease`) on
 `"resolved"` so `gh stack`'s own PR-position bookkeeping stays consistent; neither is this
 skill's responsibility.

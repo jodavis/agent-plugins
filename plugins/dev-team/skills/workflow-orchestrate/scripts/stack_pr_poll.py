@@ -5,8 +5,8 @@ Every iteration runs the `sync` operation first (silent on success); a genuine c
 rebase left mid-flight by sync's own cascade-rebase step — returns "conflict" immediately,
 without ever consulting the detector. On a clean sync, the Stack PR event detector decides what
 happens next: a task_merged result is untracked silently and the loop continues unless every
-branch in the stack is now merged ("stack_complete"); a review_comment/ci_failure result — the
-detector has already checked out that task's branch — is returned immediately as
+branch in the stack is now merged ("stack_complete"); a review_comment/human_comment/ci_failure
+result — the detector has already checked out that task's branch — is returned immediately as
 {"task_work_item_id", "event"}. Nothing firing loops on a fixed interval until max_seconds
 elapses, at which point "no_change" is returned. Self-bounded to stay well under Bash's
 10-minute timeout cap, mirroring watch_pr_poll.py's own injectable-sleep/clock shape exactly.

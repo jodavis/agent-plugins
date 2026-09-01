@@ -1,7 +1,7 @@
-"""One-shot bootstrap for `monitor-stack`'s own worktree.
+"""One-shot bootstrap for `monitor-prs`'s own worktree.
 
 Per ADR-370 finding #1 (`_findings_GhStackSpike.md`), `gh stack`'s local stack-membership state
-lives in the worktree-private `.git/worktrees/<name>/gh-stack` file. `monitor-stack` runs in its
+lives in the worktree-private `.git/worktrees/<name>/gh-stack` file. `monitor-prs` runs in its
 own freshly spawned worktree — one that never registered any branch of its own into the stack via
 `init`/`add` — so `gh stack view`/`sync` (and therefore `stack_pr_poll.py`) fail from it until
 that local state is materialized. This script does exactly that: check out a real stack member

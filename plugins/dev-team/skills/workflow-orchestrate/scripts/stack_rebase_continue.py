@@ -6,7 +6,7 @@ contract) is not enough to reconcile a multi-branch stack — downstream branche
 un-rebased until `gh stack rebase --continue` specifically resumes gh-stack's own cascade. This
 script makes exactly that one call and reports whether the cascade reached a clean state or hit
 another conflict further up the stack, mirroring `stack_pr_poll.py`'s own conflict-detection
-shape so `monitor-stack` can react to both the same way.
+shape so `monitor-prs` can react to both the same way.
 """
 
 import json
