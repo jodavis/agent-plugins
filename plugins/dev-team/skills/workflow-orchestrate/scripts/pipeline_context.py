@@ -34,6 +34,22 @@ class PipelineContext:
     added_to_stack: bool = field(default=False, metadata=FRONTMATTER_FIELD)
     hook_phase: str = field(default="", metadata=FRONTMATTER_FIELD)
     pending_trigger: str = field(default="", metadata=FRONTMATTER_FIELD)
+    # monitor-prs (monitor_prs.py) fields — own_worktree distinguishes a fresh, dedicated
+    # worktree this monitor bootstrapped itself (auto-started stack mode) from one the user
+    # already owns (/watch-stack, /watch-pr) that this monitor must never delete.
+    own_worktree: bool = field(default=False, metadata=FRONTMATTER_FIELD)
+    watch_worktree_path: str = field(default="", metadata=FRONTMATTER_FIELD)
+    watch_worktree_branch: str = field(default="", metadata=FRONTMATTER_FIELD)
+    pr_numbers: str = field(default="", metadata=FRONTMATTER_FIELD)
+    poll_event_task_id: str = field(default="", metadata=FRONTMATTER_FIELD)
+    conflicting_task_id: str = field(default="", metadata=FRONTMATTER_FIELD)
+    post_handoff_fix_count: int = field(default=0, metadata=FRONTMATTER_FIELD)
+    rebase_conflict_count: int = field(default=0, metadata=FRONTMATTER_FIELD)
+    # Set by workflow-orchestrate when a troubleshooter needs_user_input question can't be
+    # asked directly (AskUserQuestion unavailable to an Agent-spawned/backgrounded session) —
+    # propagated here so a parent orchestrator (e.g. concurrent-orchestrate) can notice it,
+    # ask the human itself, and resume this pipeline.
+    pending_user_question: str = field(default="", metadata=FRONTMATTER_FIELD)
     project_configuration: str = ""
     started: datetime.datetime = field(default_factory=datetime.datetime.now, metadata=FRONTMATTER_FIELD)
     last_updated: datetime.datetime = field(default_factory=datetime.datetime.now, metadata=FRONTMATTER_FIELD)
@@ -48,6 +64,10 @@ class PipelineContext:
     signoff_research: str = ""
     signoff_build_result: str = ""
     validate_result: str = ""
+    # monitor-prs's script-driven poll/sync/scan/rebase-continue steps all write their raw
+    # JSON result here — a single shared section, since only one such step is ever pending at
+    # a time within one pipeline run.
+    poll_result: str = ""
 
     def save(self, path):
         self.last_updated = datetime.datetime.now()
@@ -70,6 +90,15 @@ class PipelineContext:
             f"added_to_stack: {self.added_to_stack}",
             f"hook_phase: {self.hook_phase}",
             f"pending_trigger: {self.pending_trigger}",
+            f"own_worktree: {self.own_worktree}",
+            f"watch_worktree_path: {self.watch_worktree_path}",
+            f"watch_worktree_branch: {self.watch_worktree_branch}",
+            f"pr_numbers: {self.pr_numbers}",
+            f"poll_event_task_id: {self.poll_event_task_id}",
+            f"conflicting_task_id: {self.conflicting_task_id}",
+            f"post_handoff_fix_count: {self.post_handoff_fix_count}",
+            f"rebase_conflict_count: {self.rebase_conflict_count}",
+            f"pending_user_question: {self.pending_user_question}",
             f"started: {self.started.isoformat()}",
             f"last_updated: {self.last_updated.isoformat()}",
         ]
@@ -121,6 +150,9 @@ class PipelineContext:
 
         if self.validate_result:
             lines += ["<!-- section:Validate Result -->", "", self.validate_result.strip(), ""]
+
+        if self.poll_result:
+            lines += ["<!-- section:Poll Result -->", "", self.poll_result.strip(), ""]
 
         log_links = []
         if self.build_log:
@@ -187,6 +219,15 @@ class PipelineContext:
             added_to_stack=meta.get("added_to_stack", "False").strip().lower() == "true",
             hook_phase=meta.get("hook_phase", ""),
             pending_trigger=meta.get("pending_trigger", ""),
+            own_worktree=meta.get("own_worktree", "False").strip().lower() == "true",
+            watch_worktree_path=meta.get("watch_worktree_path", ""),
+            watch_worktree_branch=meta.get("watch_worktree_branch", ""),
+            pr_numbers=meta.get("pr_numbers", ""),
+            poll_event_task_id=meta.get("poll_event_task_id", ""),
+            conflicting_task_id=meta.get("conflicting_task_id", ""),
+            post_handoff_fix_count=int(meta.get("post_handoff_fix_count", 0)),
+            rebase_conflict_count=int(meta.get("rebase_conflict_count", 0)),
+            pending_user_question=meta.get("pending_user_question", ""),
         )
 
         try:
@@ -208,6 +249,7 @@ class PipelineContext:
         ctx.signoff_research = sections.get("Signoff Research", "")
         ctx.signoff_build_result = sections.get("Signoff Build Result", "")
         ctx.validate_result = sections.get("Validate Result", "")
+        ctx.poll_result = sections.get("Poll Result", "")
         if "Implementation Summary" in sections:
             ctx.work_summaries = [sections["Implementation Summary"]]
             i = 1

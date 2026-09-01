@@ -166,7 +166,7 @@ For each `{task_id}` in `spawn`:
      isolation: "worktree",
      run_in_background: true,
      prompt: "Invoke the `workflow-orchestrate` skill with arguments:
-   --work-item-id <task_id> --workflow implement-task-plan"
+   --work-item-id <task_id> --workflow implement-task-plan --script implement"
    )
    ```
 2. Once the spawn call returns its worktree path and branch, use the `use-context-file` skill
@@ -203,6 +203,14 @@ tied to any task, is already covered by step 2a's existing stop-and-report handl
 scheduler's plain-JSON state file is incompatible with `workflow-troubleshoot`'s YAML-frontmatter
 context-file convention, so it is never passed as `--context-file`, and needs no new dispatch
 here.
+
+Also, every cycle — regardless of whether anything above was stale — check each `running` entry's
+own context file **and** each `epic_id` in step 2e's own in-session monitor-spawn record for a
+set `pending_user_question` frontmatter field. This is a live, non-terminal condition (a spawned
+`workflow-orchestrate`/`dev-team:monitor-prs` child hit `needs_user_input` but couldn't ask
+`AskUserQuestion` itself, being `Agent`-spawned) — unrelated to staleness, so check it even for an
+entry well within its `last_updated` window. If found, handle it per "Handling a pending user
+question from a spawned child" below.
 
 Either way, **any spawned pipeline from step 2c finishing** — reported to you as a background-
 agent completion notification, whether it arrives between cycles or while step 2a's `Bash` call
@@ -311,6 +319,33 @@ Handle the outcome (a JSON object with `action` field), identically to how
 This dispatch is scoped to anomalies tied to one task_id. A scheduler-level anomaly — not tied to
 any task (e.g. `concurrent_schedule.py` itself exiting non-zero) — is out of scope for this
 section; step 2a's existing stop-and-report handling covers that case unchanged.
+
+## Handling a pending user question from a spawned child
+
+Step 2d checks every cycle for a `pending_user_question` frontmatter field on a spawned task's or
+epic monitor's own context file. `workflow-orchestrate` (driving either `implement.py`/`fix`'s
+task pipeline or `monitor_prs.py`'s monitor pipeline) writes this field instead of calling
+`AskUserQuestion` directly whenever it's spawned the way step 2c/2e spawn it here — isolated,
+backgrounded, `Agent`-spawned — where `AskUserQuestion` is confirmed unavailable. This session
+itself is never spawned that way (it runs directly, in the top-level user session), so
+`AskUserQuestion` genuinely is available here — this is the resolution point for that gap:
+
+1. Ask the human the troubleshooter's question, found in `pending_user_question`, via
+   `AskUserQuestion`.
+2. Write the answer to that same context file's `troubleshooter_input` frontmatter key, using the
+   same `python3 -c` heredoc pattern shown in "Running the troubleshooter agent" above.
+3. Clear `pending_user_question` (set it to empty) the same way.
+4. Call the troubleshooter directly against that context file, using the exact spawn pattern in
+   "Running the troubleshooter agent" above, with the pending question as the problem.
+5. Once the troubleshooter confirms `"continue"`, respawn the child fresh — `workflow-orchestrate`
+   for a task_id, exactly the way step 2c does, or `dev-team:monitor-prs` for an epic_id, exactly
+   the way step 2e does. State is fully recoverable from `state:`, so a fresh spawn is equivalent
+   to resuming; do not attempt to resume the original (now-stopped) session directly.
+
+This only ever fires for the auto-started, backgrounded spawns this session itself creates
+(step 2c's task pipelines, step 2e's stack-mode monitors) — `/watch-stack`/`/watch-pr`'s own
+in-session invocations run with `AskUserQuestion` available directly and should never set
+`pending_user_question` in the first place.
 
 ## Skills
 
