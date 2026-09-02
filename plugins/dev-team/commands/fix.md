@@ -22,4 +22,4 @@ Then stop.
 ### 2 — Run the workflow
 
 Invoke the `workflow-orchestrate` skill with arguments:
-`--work-item-id <work-item-id> --workflow fix-issue-plan`
+`--work-item-id <work-item-id> --workflow fix-issue-plan --script implement`

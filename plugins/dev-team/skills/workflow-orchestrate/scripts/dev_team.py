@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""dev-team pipeline step machine.
+"""dev-team pipeline engine — generic state-machine infrastructure shared by every pipeline.
 
-Entry point: main() — accepts a Jira work item ID and context file path, runs the
-dev-team pipeline until an agent is needed, then exits with a JSON descriptor on
-stdout (exit code 0). The orchestration loop in dev-team.md re-invokes this script
-after each agent run.
+This module contains no pipeline-specific `Step` subclasses or state maps. Concrete
+pipelines live in their own leaf scripts (`implement.py` for the implement/fix task
+pipeline, `monitor_prs.py` for the long-lived PR monitor), each of which builds its own
+`step_handlers` dict and calls `run_pipeline()` below.
 
-To start fresh, delete the context file:
+To start a pipeline fresh, delete its context file:
   ~/.dev-team/<repo-slug>/<work-item-id>.md
 """
 
-import argparse
-import datetime
 import json
 import os
 import re
@@ -20,7 +18,7 @@ import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NoReturn
+from typing import Callable, NoReturn
 
 from pipeline_context import PipelineContext
 
@@ -31,11 +29,11 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-MAX_FIX_ITERATIONS = 5
-MAX_REVIEW_FIX_ITERATIONS = 3
+# The only threshold generic enough to live in the engine — every Step, in any pipeline,
+# can increment/reset ctx.consecutive_failures via _handle_agent_failure/_handle_agent_success.
+# Pipeline-specific thresholds (e.g. implement.py's signoff/review-loop bounds) are supplied by
+# the calling leaf script as `troubleshooter_checks` to run_pipeline()/DevTeamPipeline.
 CONSECUTIVE_FAILURES_THRESHOLD = 3
-SIGNOFF_DEADLOCK_THRESHOLD = 2
-REVIEW_LOOP_THRESHOLD = MAX_REVIEW_FIX_ITERATIONS
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +44,7 @@ def exit_with_actions(descriptors: list[dict]) -> NoReturn:
     """Emit a JSON array of action descriptors on stdout and exit 0.
 
     Called when the pipeline needs one or more agents/scripts to run. The
-    orchestration loop in dev-team.md parses this array, dispatches each item
+    orchestration loop (workflow-orchestrate) parses this array, dispatches each item
     in parallel, then re-invokes the script.
     """
     print(json.dumps(descriptors), flush=True)
@@ -59,8 +57,8 @@ def compute_context_path(work_item_id: str, repo_slug: str) -> Path:
     Base: DEV_TEAM_STATE_DIR env var, or ~/.dev-team if unset.
     Full path: <base>/<repo_slug>/<work_item_id>.md
 
-    This helper is used by dev-team.md before invoking the script. The script
-    itself receives --context-file as a required argument with no fallback.
+    This helper is used by get_context_path.py before invoking a pipeline script. The
+    scripts themselves receive --context-file as a required argument with no fallback.
     """
     base_env = os.environ.get("DEV_TEAM_STATE_DIR")
     base = Path(base_env) if base_env else Path.home() / ".dev-team"
@@ -79,8 +77,11 @@ def compute_context_path(work_item_id: str, repo_slug: str) -> Path:
 # file instead — never printed as chat text, so there is no separate "also remember to..." step to
 # skip — then return a single word (`successful`) as their entire final message. This
 # preprocessing step is the deterministic (non-LLM) counterpart that actually lands that content
-# in the shared context file, run once at the start of every orchestration-loop iteration, before
-# the context file is loaded.
+# in the shared context file. Callers must invoke this themselves for any context file they
+# expect an agent to have written a scratch deliverable against — run_pipeline() does this
+# automatically for the pipeline's own work item, but a Step whose spawned agent targets a
+# *different* work item's context file (e.g. monitor_prs.py's ReactStep/ResolvingConflictStep,
+# which dispatch against a task's own file, not the monitor's) must call this explicitly itself.
 
 _PENDING_DIR_NAME = ".pending"
 _SECTION_SENTINEL_PREFIX = "<!-- section:"
@@ -143,36 +144,6 @@ def merge_pending_deliverables(context_path: Path, work_item_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Counter helpers
-# ---------------------------------------------------------------------------
-
-def _apply_counter_updates(ctx: "PipelineContext", step_name: str, trigger: str) -> None:
-    """Update pipeline counters after a step returns a trigger.
-
-    Called by DevTeamPipeline.run() after a step returns normally (not via
-    exit_with_actions). The step_name is the state that just completed.
-    """
-    if step_name == "reviewing":
-        ctx.review_cycle_count += 1
-    elif step_name == "signoff":
-        if trigger == "changes_requested":
-            ctx.signoff_cycle_count += 1
-        elif trigger == "approved":
-            ctx.signoff_cycle_count = 0
-            ctx.review_cycle_count = 0
-
-
-def _handle_agent_failure(ctx: "PipelineContext") -> None:
-    """Increment consecutive_failures after an agent return was empty or unparseable."""
-    ctx.consecutive_failures += 1
-
-
-def _handle_agent_success(ctx: "PipelineContext") -> None:
-    """Reset consecutive_failures after any successful agent return."""
-    ctx.consecutive_failures = 0
-
-
-# ---------------------------------------------------------------------------
 # Workflow definition (parsed from a Mermaid stateDiagram-v2 file)
 # ---------------------------------------------------------------------------
 
@@ -189,7 +160,8 @@ def parse_workflow(path: Path) -> WorkflowDefinition:
     Recognises three line forms inside the diagram:
       [*] --> StateA          → initial state
       StateA --> [*]          → terminal state
-      StateA --> StateB : t   → transition with trigger t
+      StateA --> StateB : t   → transition with trigger t (src == dst is allowed — a
+                                 self-transition, used by long-lived polling states)
     """
     text = path.read_text(encoding="utf-8")
 
@@ -276,53 +248,58 @@ def _parse_sections(body: str) -> dict[str, str]:
     return sections
 
 
+def _parse_frontmatter(text: str) -> tuple[dict, str]:
+    """Split YAML frontmatter from body. Returns (metadata_dict, body). Generic utility for a
+    Step that needs to re-read a raw context file's sections directly (e.g. as a fallback when
+    a structured field wasn't populated, or when reading a *different* work item's context
+    file than the one this pipeline is driving)."""
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        return {}, text
+
+    end = None
+    for i, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            end = i
+            break
+
+    if end is None:
+        return {}, text
+
+    frontmatter_lines = lines[1:end]
+    body = "\n".join(lines[end + 1:]).lstrip("\n")
+
+    metadata: dict = {}
+    i = 0
+    while i < len(frontmatter_lines):
+        line = frontmatter_lines[i]
+        if ":" in line and not line.startswith(" ") and not line.startswith("-"):
+            key, _, value = line.partition(":")
+            key = key.strip()
+            value = value.strip()
+            if not value:
+                items: list[str] = []
+                j = i + 1
+                while j < len(frontmatter_lines):
+                    item_line = frontmatter_lines[j].strip()
+                    if item_line.startswith("- "):
+                        items.append(item_line[2:].strip())
+                        j += 1
+                    else:
+                        break
+                if items:
+                    metadata[key] = items
+                    i = j
+                    continue
+            metadata[key] = value
+        i += 1
+
+    return metadata, body
+
+
 # ---------------------------------------------------------------------------
-# Helpers
+# Project configuration / hook resolution
 # ---------------------------------------------------------------------------
-
-def _get_failing_pr_checks(pr_url: str) -> str:
-    """Run `gh pr checks <pr_url>` and return output for failing checks.
-
-    Returns a string with failing check lines, or empty string if all pass or
-    if gh is unavailable / the command fails.
-    """
-    try:
-        result = subprocess.run(
-            ["gh", "pr", "checks", pr_url],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        output = result.stdout + result.stderr
-        # Return lines that indicate a failing check (non-passing status)
-        failing_lines = [
-            line for line in output.splitlines()
-            if any(word in line.lower() for word in ("fail", "error", "x "))
-        ]
-        return "\n".join(failing_lines) if failing_lines else ""
-    except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
-        return ""
-
-
-def _commit_and_push(work_item_id: str) -> None:
-    """Push the current branch. The developer is expected to have already committed."""
-    try:
-        subprocess.run(["git", "add", "-A"], check=True, cwd=REPO_ROOT, capture_output=True)
-        diff = subprocess.run(
-            ["git", "diff", "--cached", "--quiet"], cwd=REPO_ROOT, capture_output=True,
-        )
-        if diff.returncode != 0:
-            subprocess.run(
-                ["git", "commit", "-m", f"{work_item_id}: uncommitted changes at validation"],
-                check=True, cwd=REPO_ROOT, capture_output=True,
-            )
-        subprocess.run(
-            ["git", "push", "origin", "HEAD"],
-            check=True, cwd=REPO_ROOT, capture_output=True,
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"Warning: git commit/push failed (continuing): {e.stderr}", flush=True)
-
 
 _MERGE_CONFIG_SCRIPT = (
     Path(__file__).resolve().parent.parent.parent
@@ -347,22 +324,6 @@ def _project_configuration(ctx: "PipelineContext") -> dict:
     if not ctx.project_configuration:
         return {}
     return json.loads(ctx.project_configuration)
-
-
-def _resolve_validation_script(config: dict, repo_root: Path) -> str | None:
-    """Return the command line that runs this project's validation commands, or None if
-    unconfigured.
-
-    `validation` is a list of shell command strings, run in order from the repo root by
-    run_validation.py. A project without any validation commands (e.g. a repo the user
-    doesn't own) opts out by leaving `validation` null, absent, or an empty list in its
-    .dev-team/config.yaml — see get-project-configuration's null-value convention.
-    """
-    validation = config.get("validation")
-    if not validation:
-        return None
-    run_validation_script = Path(__file__).parent / "run_validation.py"
-    return f'{sys.executable} "{run_validation_script}" --repo-root "{repo_root}"'
 
 
 def _resolve_hook_map(config: dict, key: str) -> dict:
@@ -402,42 +363,8 @@ def parse_json_output(text: str) -> dict:
     return {}
 
 
-def _researcher_validated(content: str) -> bool:
-    """Return True if researcher-validate reported success.
-
-    Expects a JSON object with a "status" field ("validated" | "failed"),
-    matching the standardized skill output format.
-    """
-    result = parse_json_output(content)
-    status = result.get("status", "")
-    if status == "validated":
-        return True
-    if status == "failed":
-        return False
-    # Unrecognised format — treat as not validated so signoff retries.
-    return False
-
-
-def _parse_approval_status(content: str) -> str:
-    """Extract approval status from agent output.
-
-    Returns "approved" or "changes_requested". Falls back to scanning the
-    content for the word "approved" if JSON parsing fails, to guard against
-    minor output format deviations.
-    """
-    result = parse_json_output(content)
-    status = result.get("status", "")
-    if status in ("approved", "changes_requested"):
-        return status
-    # Secondary heuristic: look for the keyword in the text
-    lower = content.lower()
-    if "approved" in lower and "changes_requested" not in lower:
-        return "approved"
-    return "changes_requested"
-
-
 def _troubleshooter_descriptor(
-    trigger: str, context_path: Path, ctx: "PipelineContext"
+    trigger: str, context_path: Path, ctx: "PipelineContext", count: int
 ) -> dict:
     """Build the exit descriptor for a troubleshooter spawn."""
     return {
@@ -446,9 +373,7 @@ def _troubleshooter_descriptor(
         "skill": "troubleshooter",
         "trigger": trigger,
         "context_file": str(context_path),
-        "cycle_count": ctx.consecutive_failures if trigger == "consecutive_failures"
-                       else ctx.signoff_cycle_count if trigger == "signoff_deadlock"
-                       else ctx.review_cycle_count,
+        "cycle_count": count,
     }
 
 
@@ -462,7 +387,7 @@ def _check_and_trigger_troubleshooter(
     """Exit with a troubleshooter descriptor if count has reached threshold."""
     if count >= threshold:
         ctx.save(context_path)
-        exit_with_actions([_troubleshooter_descriptor(trigger, context_path, ctx)])
+        exit_with_actions([_troubleshooter_descriptor(trigger, context_path, ctx, count)])
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +395,7 @@ def _check_and_trigger_troubleshooter(
 # ---------------------------------------------------------------------------
 
 class Step(ABC):
-    """A single phase of the dev-team pipeline."""
+    """A single phase of a dev-team pipeline."""
 
     handles: str
 
@@ -492,347 +417,14 @@ class Step(ABC):
         ...
 
 
-class FindSpecStep(Step):
-    handles = "spec-finding"
-
-    def __init__(self, ctx: "PipelineContext") -> None:
-        self._ctx = ctx
-
-    def get_actions(self) -> list[dict]:
-        """Inline step — no actions needed."""
-        return []
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.spec_path:
-            return "spec_found"
-        spec_file = find_spec_file(ctx.work_item_id)
-        ctx.spec_path = str(spec_file.relative_to(REPO_ROOT))
-        return "spec_found"
+def _handle_agent_failure(ctx: "PipelineContext") -> None:
+    """Increment consecutive_failures after an agent/script return was empty or unparseable."""
+    ctx.consecutive_failures += 1
 
 
-class DebugStep(Step):
-    handles = "debugging"
-    EVENT_NAME = "debug"
-
-    _PENDING_KEY = "debug"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.debug_report:
-            # Result already available — inline step
-            return []
-        return [{
-            "action": "spawn_agent",
-            "message": f"Debugger is investigating {ctx.work_item_id}.",
-            "agent": "dev-team:debugger",
-            "skill": "investigate-bug",
-            "context_file": str(self._context_path),
-            "args": ctx.work_item_id,
-            "read_sections": [],
-            "write_section": "Debug Report",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.debug_report:
-            _handle_agent_success(ctx)
-            status = parse_json_output(ctx.debug_report).get("status", "")
-            if status == "reproduced":
-                return "debug_done"
-            ctx.last_failure = f"Bug could not be reproduced.\n\n{ctx.debug_report}"
-            return "reproduction_failed"
-        # Agent ran but wrote nothing
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        # If we get here, consecutive_failures has not hit threshold — return failure trigger
-        return "reproduction_failed"
-
-
-class ResearchStep(Step):
-    """Runs the `/fix` pipeline's `researching` state — investigates a bug report via the
-    `dev-team:researcher` agent's `researcher-issue` skill. See `PlanStep` for the `/implement`
-    pipeline's counterpart, which hardcodes a different agent+skill pair for spec-driven tasks."""
-
-    handles = "researching"
-    EVENT_NAME = "research"
-
-    _PENDING_KEY = "research"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.brief:
-            return []
-        read_sections = ["Debug Report"] if ctx.debug_report else []
-        return [{
-            "action": "spawn_agent",
-            "message": f"Researcher is planning work for {ctx.work_item_id}.",
-            "agent": "dev-team:researcher",
-            "skill": "researcher-issue",
-            "context_file": str(self._context_path),
-            "args": f"{ctx.work_item_id} {ctx.spec_path}",
-            "read_sections": read_sections,
-            "write_section": "Researcher Brief",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.brief:
-            _handle_agent_success(ctx)
-            return "research_done"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "research_done"
-
-
-class PlanStep(Step):
-    """Runs the `/implement` pipeline's `planning` state — turns a spec section into a task
-    brief via the `dev-team:planner` agent's `plan-task` skill, restricted to the spec and the
-    local codebase (no external research). See `ResearchStep` for the `/fix` pipeline's
-    counterpart.
-
-    `handle_results()` always returns `"ready"` today — there is no `research_needed` branch
-    wired up yet; this is the fork point a future research loop would use."""
-
-    handles = "planning"
-    EVENT_NAME = "plan"
-
-    _PENDING_KEY = "planning"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.brief:
-            return []
-        return [{
-            "action": "spawn_agent",
-            "message": f"Planner is planning work for {ctx.work_item_id}.",
-            "agent": "dev-team:planner",
-            "skill": "plan-task",
-            "context_file": str(self._context_path),
-            "args": f"{ctx.work_item_id} {ctx.spec_path}",
-            "read_sections": [],
-            "write_section": "Researcher Brief",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.brief:
-            _handle_agent_success(ctx)
-            return "ready"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "ready"
-
-
-class ImplementStep(Step):
-    handles = "implementing"
-    EVENT_NAME = "implement"
-
-    _PENDING_KEY = "implement"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.work_summaries:
-            return []
-        return [{
-            "action": "spawn_agent",
-            "message": "Task brief is ready. Developer is now implementing.",
-            "agent": "dev-team:developer",
-            "skill": "implement-task",
-            "args": ctx.work_item_id,
-            "context_file": str(self._context_path),
-            "read_sections": ["Researcher Brief"],
-            "write_section": "Implementation Summary",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.work_summaries:
-            _handle_agent_success(ctx)
-            return "impl_done"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "impl_done"
-
-
-class ValidateStep(Step):
-    handles = "validating"
-    EVENT_NAME = "validate"
-
-    _PENDING_KEY = "validate"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path, log_dir: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-        self._log_dir = log_dir
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.validate_result:
-            return []
-        validate_command = _resolve_validation_script(_project_configuration(ctx), REPO_ROOT)
-        if validate_command is None:
-            ctx.validate_result = "Succeeded (no validation script configured for this project)"
-            return []
-        self._log_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-        log_path = self._log_dir / f"{ctx.work_item_id}-validate-{timestamp}.log"
-        ctx.build_log = str(log_path)
-        return [{
-            "action": "run_script",
-            "message": "Running build and test validation.",
-            "command": validate_command,
-            "log_file": str(log_path),
-            "write_section": "Validate Result",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.validate_result:
-            result = ctx.validate_result.strip()
-            ctx.validate_result = ""
-            ctx.pending_agent = ""
-            if result.startswith("Succeeded"):
-                ctx.last_failure = ""
-                if "(no validation script configured for this project)" in result:
-                    _commit_and_push(ctx.work_item_id)
-                return "clean"
-            ctx.last_failure = (
-                f"Build or test failures.\n\n"
-                f"Full log (read this for details): {ctx.build_log}"
-            )
-            return "build_failed"
-        # Script-runner ran but wrote nothing
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "build_failed"
-
-
-class CreatePrStep(Step):
-    handles = "creating_pr"
-    EVENT_NAME = "create-pr"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.pr_url:
-            # Recovery re-entry — PR already created
-            return []
-        read_sections = ["Researcher Brief", "Implementation Summary"]
-        for i in range(1, len(ctx.work_summaries)):
-            read_sections.append(f"Fix {i}")
-        return [{
-            "action": "spawn_agent",
-            "message": "Implementation complete. Developer is creating a pull request.",
-            "agent": "dev-team:developer",
-            "skill": "create-pr-from-context",
-            "args": ctx.work_item_id,
-            "context_file": str(self._context_path),
-            "read_sections": read_sections,
-            "write_section": "PR URL",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.pr_url:
-            # Inline path: already had pr_url
-            _handle_agent_success(ctx)
-            return "pr_created"
-        # Extract pr_url from the JSON the skill wrote to the PR URL section
-        text = self._context_path.read_text(encoding="utf-8")
-        _, body = _parse_frontmatter(text)
-        sections = _parse_sections(body)
-        pr_url_section = sections.get("PR URL", "")
-        if pr_url_section:
-            pr_url = parse_json_output(pr_url_section).get("pr_url", "")
-            if pr_url:
-                ctx.pr_url = pr_url
-                _handle_agent_success(ctx)
-                ctx.save(self._context_path)
-                return "pr_created"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "pr_created"
-
-
-class ReviewStep(Step):
-    handles = "reviewing"
-    EVENT_NAME = "review"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.review_notes:
-            return []
-        return [{
-            "action": "spawn_agent",
-            "message": "Pull request created. Reviewer is reviewing the changes.",
-            "agent": "dev-team:reviewer",
-            "skill": "review",
-            "context_file": str(self._context_path),
-            "read_sections": ["Researcher Brief"],
-            "write_section": "Review Notes",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.review_notes:
-            _handle_agent_success(ctx)
-            status = _parse_approval_status(ctx.review_notes)
-            return status
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "changes_requested"
+def _handle_agent_success(ctx: "PipelineContext") -> None:
+    """Reset consecutive_failures after any successful agent/script return."""
+    ctx.consecutive_failures = 0
 
 
 class ParallelSteps(Step):
@@ -840,7 +432,9 @@ class ParallelSteps(Step):
 
     get_actions() concatenates all children's actions into a single flat list.
     handle_results() calls each child's handle_results() and passes the resulting
-    monikers to combine_results().
+    monikers to combine_results() — a subclass hook, since which trigger names take
+    precedence over which is pipeline-specific (e.g. implement.py's SignoffStep uses
+    "failed" > "changes_requested" > "approved").
     """
 
     def __init__(self, steps: list["Step"]) -> None:
@@ -866,342 +460,13 @@ class ParallelSteps(Step):
         ...
 
 
-class ReviewerSignOffStep(Step):
-    """Wraps the review-sign-off spawn for use inside ParallelSteps."""
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        if self._ctx.signoff_review:
-            return []
-        return [{
-            "action": "spawn_agent",
-            "agent": "dev-team:reviewer",
-            "skill": "review-sign-off",
-            "context_file": str(self._context_path),
-            "read_sections": ["Researcher Brief"],
-            "write_section": "Signoff Review",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.signoff_review:
-            _handle_agent_success(ctx)
-            return _parse_approval_status(ctx.signoff_review)
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "changes_requested"
-
-
-class BuildValidationStep(Step):
-    """Wraps the wait-pr-checks run_script for use inside ParallelSteps."""
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path, log_dir: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-        self._log_dir = log_dir
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.signoff_build_result:
-            return []
-        self._log_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-        log_path = self._log_dir / f"{ctx.work_item_id}-signoff-{timestamp}.log"
-        ctx.build_log = str(log_path)
-        scripts_dir = Path(__file__).parent
-        wait_script = scripts_dir / "wait_pr_checks.py"
-        command = f'{sys.executable} "{wait_script}" "{ctx.pr_url}"'
-        return [{
-            "action": "run_script",
-            "command": command,
-            "log_file": str(log_path),
-            "write_section": "Signoff Build Result",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.signoff_build_result:
-            _handle_agent_success(ctx)
-            status = parse_json_output(ctx.signoff_build_result).get("status", "")
-            return "approved" if status == "passed" else "failed"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "failed"
-
-
-class SignoffStep(ParallelSteps):
-    """Runs the three signoff checks in parallel, then resolves to `"approved"` or
-    `"changes_requested"`. Carries `EVENT_NAME = "signoff"` directly (rather than a
-    downstream near-no-op hand-off step) — `dev_team.py` already knows exactly when this
-    resolves, so a project's `before-signoff`/`after-signoff-approved` instructions (e.g.
-    promoting the PR, requesting review) hang directly off this step's own trigger."""
-
-    handles = "signoff"
-    EVENT_NAME = "signoff"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path, log_dir: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-        self._log_dir = log_dir
-        super().__init__([
-            ReviewerSignOffStep(ctx, context_path),
-            BuildValidationStep(ctx, context_path, log_dir),
-        ])
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        # Push first so the reviewer can see the latest commits.
-        _commit_and_push(ctx.work_item_id)
-        return super().get_actions()
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        trigger = super().handle_results()
-
-        # Build the failure summary for downstream steps
-        failures: list[str] = []
-        build_status = parse_json_output(ctx.signoff_build_result).get("status", "")
-        if build_status != "passed":
-            if ctx.signoff_build_result:
-                failures.append(
-                    f"Build/test validation failed. Log: {ctx.build_log}\n"
-                    f"Script result: {ctx.signoff_build_result.strip()}"
-                )
-        if _parse_approval_status(ctx.signoff_review) != "approved":
-            if ctx.signoff_review:
-                failures.append(f"Reviewer sign-off:\n{ctx.signoff_review}")
-        if not _researcher_validated(ctx.signoff_research):
-            if ctx.signoff_research:
-                failures.append(f"Research validation:\n{ctx.signoff_research}")
-
-        # Reset sub-step sections for the next signoff cycle
-        ctx.signoff_review = ""
-        ctx.signoff_research = ""
-        ctx.signoff_build_result = ""
-        ctx.pending_agent = ""
-
-        if failures or trigger != "approved":
-            ctx.review_notes = "\n\n---\n\n".join(failures) if failures else "Signoff failed."
-            ctx.last_failure = ctx.review_notes
-            return "changes_requested"
-
-        ctx.last_failure = ""
-        return "approved"
-
-    def combine_results(self, child_monikers: list[str]) -> str:
-        """Signoff: 'failed' > 'changes_requested' > 'approved'."""
-        if "failed" in child_monikers:
-            return "failed"
-        if "changes_requested" in child_monikers:
-            return "changes_requested"
-        return "approved"
-
-
-class AddToPrStackStep(Step):
-    """Runs once `signoff` resolves `approved`: registers this task's already-signed-off PR into
-    its epic's `gh stack` via `add-to-pr-stack` (`gh stack link`) — the sole place that
-    registration ever happens (see that skill's own intro, and `ensure-working-branch`'s, for why
-    it's deferred this late rather than done eagerly at task start).
-
-    No dedicated retry edge exists from `add_to_pr_stack` in the state machine (mirroring
-    `creating_pr`'s own precedent) — a hard failure here still proceeds to `done` with
-    `added_to_stack` left `false`, relying on `consecutive_failures`/the troubleshooter for
-    escalation rather than looping the state machine itself. This task's own epic stack is left
-    missing one entry until someone (or the troubleshooter) re-runs this step by hand; that's a
-    silent gap worth watching for, not a design this step tries to paper over.
-
-    `add_to_pr_stack.py` (the script `add-to-pr-stack`'s own SKILL.md runs) always writes a
-    `stack_link_status` extra-frontmatter key on success — `"linked"` or `"not_applicable"` — even
-    though `added_to_stack` itself only ever becomes `True` for the former. This is deliberately
-    checked ahead of `added_to_stack` below: `added_to_stack` alone can't distinguish "resolved,
-    nothing to register" from "never ran yet" (it's a plain boolean that only ever needs to become
-    `True`), which would otherwise leave `get_actions()` re-spawning the agent forever for a task
-    that legitimately isn't part of any tracked epic.
-    """
-
-    handles = "add_to_pr_stack"
-    EVENT_NAME = "add-to-pr-stack"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.added_to_stack or ctx.extra_frontmatter.get("stack_link_status"):
-            # Recovery re-entry — already registered, or already determined not applicable.
-            return []
-        return [{
-            "action": "spawn_agent",
-            "message": "Sign-off approved. Developer is registering the PR into its epic's stack.",
-            "agent": "dev-team:developer",
-            "skill": "add-to-pr-stack",
-            "args": ctx.work_item_id,
-            "context_file": str(self._context_path),
-            "read_sections": [],
-            "write_section": "Stack Link Result",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.added_to_stack or ctx.extra_frontmatter.get("stack_link_status"):
-            # Inline path: the script's own direct frontmatter write already landed before this
-            # function's own re-entry — the primary, common-case path, since add_to_pr_stack.py
-            # (unlike an LLM-composed deliverable) never "forgets" to persist its result.
-            _handle_agent_success(ctx)
-            return "linked"
-        # Fallback, mirroring CreatePrStep's own "PR URL" section fallback: the frontmatter write
-        # somehow didn't land, but the agent did write the Stack Link Result section.
-        text = self._context_path.read_text(encoding="utf-8")
-        _, body = _parse_frontmatter(text)
-        sections = _parse_sections(body)
-        result_section = sections.get("Stack Link Result", "")
-        if result_section:
-            status = parse_json_output(result_section).get("status", "")
-            if status in ("linked", "not_applicable"):
-                _handle_agent_success(ctx)
-                return "linked"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "linked"
-
-
-class FixStep(Step):
-    handles = "fixing"
-    EVENT_NAME = "fix"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        completed = 1 + ctx.fix_iteration + ctx.review_fix_iteration
-        if len(ctx.work_summaries) > completed:
-            return []
-        if ctx.fix_iteration >= MAX_FIX_ITERATIONS:
-            return []
-        write_section = f"Fix {completed}"
-        read_sections = ["Researcher Brief", "Last Failure"]
-        if ctx.work_summaries:
-            read_sections.append("Implementation Summary")
-        for i in range(1, len(ctx.work_summaries)):
-            read_sections.append(f"Fix {i}")
-        return [{
-            "action": "spawn_agent",
-            "message": (
-                f"Build or tests failed. Developer is fixing "
-                f"(iteration {ctx.fix_iteration + 1} of {MAX_FIX_ITERATIONS})."
-            ),
-            "agent": "dev-team:developer",
-            "skill": "fix-draft",
-            "args": ctx.work_item_id,
-            "context_file": str(self._context_path),
-            "read_sections": read_sections,
-            "write_section": write_section,
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        completed = 1 + ctx.fix_iteration + ctx.review_fix_iteration
-        if len(ctx.work_summaries) > completed:
-            _handle_agent_success(ctx)
-            ctx.fix_iteration += 1
-            return "fix_done"
-        if ctx.fix_iteration >= MAX_FIX_ITERATIONS:
-            print(
-                f"Error: still failing after {MAX_FIX_ITERATIONS} fix iterations. "
-                f"Manual intervention needed.",
-                file=sys.stderr,
-            )
-            return "max_retries"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "fix_done"
-
-
-class FixPrStep(Step):
-    handles = "fixing_pr"
-    EVENT_NAME = "fix"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        completed = 1 + ctx.fix_iteration + ctx.review_fix_iteration
-        if len(ctx.work_summaries) > completed:
-            return []
-        if ctx.review_fix_iteration >= MAX_REVIEW_FIX_ITERATIONS:
-            return []
-        write_section = f"Fix {completed}"
-        read_sections = ["Researcher Brief", "Review Notes", "Implementation Summary"]
-        for i in range(1, len(ctx.work_summaries)):
-            read_sections.append(f"Fix {i}")
-        # When a PR exists, include failing GitHub Actions check output
-        if ctx.pr_url:
-            pr_checks_output = _get_failing_pr_checks(ctx.pr_url)
-            if pr_checks_output:
-                ctx.last_failure = (
-                    f"{ctx.review_notes}\n\n"
-                    f"Failing GitHub Actions checks:\n```\n{pr_checks_output}\n```"
-                )
-        return [{
-            "action": "spawn_agent",
-            "message": (
-                f"Review requested changes. Developer is addressing review comments "
-                f"(iteration {ctx.review_fix_iteration + 1} of {MAX_REVIEW_FIX_ITERATIONS})."
-            ),
-            "agent": "dev-team:developer",
-            "skill": "fix-pr",
-            "args": ctx.work_item_id,
-            "context_file": str(self._context_path),
-            "read_sections": read_sections,
-            "write_section": write_section,
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        completed = 1 + ctx.fix_iteration + ctx.review_fix_iteration
-        if len(ctx.work_summaries) > completed:
-            _handle_agent_success(ctx)
-            ctx.review_fix_iteration += 1
-            ctx.review_notes = ""  # ensure ReviewStep re-runs reviewer on next cycle
-            return "fix_done"
-        if ctx.review_fix_iteration >= MAX_REVIEW_FIX_ITERATIONS:
-            print(
-                f"Error: still failing review after {MAX_REVIEW_FIX_ITERATIONS} "
-                f"review fix iterations. Manual intervention needed.",
-                file=sys.stderr,
-            )
-            return "max_retries"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "fix_done"
+def _step_pending_key(step: Step) -> str:
+    """Return the pending_agent key for a step, falling back to handles."""
+    if hasattr(step, "_PENDING_KEY"):
+        return step._PENDING_KEY  # type: ignore[attr-defined]
+    if hasattr(step, "handles"):
+        return step.handles
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -1209,34 +474,29 @@ class FixPrStep(Step):
 # ---------------------------------------------------------------------------
 
 class DevTeamPipeline:
-    """Drives the dev-team state machine from init (or a resumed state) to done."""
+    """Drives a pipeline's state machine from init (or a resumed state) to done.
+
+    `step_handlers` and the optional `counter_updater`/`troubleshooter_checks` callbacks are
+    supplied by the calling leaf script — this class has no knowledge of any specific
+    pipeline's states, fields, or thresholds.
+    """
 
     def __init__(
         self,
         ctx: PipelineContext,
         context_path: Path,
-        log_dir: Path,
         workflow: WorkflowDefinition,
+        step_handlers: dict[str, Step],
+        counter_updater: Callable[[PipelineContext, str, str], None] | None = None,
+        troubleshooter_checks: list[tuple[str, int, str]] | None = None,
     ) -> None:
         self.ctx = ctx
         self.context_path = context_path
-        self.log_dir = log_dir
         self.workflow = workflow
         self.machine = StateMachine(workflow.transitions, initial=ctx.state)
-        self.step_handlers: dict[str, Step] = {
-            "spec-finding": FindSpecStep(ctx),
-            "debugging": DebugStep(ctx, context_path),
-            "researching": ResearchStep(ctx, context_path),
-            "planning": PlanStep(ctx, context_path),
-            "implementing": ImplementStep(ctx, context_path),
-            "validating": ValidateStep(ctx, context_path, log_dir),
-            "fixing": FixStep(ctx, context_path),
-            "creating_pr": CreatePrStep(ctx, context_path),
-            "reviewing": ReviewStep(ctx, context_path),
-            "signoff": SignoffStep(ctx, context_path, log_dir),
-            "add_to_pr_stack": AddToPrStackStep(ctx, context_path),
-            "fixing_pr": FixPrStep(ctx, context_path),
-        }
+        self.step_handlers = step_handlers
+        self._counter_updater = counter_updater
+        self._troubleshooter_checks = troubleshooter_checks or []
 
     def _dispatch_step(self, step: Step) -> str:
         """Dispatch a step: get actions, exit if non-empty, else return trigger inline."""
@@ -1361,20 +621,17 @@ class DevTeamPipeline:
             current_state = self.machine.state
             trigger = self._dispatch_step(step)
 
-            _apply_counter_updates(self.ctx, current_state, trigger)
+            if self._counter_updater is not None:
+                self._counter_updater(self.ctx, current_state, trigger)
 
-            # Check trigger-based troubleshooter conditions
-            if self.ctx.signoff_cycle_count >= SIGNOFF_DEADLOCK_THRESHOLD:
-                self.ctx.save(self.context_path)
-                exit_with_actions([_troubleshooter_descriptor(
-                    "signoff_deadlock", self.context_path, self.ctx
-                )])
-
-            if self.ctx.review_cycle_count >= REVIEW_LOOP_THRESHOLD:
-                self.ctx.save(self.context_path)
-                exit_with_actions([_troubleshooter_descriptor(
-                    "review_loop", self.context_path, self.ctx
-                )])
+            # Check pipeline-specific troubleshooter-escalation thresholds, if any were supplied.
+            for field_name, threshold, trigger_label in self._troubleshooter_checks:
+                count = getattr(self.ctx, field_name)
+                if count >= threshold:
+                    self.ctx.save(self.context_path)
+                    exit_with_actions([_troubleshooter_descriptor(
+                        trigger_label, self.context_path, self.ctx, count
+                    )])
 
             self.machine.transition(trigger)
             self.ctx.state = self.machine.state
@@ -1392,15 +649,6 @@ class DevTeamPipeline:
                 "result": "failed",
                 "reason": f"Pipeline ended in state '{self.machine.state}' for {self.ctx.work_item_id}",
             }])
-
-
-def _step_pending_key(step: Step) -> str:
-    """Return the pending_agent key for a step, falling back to handles."""
-    if hasattr(step, "_PENDING_KEY"):
-        return step._PENDING_KEY  # type: ignore[attr-defined]
-    if hasattr(step, "handles"):
-        return step.handles
-    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -1425,133 +673,31 @@ def _find_repo_root() -> Path:
 REPO_ROOT = _find_repo_root()
 
 
-def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Split YAML frontmatter from body. Returns (metadata_dict, body)."""
-    lines = text.split("\n")
-    if not lines or lines[0].strip() != "---":
-        return {}, text
-
-    end = None
-    for i, line in enumerate(lines[1:], start=1):
-        if line.strip() == "---":
-            end = i
-            break
-
-    if end is None:
-        return {}, text
-
-    frontmatter_lines = lines[1:end]
-    body = "\n".join(lines[end + 1:]).lstrip("\n")
-
-    metadata: dict = {}
-    i = 0
-    while i < len(frontmatter_lines):
-        line = frontmatter_lines[i]
-        if ":" in line and not line.startswith(" ") and not line.startswith("-"):
-            key, _, value = line.partition(":")
-            key = key.strip()
-            value = value.strip()
-            if not value:
-                items: list[str] = []
-                j = i + 1
-                while j < len(frontmatter_lines):
-                    item_line = frontmatter_lines[j].strip()
-                    if item_line.startswith("- "):
-                        items.append(item_line[2:].strip())
-                        j += 1
-                    else:
-                        break
-                if items:
-                    metadata[key] = items
-                    i = j
-                    continue
-            metadata[key] = value
-        i += 1
-
-    return metadata, body
-
-
-
-
-def find_spec_file(work_item_id: str) -> Path:
-    """Find the unique _spec_*.md file that contains the work item ID."""
-    candidates = [
-        p
-        for p in REPO_ROOT.rglob("_spec_*.md")
-        if ".git" not in p.parts
-    ]
-
-    matches = [
-        p for p in candidates
-        if work_item_id in p.read_text(encoding="utf-8")
-    ]
-
-    if not matches:
-        print(
-            f"Error: no _spec_*.md file found containing '{work_item_id}'.\n"
-            f"Verify the task key is correct and you are on the right branch.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    if len(matches) > 1:
-        paths = "\n  ".join(str(m.relative_to(REPO_ROOT)) for m in matches)
-        print(
-            f"Error: multiple spec files found containing '{work_item_id}' — "
-            f"cannot determine which to use:\n  {paths}\n"
-            f"Resolve the ambiguity (e.g. deduplicate the task key) and retry.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    return matches[0]
-
-
 # ---------------------------------------------------------------------------
-# Entry point
+# Entry point helper
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        prog="dev_team.py",
-        description="dev-team pipeline step machine",
-    )
-    parser.add_argument("work_item_id", metavar="work-item-id",
-                        help="Work item ID (e.g. ADR-172 or Issue-444)")
-    parser.add_argument("--workflow", metavar="path", default=None,
-                        help="Path to a Mermaid stateDiagram-v2 workflow file")
-    parser.add_argument("--plugin-root", metavar="path", default=None,
-                        help="Plugin installation root (agents/ and commands/ resolved here)")
-    parser.add_argument("--context-file", metavar="path", default=None,
-                        help="Path to the pipeline context file (computed by dev-team.md)")
-    parser.add_argument("--print-context-path", metavar="repo-slug", default=None,
-                        help="Print the context file path for the given repo slug and exit")
-    args = parser.parse_args()
+def run_pipeline(
+    work_item_id: str,
+    workflow_path: Path,
+    context_path: Path,
+    step_handlers_factory: Callable[[PipelineContext, Path], dict[str, Step]],
+    counter_updater: Callable[[PipelineContext, str, str], None] | None = None,
+    troubleshooter_checks: list[tuple[str, int, str]] | None = None,
+) -> NoReturn:
+    """Load/create the context file, merge pending deliverables, build this pipeline's
+    step_handlers (via the factory, since Step constructors need the now-loaded ctx/context
+    path), and run the pipeline to its next agent/script dispatch or terminal state.
 
-    # --print-context-path mode: compute and print the context file path, then exit.
-    if args.print_context_path is not None:
-        print(compute_context_path(args.work_item_id, args.print_context_path), flush=True)
-        sys.exit(0)
-
-    # Normal pipeline mode requires --workflow and --context-file.
-    if not args.workflow:
-        parser.error("--workflow is required")
-    if not args.context_file:
-        parser.error("--context-file is required")
-
-    work_item_id = args.work_item_id
-    workflow_path = Path(args.workflow)
-    if not workflow_path.is_absolute():
-        workflow_path = REPO_ROOT / workflow_path
-
+    Never returns — always calls exit_with_actions() (sys.exit(0)) or sys.exit(1) on a
+    workflow-loading error, matching every pipeline script's previous behavior as a
+    standalone `main()`.
+    """
     try:
         workflow = parse_workflow(workflow_path)
     except (FileNotFoundError, ValueError) as e:
         print(f"Error loading workflow: {e}", file=sys.stderr)
         sys.exit(1)
-
-    context_path = Path(args.context_file)
-    log_dir = context_path.parent / "logs"
 
     merge_pending_deliverables(context_path, work_item_id)
 
@@ -1571,8 +717,7 @@ def main() -> None:
         ctx.project_configuration = json.dumps(_load_project_config(REPO_ROOT), indent=2)
         ctx.save(context_path)
 
-    DevTeamPipeline(ctx, context_path, log_dir, workflow).run()
-
-
-if __name__ == "__main__":
-    main()
+    step_handlers = step_handlers_factory(ctx, context_path)
+    DevTeamPipeline(
+        ctx, context_path, workflow, step_handlers, counter_updater, troubleshooter_checks,
+    ).run()

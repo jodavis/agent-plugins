@@ -27,8 +27,11 @@ Run the command via Bash, capturing combined stdout and stderr to the log file:
 ### 2 — Determine the result
 
 1. Read the last non-empty line of the log file.
-2. If that line is a valid JSON object (starts with `{` and ends with `}`), use it verbatim as
-   `<result>` — regardless of exit code. This lets scripts communicate structured status.
+2. If that line is valid JSON — an object (`{...}`), array (`[...]`), or a bare scalar (a quoted
+   string like `"no_change"`, a number, `true`/`false`/`null`) — use it verbatim as `<result>` —
+   regardless of exit code. This lets scripts communicate structured status, including scripts
+   (e.g. `monitor_prs.py`'s poll steps) whose expected outcome is a bare JSON string rather than
+   an object.
 3. Otherwise: use `Succeeded` if the exit code is 0, or a short failure description (including
    the exit code) if non-zero.
 
