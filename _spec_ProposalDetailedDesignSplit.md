@@ -570,7 +570,7 @@ invoking the changed skill(s) (via the `Skill` tool) or command against ADR-380 
 described behavior actually happens, before moving to the next task. This is a manual operation,
 consistent with this feature having no automated test harness (see Component Breakdown).
 
-### Task 1: [[HUMAN] Provide the ADR-380 Proposal source](https://jodasoft.atlassian.net/browse/ADR-386)
+### [ADR-386: (HUMAN) Provide the ADR-380 Proposal source](https://jodasoft.atlassian.net/browse/ADR-386) 🧑
 
 **Depends on:** — none —
 
@@ -582,10 +582,25 @@ approved Proposal; it needs to be real enough (a real problem, a real proposed a
 - [ ] A Proposal-shaped source for ADR-380 exists at a location the agent can read (a file path,
       a Jira description, or a pasted-notes location is all fine)
 
-### Task 2: [Author `proposal-first-draft` and `detailed-design-first-draft` together](https://jodasoft.atlassian.net/browse/ADR-387)
+### [ADR-390: Author `document-concision-pass` (new skill)](https://jodasoft.atlassian.net/browse/ADR-390) 🤖
 
-**Depends on:** Task 1, Task 5 — both skills' final step calls `document-concision-pass`, so the
-validate step below can't actually run end-to-end until Task 5 exists
+**Depends on:** — none —
+
+New, standalone, document-type-agnostic skill: given a file path, re-read it section by section
+and tighten it — cut restated context, redundant hedging, and multi-sentence explanations that
+could be one sentence — without dropping any decision, requirement, or scenario.
+
+- [ ] `skills/document-concision-pass/SKILL.md` exists, takes a file path argument
+- [ ] Makes no assumption about which template produced the file
+- [ ] **Validate:** run it against a deliberately verbose sample section (e.g. one of this spec's
+      own decisions) and confirm it tightens the prose without dropping any decision or fact
+
+### [ADR-387: Author `proposal-first-draft` and `detailed-design-first-draft` together](https://jodasoft.atlassian.net/browse/ADR-387) 🤖
+
+**Depends on:** ADR-386, ADR-390
+
+Both skills' final step calls `document-concision-pass`, so the validate step below can't
+actually run end-to-end until ADR-390 (Task 5) exists.
 
 `git mv skills/design-first-draft/ skills/proposal-first-draft/` (its `assets/proposal_template.md`
 moves with it, already authored) and rewrite `SKILL.md`; author new
@@ -622,9 +637,9 @@ an existing document" step; ends with a `document-concision-pass` call.
       `detailed-design-first-draft` against that Proposal and confirm it produces a real Detailed
       Design doc, including its `## Success Metrics` section
 
-### Task 3: [Author `researcher-proposal-review` and `researcher-detailed-design-review` together](https://jodasoft.atlassian.net/browse/ADR-388)
+### [ADR-388: Author `researcher-proposal-review` and `researcher-detailed-design-review` together](https://jodasoft.atlassian.net/browse/ADR-388) 🤖
 
-**Depends on:** Task 2
+**Depends on:** ADR-387
 
 `git mv skills/researcher-design-review/ skills/researcher-proposal-review/` and trim its scope to
 problem/solution-fit concerns only (falsifiable problem, solution plausibly resolves it, non-goals
@@ -646,10 +661,12 @@ Reviewed together to confirm the split leaves no gap and no overlap between the 
       `researcher-detailed-design-review` against its Detailed Design; confirm each returns
       findings scoped only to its own concerns
 
-### Task 4: [Rename & generalize `design-work-items` into `source-work-item-sync`](https://jodasoft.atlassian.net/browse/ADR-389)
+### [ADR-389: Rename & generalize `design-work-items` into `source-work-item-sync`](https://jodasoft.atlassian.net/browse/ADR-389) 🤖
 
-**Depends on:** Task 1, Task 2 — validating requires a finalized doc to summarize, and Task 1
-only provides raw interview input, not a finalized Proposal
+**Depends on:** ADR-386, ADR-387
+
+Validating requires a finalized doc to summarize, and ADR-386 (Task 1) only provides raw
+interview input, not a finalized Proposal.
 
 `git mv skills/design-work-items/ skills/source-work-item-sync/`; generalize so it can be called
 from the end of both `write-proposal` and `write-detailed-design`, each time replacing/updating
@@ -662,22 +679,9 @@ Existing `replace-description-when`/`update-description-when` config semantics a
 - [ ] **Validate:** run `source-work-item-sync` against the ADR-380 source item and confirm its
       description updates with a summary of the finalized doc(s) so far
 
-### Task 5: [Author `document-concision-pass` (new skill)](https://jodasoft.atlassian.net/browse/ADR-390)
+### [ADR-391: Update `design-deliverable-breakdown`'s stale references](https://jodasoft.atlassian.net/browse/ADR-391) 🤖
 
-**Depends on:** — none —
-
-New, standalone, document-type-agnostic skill: given a file path, re-read it section by section
-and tighten it — cut restated context, redundant hedging, and multi-sentence explanations that
-could be one sentence — without dropping any decision, requirement, or scenario.
-
-- [ ] `skills/document-concision-pass/SKILL.md` exists, takes a file path argument
-- [ ] Makes no assumption about which template produced the file
-- [ ] **Validate:** run it against a deliberately verbose sample section (e.g. one of this spec's
-      own decisions) and confirm it tightens the prose without dropping any decision or fact
-
-### Task 6: [Update `design-deliverable-breakdown`'s stale references](https://jodasoft.atlassian.net/browse/ADR-391)
-
-**Depends on:** Task 2
+**Depends on:** ADR-387
 
 Update the description (it now runs against the Detailed Design doc, not the old single design
 doc) and fix stale references: step 1's "placeholder left by `design-first-draft`" →
@@ -689,9 +693,9 @@ doc) and fix stale references: step 1's "placeholder left by `design-first-draft
 - [ ] **Validate:** run it against Task 2's ADR-380 Detailed Design doc and confirm it drafts
       `## Deliverables` without hitting a stale reference
 
-### Task 7: [Author `write-proposal` and `write-detailed-design` together](https://jodasoft.atlassian.net/browse/ADR-392)
+### [ADR-392: Author `write-proposal` and `write-detailed-design` together](https://jodasoft.atlassian.net/browse/ADR-392) 🤖
 
-**Depends on:** Task 2, Task 3, Task 4, Task 5, Task 6
+**Depends on:** ADR-387, ADR-388, ADR-389, ADR-390, ADR-391
 
 `git mv commands/write-design-spec.md commands/write-proposal.md` and rewrite it; author new
 `commands/write-detailed-design.md`. Reviewed together since they're a handoff pair and need to
@@ -724,9 +728,9 @@ stop with no proposal found, pointing to `/write-proposal`). Then: re-entrancy c
 - [ ] **Validate:** run `/write-proposal` on ADR-380 end-to-end through the chain-offer, choose
       "continue now," and confirm `/write-detailed-design` picks up with no re-resolution
 
-### Task 8: [Update `dev-spec-first-draft` and `write-dev-spec` together](https://jodasoft.atlassian.net/browse/ADR-393)
+### [ADR-393: Update `dev-spec-first-draft` and `write-dev-spec` together](https://jodasoft.atlassian.net/browse/ADR-393) 🤖
 
-**Depends on:** Task 5
+**Depends on:** ADR-390
 
 Reviewed together to make sure `write-dev-spec`'s updates are comprehensive alongside
 `dev-spec-first-draft`'s.
@@ -753,7 +757,7 @@ other two commands.
       one exists yet, otherwise any throwaway existing spec) and confirm the re-entrancy check and
       final concision pass both actually fire
 
-### Task 9: [Remove `add-to-spec`](https://jodasoft.atlassian.net/browse/ADR-394)
+### [ADR-394: Remove `add-to-spec`](https://jodasoft.atlassian.net/browse/ADR-394) 🤖
 
 **Depends on:** — none —
 
@@ -763,14 +767,15 @@ Key Design Decisions).
 - [ ] `commands/add-to-spec.md` no longer exists
 - [ ] **Validate:** confirm `/add-to-spec` is no longer a recognized command
 
-### Task 10: [Fix remaining stale cross-references](https://jodasoft.atlassian.net/browse/ADR-395)
+### [ADR-395: Fix remaining stale cross-references](https://jodasoft.atlassian.net/browse/ADR-395) 🤖
 
-**Depends on:** Task 2, Task 3, Task 4, Task 7, Task 9 — the four renames this task confirms
-(`design-first-draft`, `researcher-design-review`, `design-work-items`, `write-design-spec`) each
-happen in a different task, so this task can't meaningfully validate a rename that hasn't landed
-yet. Task 9 is included too: `commands/add-to-spec.md` still contains three of the four stale
-names until Task 9 deletes it, and this task's repo-wide grep would otherwise fail on a file it
-was never scoped to touch
+**Depends on:** ADR-387, ADR-388, ADR-389, ADR-392, ADR-394
+
+The four renames this task confirms (`design-first-draft`, `researcher-design-review`,
+`design-work-items`, `write-design-spec`) each happen in a different task, so this task can't
+meaningfully validate a rename that hasn't landed yet. ADR-394 (Task 9) is included too:
+`commands/add-to-spec.md` still contains three of the four stale names until ADR-394 deletes it,
+and this task's repo-wide grep would otherwise fail on a file it was never scoped to touch.
 
 Sweep: `write-repo-documentation/SKILL.md`'s and `get-project-configuration/SKILL.md`'s
 `documentation.specs` descriptions (`design-first-draft` → `detailed-design-first-draft`);
@@ -794,9 +799,9 @@ needs its own row if the table doesn't already have a generic "researcher skills
 - [ ] **Validate:** grep the repo for those four names and confirm zero hits outside historical/
       lineage references (e.g. this spec's own "renamed from" notes)
 
-### Task 11: [Dry-run validation of the full chain](https://jodasoft.atlassian.net/browse/ADR-396)
+### [ADR-396: Dry-run validation of the full chain](https://jodasoft.atlassian.net/browse/ADR-396) 🤖
 
-**Depends on:** Task 1, Task 7, Task 8, Task 9, Task 10
+**Depends on:** ADR-386, ADR-392, ADR-393, ADR-394, ADR-395
 
 Run `/write-proposal` → `/write-detailed-design` → `/write-dev-spec` end-to-end against ADR-380
 (per the Component Breakdown's verification note — this feature has no automated test harness).
@@ -807,9 +812,9 @@ Fix whatever the dry run surfaces.
 - [ ] Re-running `/write-proposal` (or `/write-detailed-design`) against the now-drafted ADR-380
       documents correctly enters revise mode, confirming `add-to-spec`'s removal left no gap
 
-### Task 12: [Author design documentation](https://jodasoft.atlassian.net/browse/ADR-397)
+### [ADR-397: Author design documentation](https://jodasoft.atlassian.net/browse/ADR-397) 🤖
 
-**Depends on:** Task 11
+**Depends on:** ADR-396
 
 The unconditional final task every `dev-spec-task-breakdown` run appends once implementation
 completes (see this spec's own header and `dev-spec-first-draft`'s `> **Architecture doc:**`
