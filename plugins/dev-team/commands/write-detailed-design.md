@@ -1,7 +1,7 @@
 ---
 description: >
   Use when elaborating an approved Proposal into a complete Detailed Design document for a feature.
-  Guides through proposal resolution, context gathering, first draft, iterative refinement, deliverable breakdown, critical readiness review, and work item creation.
+  Guides through proposal resolution, context gathering, first draft, iterative refinement, deliverable breakdown, and critical readiness review.
 argument-hint: <work-item-id | proposal-file-path>
 ---
 
@@ -12,8 +12,8 @@ Use this skill when:
 You are writing a complete new Detailed Design doc, working with the user to refine it, breaking
 it down into deliverables, and verifying it is complete. This document elaborates an
 already-approved Proposal (problem + approach) into full observable behavior — not an
-implementation plan. Once each deliverable has a feature-work-item, `write-dev-spec` picks it up
-to plan the "how."
+implementation plan. Once each deliverable is recorded as a tracked work item, `write-dev-spec`
+picks it up to plan the "how."
 
 ## Steps
 
@@ -85,5 +85,5 @@ everything the discussion and breakdown rounds added since its own first-draft-t
 
 ### 10 — Hand off
 
-Tell the user: each deliverable now has a feature-work-item. Run `/write-dev-spec
+Tell the user: record each deliverable as a tracked work item, then run `/write-dev-spec
 <deliverable-id>` on any of them to produce its implementation spec.
