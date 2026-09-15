@@ -23,13 +23,16 @@ implementation.
 
 If revising, the calling command has already found the existing Proposal and passed its path —
 read it in full now, and treat the new brief as the reason for revision rather than a
-from-scratch rewrite.
+from-scratch rewrite. Its `> **Source:**` header line and `## Alternatives Considered` section
+already record the prior pass's research — reuse that instead of researching from scratch, and
+only spawn new research for gaps the new brief actually raises.
 
 Use the `find-repo-documentation` skill to read any existing architecture docs relevant to the
 feature area, so the proposal doesn't propose something the system already does.
 
 Spawn one or more `dev-team:researcher` agents to research the *problem space*, not implementation
-patterns. Ask each agent to look into:
+patterns — skip this if revising and the existing Proposal's research already covers the new
+brief's scope. Ask each agent to look into:
 
 - Similar problems and how they were solved elsewhere (prior art, case studies)
 - Existing 3rd-party or internal solutions that already address this problem, in whole or in part

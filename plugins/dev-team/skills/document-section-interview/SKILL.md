@@ -9,8 +9,7 @@ argument-hint: <template-path> [existing-document-path]
 ---
 
 Use this skill when:
-- A first-draft skill needs to gather section content for a document from the user, following a template's section order
-- The document being drafted is a revision of an existing one, not a from-scratch document
+- A first-draft skill needs to gather a document's section content from the user, following a template's section order — whether drafting a new document or revising an existing one with new information
 
 Takes the path to the section template and, if revising, the path (or already-read content) of
 the existing document. Returns nothing itself — the calling skill uses the resolved answers to
@@ -20,9 +19,9 @@ write or update the actual document file afterward.
 
 ### 1 — Interview section by section
 
-Follow the template's section order. If revising, ask what actually changes in each section — a
-revision may touch several existing sections, not just append one bounded new part — rather than
-re-interviewing sections that aren't affected. For each section:
+Follow the template's section order. If revising, ask what actually changes in each section rather
+than re-interviewing sections that aren't affected — a revision may touch several existing
+sections, not just one bounded new part. For each section:
 
 - Open with the section's own opening question from the template.
 - Follow up in plain conversation — not constrained to `AskUserQuestion`'s multiple-choice shape
