@@ -30,12 +30,11 @@ it as a whole would be unwieldy). Working in document order, for each section:
 
 **a.** Re-read just that section's text.
 
-**Leave callout blocks untouched.** A `> [!NOTE]` / `> **Method:**` callout (defined by
-`playbook-contract`) records methodology rationale in flight for later harvesting, and a
-`> **Review:**` callout marks an open review comment — both are structurally distinct from
-ordinary prose and depend on their exact marker syntax for later grep-based/agent recognition.
-Skip both entirely in steps b–c: never reword, merge, or otherwise tighten a `> [!NOTE]` /
-`> **Method:**` or `> **Review:**` blockquote block.
+**Leave callout blocks untouched.** A blockquote line matching `> **<Tag>:**` — a single word
+before the colon, e.g. `> **Review:**` or `> **Method:**` (optionally preceded by a `> [!NOTE]` or
+similar alert line) — is a callout block: structurally distinct from ordinary prose, and other
+tooling depends on its exact marker syntax for later grep-based/agent recognition. Skip any such
+block entirely in steps b–c: never reword, merge, or otherwise tighten it.
 
 **b.** Look for concision opportunities within it:
 - Restated context the reader already has from an earlier section or from the section's own
