@@ -23,7 +23,9 @@ skill's job once a deliverable moves into implementation.
 
 If revising, the calling command has already found the existing Detailed Design and passed its
 path — read it in full now, and treat the new brief as the reason for revision rather than a
-from-scratch rewrite.
+from-scratch rewrite. Its existing content already reflects the architecture docs and prior-art
+research consulted during the prior pass — reuse that instead of re-discovering it from scratch,
+and only look further for gaps the new brief actually raises.
 
 Read the approved Proposal in full — its path is passed in by the caller (`write-detailed-design`
 resolves it before invoking this skill, and hard-stops if no Proposal is found — see that
@@ -31,11 +33,14 @@ command). The Proposal already answers the problem/approach/success-metrics ques
 level — do not re-ask those; use it as the narrative anchor for this document.
 
 Use the `find-repo-documentation` skill to read any existing architecture docs relevant to the
-feature area, so the detailed design doesn't propose something the system already does.
+feature area, so the detailed design doesn't propose something the system already does — skip
+this if revising and the existing Detailed Design's content already reflects the current
+architecture.
 
 Spawn one or more `dev-team:researcher` agents to research any prior art, existing solutions, or
 external resources that would usefully inform the detailed behavior — the same kind of research
-the Proposal already drew on, refreshed now that more detail is being decided.
+the Proposal already drew on, refreshed now that more detail is being decided — skip this if
+revising and the existing Detailed Design's research already covers the new brief's scope.
 
 ### 2 — Interview the user section by section
 
