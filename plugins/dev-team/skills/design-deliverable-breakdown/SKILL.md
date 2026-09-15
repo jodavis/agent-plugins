@@ -2,13 +2,13 @@
 name: design-deliverable-breakdown
 user-invocable: false
 description: >
-  Use when breaking down a design doc into deliverables.
-  Sizes deliverables to be independently cuttable and drafts the design's Deliverables section for user approval.
+  Use when breaking down a Detailed Design doc into deliverables.
+  Sizes deliverables to be independently cuttable and drafts the Detailed Design doc's Deliverables section for user approval.
 argument-hint: <path to _design_*.md file>
 ---
 
 Use this skill when:
-- You are breaking down a design doc into deliverables
+- You are breaking down a Detailed Design doc into deliverables
 - You need to draft a deliverable breakdown for user approval before tracked work items are created
 
 ## Sizing rule: independently cuttable
@@ -36,8 +36,8 @@ later becomes its own `write-dev-spec` pass.
 
 ### 1 — Draft the deliverable breakdown
 
-Add a `## Deliverables` section to the design doc (the placeholder left by `design-first-draft`).
-For each deliverable write:
+Add a `## Deliverables` section to the Detailed Design doc (the placeholder left by
+`detailed-design-first-draft`). For each deliverable write:
 
 - A short title
 - A one-paragraph description of the independent value it delivers on its own
@@ -45,7 +45,7 @@ For each deliverable write:
 
 ### 2 — Pause for approval
 
-Save the updated design doc and tell the user:
+Save the updated Detailed Design doc and tell the user:
 
 > Deliverable breakdown written to `<path>`. Please review — edit any deliverable or add `> **Review:** your comment`. Tell me when you're ready to continue.
 
