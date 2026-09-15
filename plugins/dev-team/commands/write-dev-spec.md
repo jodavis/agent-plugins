@@ -32,7 +32,7 @@ If `gather-brief-sources` could not resolve any sources at all, tell the user an
 ### 1.5 — Bootstrap the spec branch
 
 Skip this step if step 1 resolved no `work-item-id` at all — the user just keeps drafting on
-whatever branch they're already on, and this runs later instead, from step 6, once a
+whatever branch they're already on, and this runs later instead, from step 7, once a
 feature-work-item exists.
 
 Otherwise, establish the feature's own spec branch: a plain git branch, named like a task branch,
@@ -73,11 +73,11 @@ command.
       ask them to confirm it as the spec branch's base — e.g. "About to create the spec branch for
       `<work-item-id>` off of `<current-branch>` — is that correct, or should I use a different
       branch?" Call the confirmed answer `<base-branch>`.
-   2. If this session has already written the spec draft (step 2 has already run — the case when
-      this step is running for the first time from step 6, after work items were created), read
+   2. If this session has already written the spec draft (step 3 has already run — the case when
+      this step is running for the first time from step 7, after work items were created), read
       its first `# ` heading and derive a short kebab-case slug from it, matching
       `documentation.dev-specs.name-format`'s own `<slug>` placeholder. Otherwise — the common
-      case, since this step usually runs before step 2 drafts anything — omit the slug.
+      case, since this step usually runs before step 3 drafts anything — omit the slug.
    3. Build `<spec-branch>` from `git-repo.working-branches.task`'s template (sub-step 2 above),
       substituting `<slug>` (if present in the template) with the computed slug, or omitting it
       (and its leading `-`) entirely if none is available. Once created, this name is permanent —
@@ -88,31 +88,40 @@ command.
       git push origin <spec-branch>
       ```
 
-### 2 — Write the first draft
+### 2 — Check for an existing dev spec
+
+Substitute the resolved `work-item-id` (if any) into `documentation.dev-specs.search` (from
+`get-project-configuration`) and run the search. If a matching dev spec is found, read it in
+full — the new brief is the reason for revision, not a from-scratch rewrite. Record its path;
+step 3 invokes `dev-spec-first-draft` in revise mode instead of first-draft mode when this
+happens.
+
+### 3 — Write the first draft
 
 Use the `dev-spec-first-draft` skill with the feature brief (and design doc, if found) to gather
-context from docs, source code, and the user, and write the draft spec file.
+context from docs, source code, and the user, and write the draft spec file. If step 2 found an
+existing dev spec, invoke it in revise mode instead, passing the existing spec's path.
 
 **PAUSE — wait for the user to review the draft.**
 
-### 3 — Refine the spec
+### 4 — Refine the spec
 
 Use the `document-discussion` skill to resolve `> **Review:**` comments with the user.
 
 Repeat until the user says the document is ready.
 
-### 4 — Task breakdown
+### 5 — Task breakdown
 
 Use the `dev-spec-task-breakdown` skill to draft the spec's task breakdown and pause for user
 approval.
 
-### 5 — Readiness review
+### 6 — Readiness review
 
 Use the `document-readiness-review` skill on the spec file with `researcher-dev-spec-review` to
 verify the full spec — design content and task breakdown together — is implementation-ready and
 complete.
 
-### 6 — Create tracked work items
+### 7 — Create tracked work items
 
 Use the `dev-spec-create-work-items` skill to create tracked work items for the approved tasks
 (and any related features), link task dependencies in the tracker, and update the spec with the
@@ -127,7 +136,7 @@ sub-steps 1–5 now, using that feature-work-item's id as `<work-item-id>`. If s
 earlier this session, reuse its already-confirmed `<spec-branch>`/`<base-branch>` directly — do
 not re-confirm.
 
-Then commit and PR the spec directly onto `<spec-branch>`, using `<spec-path>` — the file step 2
+Then commit and PR the spec directly onto `<spec-branch>`, using `<spec-path>` — the file step 3
 wrote and every step since has been editing — with no need to look it up again:
 
 1. Check whether it's already committed on `<spec-branch>`'s own tree:
@@ -166,6 +175,11 @@ wrote and every step since has been editing — with no need to look it up again
 This guarantees the spec is committed and PR'd by the end of this command even if the user never
 staged or committed it themselves while drafting.
 
-### 7 — Update work items
+### 8 — Update work items
 
 Use the `dev-spec-task-work-items` skill to update project work items with summaries of the finalized design decisions.
+
+### 9 — Final concision pass
+
+Use the `document-concision-pass` skill on the spec file to tighten it, for symmetry with
+`write-proposal`/`write-detailed-design`.
