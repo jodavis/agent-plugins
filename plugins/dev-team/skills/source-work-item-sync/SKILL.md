@@ -8,10 +8,6 @@ description: >
 argument-hint: <work-item-id (optional)> <finalized-doc-path>...
 ---
 
-**Extension point skill** — configure this via `get-project-configuration`'s `work-tracking`
-section (preferred). Full-file override remains available as an escape hatch: place a `SKILL.md`
-in `.claude/skills/source-work-item-sync/` to replace this skill's process entirely.
-
 Use this skill when:
 - A Proposal or Detailed Design document, or a new part of one, is finalized
 - The originating tracked source (if any) should reflect the decisions in the finalized
