@@ -55,8 +55,8 @@ From the perspective of a critical, objective reviewer:
 Run this check only when the design doc has a `## Deliverables` section (i.e. after
 `design-deliverable-breakdown` has run). For each deliverable, confirm:
 
-- It provides value entirely on its own, without depending on another deliverable shipping first.
-- It cannot be meaningfully done "partway" — there's no sensible partial version.
+- It provides value entirely on its own, without another deliverable shipping after it.
+- It cannot be meaningfully done "partway" — there's no value provided without the full implementation.
 
 Raise one blocking question per deliverable that fails either check, naming the specific
 dependency or partial-value problem.
