@@ -1,5 +1,5 @@
 ---
-name: researcher-design-review
+name: researcher-proposal-review
 user-invocable: false
 description: >
   Use when verifying a design doc actually solves the problem it describes.
@@ -9,7 +9,7 @@ argument-hint: <path to _design_*.md file>
 
 Use this skill when:
 - You need to verify a design doc is complete and actually solves the stated problem
-- You are reviewing a design doc, or its deliverable breakdown, for blocking gaps
+- You are reviewing a design doc for blocking gaps
 
 This is an objective, critical review of problem/solution fit — not an implementation-readiness
 review. Do not ask about interfaces, classes, or code-level concerns; that is
@@ -39,23 +39,10 @@ stated problem?
 
 - Is the problem concrete and falsifiable (not just an assertion)?
 - Does the proposed solution plausibly resolve the stated problem, not just something adjacent to it?
-- Are the success criteria observable — could you tell, after shipping, whether the problem was solved?
 - Are non-goals explicit, or could scope quietly creep?
-- Is every behavior scenario concrete enough to evaluate without guessing at what "done" looks like?
 - Were reasonable alternatives (including existing solutions) genuinely considered, with real reasons for rejecting them?
 
-### 5 — Deliverable independence check
-
-Run this check only when the design doc has a `## Deliverables` section (i.e. after
-`design-deliverable-breakdown` has run). For each deliverable, confirm:
-
-- It provides value entirely on its own, without depending on another deliverable shipping first.
-- It cannot be meaningfully done "partway" — there's no sensible partial version.
-
-Raise one blocking question per deliverable that fails either check, naming the specific
-dependency or partial-value problem.
-
-### 6 — Return results
+### 5 — Return results
 
 **If no blocking gaps exist**, return:
 
