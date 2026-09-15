@@ -7,13 +7,13 @@ argument-hint: <work-item-id | proposal-file-path>
 
 Use this skill when:
 - A Proposal has been approved and you need to elaborate it into full observable system behavior
-- You need to produce a complete _design_*.md Detailed Design document, broken into independently cuttable deliverables
+- You need to produce a complete Detailed Design document, broken into independently cuttable deliverables
 
-You are writing a complete new Detailed Design doc, working with the user to refine it, breaking
-it down into deliverables, and verifying it is complete. This document elaborates an
-already-approved Proposal (problem + approach) into full observable behavior — not an
-implementation plan. Once each deliverable is recorded as a tracked work item, `write-dev-spec`
-picks it up to plan the "how."
+You are writing a complete Detailed Design doc — drafting a new one, or revising an existing one
+if step 2 finds one — working with the user to refine it, breaking it down into deliverables, and
+verifying it is complete. This document elaborates an already-approved Proposal (problem +
+approach) into full observable behavior — not an implementation plan. Once each deliverable is
+recorded as a tracked work item, `write-dev-spec` picks it up to plan the "how."
 
 ## Steps
 

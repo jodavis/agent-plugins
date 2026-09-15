@@ -10,10 +10,11 @@ Use this skill when:
 - A user asks to propose a feature, answering "what is the problem? what is the proposed approach? why should we do this?"
 - You need to produce a complete Proposal document, ahead of a Detailed Design
 
-You are writing a complete new Proposal document, working with the user to refine it and
-verifying it actually justifies the work. This is a short problem/approach/justification
-document — read by someone deciding whether to fund the work — not the full behavior spec (that's
-`write-detailed-design`'s job) or an implementation plan (`write-dev-spec`'s job).
+You are writing a complete Proposal document — drafting a new one, or revising an existing one if
+step 3 finds one — working with the user to refine it and verifying it actually justifies the
+work. This is a short problem/approach/justification document — read by someone deciding whether
+to fund the work — not the full behavior spec (that's `write-detailed-design`'s job) or an
+implementation plan (`write-dev-spec`'s job).
 
 ## Steps
 
