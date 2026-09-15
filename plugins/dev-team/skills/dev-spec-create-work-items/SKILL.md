@@ -44,8 +44,11 @@ create issues:
 ### 3 — Update the spec
 
 Replace each task title in `## Tasks` with a hyperlink to its tracked work item, if one was
-created. Keep all descriptions and exit criteria in place. The section remains in the spec
-permanently — future agents may not have tracker access.
+created — preserving the trailing 🧑/🤖 marker already on that heading (from
+`dev-spec-task-breakdown` step 1, or a human edit made during that skill's step 2 pause)
+immediately after the new hyperlink, never dropped or reintroduced from scratch. Keep all
+descriptions and exit criteria in place. The section remains in the spec permanently — future
+agents may not have tracker access.
 
 At the same time, rewrite every task's `**Depends on:**` line: replace each local task-number
 reference (e.g. `Task 3`) with the real task-work-item key assigned to that task. Leave
@@ -53,7 +56,9 @@ reference (e.g. `Task 3`) with the real task-work-item key assigned to that task
 
 Once every task's title and `Depends on:` line has been rewritten, validate the whole `## Tasks`
 section by invoking `parse_task_dependencies` on the updated spec text — this is the first point
-the dependency graph is guaranteed complete.
+the dependency graph is guaranteed complete. This same invocation also validates every heading's
+trailing 🧑/🤖 marker (`validate_task_headings`, run automatically before the graph is parsed),
+so a marker dropped or malformed during the rewrite above is caught right here too.
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an
@@ -68,9 +73,10 @@ python3 "<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py" "<pat
 ```
 
 If it exits non-zero, it printed a clear `Error: ...` message to stderr naming the offending task
-and reference (a dangling reference or a dependency cycle). Surface that error to the user and
-fix the offending `Depends on:` line(s) before the spec is considered done — never leave a
-dangling reference or cycle in the spec.
+and reference (a dangling reference, a dependency cycle, or a heading missing/malformed on its
+trailing 🧑/🤖 marker). Surface that error to the user and fix the offending line before the spec
+is considered done — never leave a dangling reference, cycle, or missing/malformed marker in the
+spec.
 
 Once validation passes, for each task with one or more `Depends on:` entries, record the same
 relationship in the tracker: use the matching adapter skill (per `get-project-configuration`'s

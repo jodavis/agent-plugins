@@ -44,6 +44,7 @@ class TestPipelineContextDefaults:
         assert ctx.review_cycle_count == 0
         assert ctx.troubleshooter_input == ""
         assert ctx.pending_agent == ""
+        assert ctx.added_to_stack is False
         assert ctx.hook_phase == ""
         assert ctx.pending_trigger == ""
         assert ctx.project_configuration == ""
@@ -76,6 +77,7 @@ class TestPipelineContextSaveLoadRoundTrip:
             review_cycle_count=4,
             troubleshooter_input="some input",
             pending_agent="researcher",
+            added_to_stack=True,
             hook_phase="before",
             pending_trigger="impl_done",
         )
@@ -99,6 +101,7 @@ class TestPipelineContextSaveLoadRoundTrip:
         assert loaded.review_cycle_count == 4
         assert loaded.troubleshooter_input == "some input"
         assert loaded.pending_agent == "researcher"
+        assert loaded.added_to_stack is True
         assert loaded.hook_phase == "before"
         assert loaded.pending_trigger == "impl_done"
 
@@ -193,6 +196,44 @@ class TestPipelineContextSaveWritesHeading:
         # Assert
         text = path.read_text(encoding="utf-8")
         assert "# ADR-TEST Dev Team Context" in text
+
+
+# ---------------------------------------------------------------------------
+# added_to_stack — a proper named field (ADR-375), not routed through
+# extra_frontmatter, with a default-false round trip
+# ---------------------------------------------------------------------------
+
+class TestPipelineContextAddedToStack:
+    def make_sut(self, **kwargs):
+        from pipeline_context import PipelineContext
+        return PipelineContext(work_item_id="ADR-TEST", **kwargs)
+
+    def test_save_then_load_roundtrips_default_false_added_to_stack(self, tmp_path):
+        # Arrange
+        from pipeline_context import PipelineContext
+        ctx = self.make_sut()
+        path = tmp_path / "ctx.md"
+
+        # Act
+        ctx.save(path)
+        loaded = PipelineContext.load(path)
+
+        # Assert
+        assert loaded.added_to_stack is False
+
+    def test_added_to_stack_true_survives_save_load_roundtrip_and_is_not_in_extra_frontmatter(self, tmp_path):
+        # Arrange
+        from pipeline_context import PipelineContext
+        ctx = self.make_sut(added_to_stack=True)
+        path = tmp_path / "ctx.md"
+
+        # Act
+        ctx.save(path)
+        loaded = PipelineContext.load(path)
+
+        # Assert
+        assert loaded.added_to_stack is True
+        assert "added_to_stack" not in loaded.extra_frontmatter
 
 
 # ---------------------------------------------------------------------------

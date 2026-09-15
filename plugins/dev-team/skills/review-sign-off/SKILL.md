@@ -78,10 +78,14 @@ different review event, and do not stop to ask whether you should post it.
 
 ### 9 — Output
 
-Write a concise summary:
+Compose a concise summary:
 - For each prior thread: whether it was resolved or still needs work
 - Any new issues found in the modified files
 
-Then output the following JSON object as the very last line of your response. Write it as a bare JSON object — do not wrap it in a code block or add any text after it:
+Then compose the following JSON object as the very last line, as a bare JSON object with no code
+block or trailing text:
 
 {"status": "approved|changes_requested", "pr_url": "https://github.com/..."}
+
+Use the `write-scratch-deliverable` skill to write the summary and JSON object together in place
+of returning them as chat text.

@@ -1,6 +1,6 @@
 ---
-description: Manually start the post-hand-off PR monitor for a task whose PR is already open, when it was not auto-started.
-argument-hint: <task key, e.g. ADR-123>
+description: Manually start a lightweight monitor for one or more explicit PRs that aren't part of (or aren't known to be part of) a gh stack — no gh stack involvement.
+argument-hint: <PR#> [PR#...]
 ---
 
 ## Request
@@ -9,29 +9,25 @@ $ARGUMENTS
 
 ## Steps
 
-### 1 — Determine work item ID
+### 1 — Determine PR numbers
 
-Extract the `[A-Z]+-\d+` task key from the arguments. If no match is found, tell the user:
+Extract one or more PR numbers from the arguments (bare integers, or `#123`/PR URLs — strip to
+the bare number either way). If none are found, tell the user:
 
-> Please provide a task key (e.g. ADR-123).
-
-Then stop.
-
-### 2 — Spawn the monitor
-
-This command's only job is spawning `dev-team:monitor-pr` in its own fresh, isolated worktree — the
-manual fallback for when `concurrent-orchestrate`'s auto-start never happened (e.g. its own
-session was interrupted before reaching hand-off for this task). A bare skill invocation from
-this session would get no isolation at all, so the spawn itself is what gives the monitor the
-same isolation guarantee the auto-started path has.
-
-```
-Agent(
-  subagent_type: "claude",
-  isolation: "worktree",
-  prompt: "Invoke the `monitor-pr` skill with arguments:
---work-item-id <work-item-id>"
-)
-```
+> Please provide one or more PR numbers (e.g. `/watch-pr 123` or `/watch-pr 123 124`).
 
 Then stop.
+
+### 2 — Invoke the monitor directly, in this session
+
+Like `/watch-stack`, this command is always a direct, user-initiated action — there is no other
+pipeline running in this session for the monitor to collide with, and no `concurrent-orchestrate`
+auto-start equivalent for PR mode. Invoke the skill directly — no `Agent` spawn, no
+`isolation: "worktree"`:
+
+Invoke the `monitor-prs` skill with arguments:
+--pr-numbers <comma-separated PR numbers from step 1>
+
+This session now *is* the monitor for as long as it runs — that's expected; this command has no
+other orchestration duty to get back to. Use `/watch-stack` instead if these PRs are part of a
+`gh stack` you want rebase-conflict handling for.

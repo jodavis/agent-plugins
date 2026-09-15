@@ -6,10 +6,23 @@ eligible to start given its declared dependencies.
 
 Usage: task_readiness.py <task-work-item-id> [comma-separated dependency ids]
 
-`main()` is a thin CLI wrapper so a prose skill (`ensure-working-branch`, which has no other
-way to call a Python function directly) can invoke this via `Bash`: it prints
-`is_task_eligible`'s result as `{"status": ..., "base_branch": ...}` JSON to stdout on success,
-or a clear `Error: ...` message to stderr with a non-zero exit on failure.
+A task is eligible once every declared dependency has reached "done" — fully signed off *and*
+linked into the epic's `gh stack` via `add-to-pr-stack`. This is stricter than ADR-374's original
+"ready (PR created) or done" rule: since registration into the stack no longer happens eagerly at
+a task's own start (`ensure-working-branch` never touches `gh stack` at all — see
+`stack_registration.py`), an open PR no longer implies a dependency is actually in the stack, so
+"ready" alone is no longer sufficient — a dependent must wait for its dependencies to be fully
+`done` before `ensure-working-branch`'s own dependency-anchor logic can rely on their branches
+being complete and their PRs already linked. No dependency ever needs to actually *merge*, though
+— "done" stops well short of that.
+
+`main()` is a thin CLI wrapper so a prose skill can invoke this via `Bash`: it prints
+`is_task_eligible`'s result as `{"status": ..., "base_branch": null}` JSON to stdout on
+success, or a clear `Error: ...` message to stderr with a non-zero exit on failure. `base_branch`
+is kept as an unconditional `null` in this printed shape for backward compatibility with any
+external caller of this CLI form — `is_task_eligible` itself has never returned a `base_branch`
+since ADR-374; no current skill invokes this CLI form via `Bash` (callers use the Python API
+directly, e.g. `concurrent_schedule.py`).
 """
 
 import json
@@ -72,21 +85,23 @@ def task_snapshot(task_work_item_id: str) -> dict:
     return snapshot_from_status_and_context(status, ctx)
 
 
-def is_task_eligible(task_work_item_id: str, dependency_ids: list[str]) -> tuple[Literal["eligible", "waiting", "blocked"], str | None]:
+def is_task_eligible(task_work_item_id: str, dependency_ids: list[str]) -> Literal["eligible", "waiting", "blocked"]:
+    """A task is eligible once every declared dependency has reached "done" — fully signed off
+    and linked into the epic's `gh stack` via `add-to-pr-stack`. An open PR alone ("ready") is no
+    longer sufficient: unlike the old eager-registration design, a "ready" dependency isn't
+    necessarily in the stack yet, so `ensure-working-branch`'s dependency-anchor logic couldn't
+    safely base this task's branch on it. No dependency ever needs to actually *merge*, though —
+    "done" stops well short of that. "blocked" if any dependency reached the `failed` terminal
+    state, regardless of the others. "waiting" while any dependency is still short of "done" and
+    none have failed."""
     if not dependency_ids:
-        return ("eligible", None)
-    results = {dep_id: dependency_status_and_context(dep_id) for dep_id in dependency_ids}
-    statuses = {dep_id: status for dep_id, (status, _) in results.items()}
+        return "eligible"
+    statuses = {dep_id: dependency_status(dep_id) for dep_id in dependency_ids}
     if "failed" in statuses.values():
-        return ("blocked", None)
-    not_done = [dep_id for dep_id, status in statuses.items() if status != "done"]
-    if not not_done:
-        return ("eligible", None)
-    if len(not_done) == 1 and statuses[not_done[0]] == "ready":
-        _, ctx = results[not_done[0]]
-        branch = ctx.extra_frontmatter.get("working_branch")
-        return ("eligible", branch)
-    return ("waiting", None)
+        return "blocked"
+    if all(status == "done" for status in statuses.values()):
+        return "eligible"
+    return "waiting"
 
 
 def main() -> None:
@@ -102,12 +117,12 @@ def main() -> None:
     dependency_ids = [dep.strip() for dep in raw_dependencies.split(",") if dep.strip()]
 
     try:
-        status, base_branch = is_task_eligible(task_work_item_id, dependency_ids)
+        status = is_task_eligible(task_work_item_id, dependency_ids)
     except Exception as e:
         print(f"Error: could not compute task eligibility for '{task_work_item_id}': {e}", file=sys.stderr)
         sys.exit(1)
 
-    print(json.dumps({"status": status, "base_branch": base_branch}), flush=True)
+    print(json.dumps({"status": status, "base_branch": None}), flush=True)
 
 
 if __name__ == "__main__":

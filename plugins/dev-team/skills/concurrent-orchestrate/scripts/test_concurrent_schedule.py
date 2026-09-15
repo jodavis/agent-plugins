@@ -1,23 +1,33 @@
 """Tests for concurrent_schedule.py — compute_next_batch() computes the "up to" target's
-dependency closure (or takes an explicit list as-is, with no closure expansion), validates an
-explicit list's dependencies upfront, tracks each target task's cached status via the Task
-readiness checker, enforces a repo-wide concurrency cap across every
-`concurrent-<target-slug>.json` file, and never spawns anything itself.
+inclusive document-order task set (or takes an explicit list as-is, with no expansion),
+validates an explicit list's dependencies upfront, tracks each target task's cached status via
+the Task readiness checker, gates on a live "does the epic's spec branch exist yet?" check
+before computing any batch, and enforces a repo-wide concurrency cap across every
+`concurrent-<target-slug>.json` file — never spawning anything itself.
 
 Covers:
 - TargetSpec / target_slug: "up to" vs. explicit-list slug derivation
-- compute_next_batch: closure computation ("up to"), no expansion (explicit list), persistence
-  of the target's own data file
+- compute_next_batch: "up to" inclusive document-order task set (ADR-374 — a deliberate
+  behavior change from the old dependency-closure-only form), no expansion (explicit list),
+  persistence of the target's own data file
 - Explicit-list upfront validation: rejects a dependency neither in the list nor done; accepts
   one that is
 - compute_next_batch: "waiting" with newly eligible spawn, "complete" once all done, "blocked"
   once every spawned task is terminal but a not-yet-started task has a failed ancestor, and
   the not-yet-blocked case where an active (non-terminal) spawn still exists
+- compute_next_batch: raises RuntimeError when the epic's spec branch doesn't exist yet — gated
+  on a live `git branch -r` check, never on the target's own data-file presence, so a later call
+  once the branch exists proceeds normally and a different, already-existing target never hits
+  the error at all
 - Repo-wide concurrency cap: enforced across multiple target data files, not just its own
 - _max_parallel_tasks: default (3) and project-configured override
 - compute_next_batch: "running" includes a task_snapshot() entry for each non-terminal
   already-spawned task, and excludes one once it reaches a terminal state
-- main() CLI wrapper: one narrow integration test for the primary happy path
+- main() CLI wrapper: one narrow integration test for the primary happy path, exercising the
+  live spec-branch-existence check for real (via a minimal throwaway git repo) since it can't be
+  monkeypatched across a subprocess boundary
+- compute_next_batch: a task whose heading is marked 🧑 (human-required) is never spawned, and is
+  instead surfaced via the "human_tasks" field, while a plain 🤖 task is unaffected (Issue #219)
 """
 
 import json
@@ -29,12 +39,25 @@ import pytest
 
 SCRIPTS_DIR = Path(__file__).parent
 
+_DEFAULT_EPIC_ID = "ADR-369"
 
-def _write_spec(tmp_path: Path, edges: dict[str, list[str]]) -> Path:
-    """Write a fake `_spec_Test.md` file into `tmp_path` with one `### [KEY: Title](url) 🤖`
-    heading per key in `edges`, each followed by a `**Depends on:**` line built from its
-    dependency list (or `— none —`)."""
-    lines = []
+# Captured at module-import time, before the autouse `_env` fixture below monkeypatches
+# `concurrent_schedule._feature_branch_exists` for every test — so `TestFeatureBranchExists`
+# can exercise the real implementation directly instead of picking up its own stub.
+import concurrent_schedule as _concurrent_schedule_module
+
+_real_feature_branch_exists = _concurrent_schedule_module._feature_branch_exists
+
+
+def _write_spec(tmp_path: Path, edges: dict[str, list[str]], epic_id: str = _DEFAULT_EPIC_ID) -> Path:
+    """Write a fake `_spec_Test.md` file into `tmp_path`: a `> **Epic:** [<key>](url)` header
+    line (the only local, MCP-free source `_parse_epic_id` has to read from) followed by one
+    `### [KEY: Title](url) 🤖` heading per key in `edges`, each followed by a `**Depends on:**`
+    line built from its dependency list (or `— none —`)."""
+    lines = [
+        f"> **Epic:** [{epic_id}](https://example.atlassian.net/browse/{epic_id})",
+        "",
+    ]
     for key, deps in edges.items():
         lines.append(f"### [{key}: Title](https://example.atlassian.net/browse/{key}) 🤖")
         lines.append("")
@@ -48,11 +71,39 @@ def _write_spec(tmp_path: Path, edges: dict[str, list[str]]) -> Path:
     return spec_path
 
 
+def _stub_feature_branch_exists(monkeypatch, *, exists: bool) -> None:
+    """Stub `concurrent_schedule._feature_branch_exists` so tests don't depend on a real git
+    remote existing under `tmp_path` — mirroring how `_max_parallel_tasks` is monkeypatched
+    wholesale elsewhere in this file rather than stubbing the subprocess call underneath it.
+    Defaults to `exists=True` (spec branch already exists) via the autouse `_env` fixture below,
+    so every test not specifically exercising spec-branch-existence detection behaves as it did
+    before this check existed."""
+    import concurrent_schedule
+    monkeypatch.setattr(concurrent_schedule, "_feature_branch_exists", lambda epic_id, repo_root: exists)
+
+
+def _init_git_repo_with_remote_branch(tmp_path: Path, branch_name: str) -> None:
+    """Set up a minimal local git repo whose `git branch -r` output includes a remote-tracking
+    ref for `branch_name`, without needing a real remote. Used only by the CLI-level (subprocess)
+    test that exercises the live spec-branch-existence check for real, since
+    `_feature_branch_exists` can't be monkeypatched across a subprocess boundary — it also gives
+    `dev_team.py`'s own repo-root discovery a genuine `.git` to resolve to `tmp_path`."""
+    def _run(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(args, cwd=tmp_path, check=True, capture_output=True, text=True, timeout=15)
+
+    _run("git", "init", "-q")
+    _run("git", "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "--allow-empty", "-q", "-m", "init")
+    sha = _run("git", "rev-parse", "HEAD").stdout.strip()
+    _run("git", "update-ref", f"refs/remotes/origin/{branch_name}", sha)
+
+
 @pytest.fixture(autouse=True)
 def _env(tmp_path, monkeypatch):
-    """Common env seams every test needs: an isolated state dir and a fixed repo slug."""
+    """Common env seams every test needs: an isolated state dir, a fixed repo slug, and the
+    epic's spec branch already treated as existing by default."""
     monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
     monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+    _stub_feature_branch_exists(monkeypatch, exists=True)
     return tmp_path
 
 
@@ -91,19 +142,19 @@ class TestTargetSlug:
 
 
 # ---------------------------------------------------------------------------
-# compute_next_batch — "up to" closure computation
+# compute_next_batch — "up to" inclusive document-order task set (ADR-374)
 # ---------------------------------------------------------------------------
 
-class TestComputeNextBatchUpToClosure:
-    def test_compute_next_batch_up_to_expands_transitive_closure_and_spawns_root_dependency(
+class TestComputeNextBatchUpToDocumentOrder:
+    def test_compute_next_batch_up_to_includes_every_task_through_target_in_document_order_and_spawns_root_dependency(
         self, tmp_path, monkeypatch
     ):
-        # Arrange
+        # Arrange — a linear chain, where document order and dependency closure coincide
         _set_repo_root(tmp_path, monkeypatch)
         _write_spec(tmp_path, {
-            "ADR-1": ["ADR-2"],
-            "ADR-2": ["ADR-3"],
             "ADR-3": [],
+            "ADR-2": ["ADR-3"],
+            "ADR-1": ["ADR-2"],
         })
         from concurrent_schedule import TargetSpec, compute_next_batch, _data_file_path
         from get_context_path import get_repo_slug
@@ -115,15 +166,200 @@ class TestComputeNextBatchUpToClosure:
 
         # Assert
         assert result["status"] == "waiting"
-        assert result["spawn"] == [{"task_id": "ADR-3", "base_branch": None}]
+        assert result["spawn"] == [{"task_id": "ADR-3"}]
         assert result["blocked_tasks"] == []
         data = json.loads(_data_file_path(get_repo_slug(), target).read_text(encoding="utf-8"))
-        assert data["tasks"] == ["ADR-1", "ADR-2", "ADR-3"]
+        assert data["tasks"] == ["ADR-3", "ADR-2", "ADR-1"]
         assert data["mode"] == "up_to"
+
+    def test_compute_next_batch_up_to_includes_unrelated_earlier_task_not_in_targets_dependency_closure(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — ADR-374's deliberate behavior change from ADR-296: "up to ADR-4" now means
+        # every task from the start of document order through ADR-4 inclusive, not just ADR-4's
+        # own transitive dependency closure. ADR-2 and ADR-3 are unrelated to ADR-4 (ADR-4
+        # depends only on ADR-1) but are still earlier in document order, so both must still be
+        # included and spawned alongside ADR-1. The concurrency cap is stubbed generously high
+        # so this test's assertions reflect eligibility, not an incidental cap collision.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {
+            "ADR-1": [],
+            "ADR-2": [],
+            "ADR-3": [],
+            "ADR-4": ["ADR-1"],
+        })
+        import concurrent_schedule
+        monkeypatch.setattr(concurrent_schedule, "_max_parallel_tasks", lambda repo_root: 10)
+        from concurrent_schedule import TargetSpec, compute_next_batch, _data_file_path
+        from get_context_path import get_repo_slug
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-4",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        data = json.loads(_data_file_path(get_repo_slug(), target).read_text(encoding="utf-8"))
+        assert data["tasks"] == ["ADR-1", "ADR-2", "ADR-3", "ADR-4"]
+        assert {entry["task_id"] for entry in result["spawn"]} == {"ADR-1", "ADR-2", "ADR-3"}
 
 
 # ---------------------------------------------------------------------------
-# compute_next_batch — explicit list, no closure expansion
+# compute_next_batch — human-labeled (🧑) tasks must never be spawned
+# ---------------------------------------------------------------------------
+
+def _write_human_agent_spec(tmp_path: Path, epic_id: str = _DEFAULT_EPIC_ID) -> Path:
+    """Write a fake `_spec_Test.md` with ADR-1 marked human-required (🧑, no dependencies) and
+    ADR-2 marked a normal agent task (🤖) that depends on it."""
+    spec_path = tmp_path / "_spec_Test.md"
+    spec_path.write_text(
+        "\n".join([
+            f"> **Epic:** [{epic_id}](https://example.atlassian.net/browse/{epic_id})",
+            "",
+            "### [ADR-1: Provision access](https://example.atlassian.net/browse/ADR-1) \U0001F9D1",
+            "",
+            "**Depends on:** — none —",
+            "",
+            "### [ADR-2: Wire up the client](https://example.atlassian.net/browse/ADR-2) \U0001F916",
+            "",
+            "**Depends on:** ADR-1",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    return spec_path
+
+
+class TestComputeNextBatchHumanTasks:
+    def test_compute_next_batch_up_to_never_spawns_a_human_labeled_task(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — ADR-1 is a human-required task (🧑, e.g. infra/access provisioning) with no
+        # dependencies; ADR-2 is a normal agent task (🤖) that depends on it. Issue #219: `/implement
+        # up to <key>` must never attempt to implement a task the spec itself marked human — such a
+        # task must never appear in compute_next_batch's own "spawn" list, the exact list
+        # concurrent-orchestrate's spawn loop hands off to the Developer agent with no further
+        # filtering of its own.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_human_agent_spec(tmp_path)
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-2",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert — ADR-1 (human) is never spawned exactly like ADR-2 (agent) would be, and is
+        # instead surfaced through the dedicated "human_tasks" field so it isn't silently
+        # dropped from view. ADR-2 depends on ADR-1 (not yet done), so it stays ineligible too —
+        # nothing is spawned, but the run is still "waiting", not wrongly reported "blocked".
+        assert result["status"] == "waiting"
+        assert result["spawn"] == []
+        assert result["human_tasks"] == ["ADR-1"]
+        assert result["blocked_tasks"] == []
+
+    def test_compute_next_batch_multiple_human_tasks_are_all_reported_sorted(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — two independent human-required tasks with no dependencies; both are
+        # otherwise eligible, so both must be reported in "human_tasks", sorted, and neither
+        # ever appears in "spawn".
+        _set_repo_root(tmp_path, monkeypatch)
+        epic_id = _DEFAULT_EPIC_ID
+        spec_path = tmp_path / "_spec_Test.md"
+        spec_path.write_text(
+            "\n".join([
+                f"> **Epic:** [{epic_id}](https://example.atlassian.net/browse/{epic_id})",
+                "",
+                "### [ADR-2: Provision second access](https://example.atlassian.net/browse/ADR-2) \U0001F9D1",
+                "",
+                "**Depends on:** — none —",
+                "",
+                "### [ADR-1: Provision first access](https://example.atlassian.net/browse/ADR-1) \U0001F9D1",
+                "",
+                "**Depends on:** — none —",
+                "",
+            ]),
+            encoding="utf-8",
+        )
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="list", tasks=("ADR-1", "ADR-2"))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["spawn"] == []
+        assert result["human_tasks"] == ["ADR-1", "ADR-2"]
+
+    def test_compute_next_batch_agent_task_with_no_human_ancestor_still_spawns_normally(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — a plain 🤖 task with no dependencies at all must still be spawned exactly as
+        # before this change, with an empty "human_tasks" list — this change must not regress the
+        # existing agent-task path.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["spawn"] == [{"task_id": "ADR-1"}]
+        assert result["human_tasks"] == []
+
+    def test_compute_next_batch_human_task_already_done_lets_dependent_agent_task_spawn(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — once the human task is marked done (however that happens outside this
+        # scheduler's scope), the dependent agent task becomes eligible and is spawned normally,
+        # and no longer appears in "human_tasks" since it's no longer "not yet started".
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_human_agent_spec(tmp_path)
+        _save_context("ADR-1", state="done")
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-2",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["spawn"] == [{"task_id": "ADR-2"}]
+        assert result["human_tasks"] == []
+
+
+# ---------------------------------------------------------------------------
+# compute_next_batch — "up to" target not a valid task heading
+# ---------------------------------------------------------------------------
+
+class TestComputeNextBatchUpToTargetNotInDocumentOrder:
+    def test_compute_next_batch_up_to_target_not_a_task_heading_raises_concurrent_schedule_error(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — "up to ADR-369" resolves to this spec file via find_spec_file's plain
+        # substring search (ADR-369 appears in the Epic header line), but ADR-369 is not itself
+        # a "### [KEY: Title]" task heading, so it never appears in validate_stack_order's
+        # document order. order.index() must not propagate a raw ValueError here — it must
+        # raise a ConcurrentScheduleError, the same clean "Error: ..." family every other bad
+        # "up to"/explicit-list input in this module already raises.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": [], "ADR-2": ["ADR-1"]}, epic_id="ADR-369")
+        from concurrent_schedule import ConcurrentScheduleError, TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-369",))
+
+        # Act & Assert
+        with pytest.raises(ConcurrentScheduleError, match="ADR-369"):
+            compute_next_batch(target)
+
+
+# ---------------------------------------------------------------------------
+# compute_next_batch — explicit list, no expansion
 # ---------------------------------------------------------------------------
 
 class TestComputeNextBatchListNoExpansion:
@@ -163,8 +399,8 @@ class TestExplicitListValidation:
         # Arrange
         _set_repo_root(tmp_path, monkeypatch)
         _write_spec(tmp_path, {
-            "ADR-1": ["ADR-2"],
             "ADR-2": [],
+            "ADR-1": ["ADR-2"],
         })
         from concurrent_schedule import ConcurrentScheduleError, TargetSpec, compute_next_batch
 
@@ -180,8 +416,8 @@ class TestExplicitListValidation:
         # Arrange
         _set_repo_root(tmp_path, monkeypatch)
         _write_spec(tmp_path, {
-            "ADR-1": ["ADR-2"],
             "ADR-2": [],
+            "ADR-1": ["ADR-2"],
         })
         _save_context("ADR-2", state="done")
         from concurrent_schedule import TargetSpec, compute_next_batch
@@ -193,7 +429,7 @@ class TestExplicitListValidation:
 
         # Assert — no exception, and normal scheduling proceeds
         assert result["status"] == "waiting"
-        assert result["spawn"] == [{"task_id": "ADR-1", "base_branch": None}]
+        assert result["spawn"] == [{"task_id": "ADR-1"}]
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +452,10 @@ class TestComputeNextBatchComplete:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "complete", "spawn": [], "blocked_tasks": [], "running": []}
+        assert result == {
+            "status": "complete", "spawn": [], "blocked_tasks": [], "running": [],
+            "human_tasks": [],
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -230,8 +469,8 @@ class TestComputeNextBatchBlocked:
         # Arrange
         _set_repo_root(tmp_path, monkeypatch)
         _write_spec(tmp_path, {
-            "ADR-1": ["ADR-2"],
             "ADR-2": [],
+            "ADR-1": ["ADR-2"],
         })
         _save_context("ADR-2", state="failed")
         from concurrent_schedule import TargetSpec, compute_next_batch
@@ -242,7 +481,10 @@ class TestComputeNextBatchBlocked:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": []}
+        assert result == {
+            "status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": [],
+            "human_tasks": [],
+        }
 
     def test_compute_next_batch_failed_dependency_with_active_spawn_still_waiting(
         self, tmp_path, monkeypatch
@@ -296,7 +538,10 @@ class TestComputeNextBatchBlocked:
         result = compute_next_batch(target)
 
         # Assert
-        assert result == {"status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": []}
+        assert result == {
+            "status": "blocked", "spawn": [], "blocked_tasks": ["ADR-1"], "running": [],
+            "human_tasks": [],
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -337,14 +582,14 @@ class TestComputeNextBatchRunning:
         # ADR-2 from "running", since it's no longer non-terminal.
         _set_repo_root(tmp_path, monkeypatch)
         _write_spec(tmp_path, {
-            "ADR-1": ["ADR-2"],
             "ADR-2": [],
+            "ADR-1": ["ADR-2"],
         })
         from concurrent_schedule import TargetSpec, compute_next_batch
 
         target = TargetSpec(mode="up_to", tasks=("ADR-1",))
         first = compute_next_batch(target)
-        assert first["spawn"] == [{"task_id": "ADR-2", "base_branch": None}]
+        assert first["spawn"] == [{"task_id": "ADR-2"}]
         _save_context("ADR-2", state="done")
 
         # Act
@@ -397,6 +642,175 @@ class TestComputeNextBatchRunning:
 
 
 # ---------------------------------------------------------------------------
+# compute_next_batch — missing spec branch: a live check, never a data-file check, raises
+# RuntimeError rather than returning a retryable status
+# ---------------------------------------------------------------------------
+
+class TestSpecBranchMissing:
+    def test_compute_next_batch_spec_branch_absent_raises_before_computing_batch(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        _stub_feature_branch_exists(monkeypatch, exists=False)
+        from concurrent_schedule import TargetSpec, compute_next_batch, _data_file_path
+        from get_context_path import get_repo_slug
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+
+        # Act / Assert
+        with pytest.raises(RuntimeError, match=_DEFAULT_EPIC_ID):
+            compute_next_batch(target)
+
+        # The data file is still persisted, independent of the raised error.
+        data = json.loads(_data_file_path(get_repo_slug(), target).read_text(encoding="utf-8"))
+        assert data["tasks"] == ["ADR-1"]
+
+    def test_compute_next_batch_same_target_later_call_after_branch_created_proceeds_to_batch(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — the same target's second call, once `/write-dev-spec` has created the spec
+        # branch in response to the first call's error, must find the branch now exists and
+        # proceed to compute a batch — never raise a second time.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-1": []})
+        _stub_feature_branch_exists(monkeypatch, exists=False)
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+        with pytest.raises(RuntimeError):
+            compute_next_batch(target)
+
+        _stub_feature_branch_exists(monkeypatch, exists=True)
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["status"] == "waiting"
+        assert result["spawn"] == [{"task_id": "ADR-1"}]
+
+    def test_compute_next_batch_different_target_first_call_already_exists_proceeds_directly(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — a second, different target's first call against an epic whose spec branch
+        # already exists must find that on its very first check, and proceed directly to
+        # computing a batch — no error at all. A single-task target keeps this test focused on
+        # the existence check itself, not on the separately-covered inclusive "up to" ordering
+        # semantics.
+        _set_repo_root(tmp_path, monkeypatch)
+        _write_spec(tmp_path, {"ADR-5": []})
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-5",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["status"] == "waiting"
+        assert result["spawn"] == [{"task_id": "ADR-5"}]
+
+    def test_compute_next_batch_no_epic_header_line_skips_spec_branch_gating(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange — a spec with no `> **Epic:**` header line at all (predates this convention,
+        # or malformed): there is nothing to gate on, so scheduling must proceed normally rather
+        # than erroring or looping.
+        _set_repo_root(tmp_path, monkeypatch)
+        spec_path = tmp_path / "_spec_Test.md"
+        spec_path.write_text(
+            "### [ADR-1: Title](https://example.atlassian.net/browse/ADR-1) 🤖\n\n"
+            "**Depends on:** — none —\n",
+            encoding="utf-8",
+        )
+        _stub_feature_branch_exists(monkeypatch, exists=False)
+        from concurrent_schedule import TargetSpec, compute_next_batch
+
+        target = TargetSpec(mode="up_to", tasks=("ADR-1",))
+
+        # Act
+        result = compute_next_batch(target)
+
+        # Assert
+        assert result["status"] == "waiting"
+        assert result["spawn"] == [{"task_id": "ADR-1"}]
+
+
+# ---------------------------------------------------------------------------
+# _feature_branch_prefix — derived from git-repo.working-branches.task, not a separate
+# "feature" template
+# ---------------------------------------------------------------------------
+
+class TestFeatureBranchPrefix:
+    def test_defaults_to_dev_claude(self, tmp_path):
+        from concurrent_schedule import _feature_branch_prefix
+
+        assert _feature_branch_prefix(tmp_path) == "dev/claude/"
+
+    def test_uses_project_override(self, tmp_path):
+        config_dir = tmp_path / ".dev-team"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text(
+            "git-repo:\n"
+            "  user-alias: bot\n"
+            "  working-branches:\n"
+            "    task: work/<user-alias>/<task-work-item-id>-<slug>\n",
+            encoding="utf-8",
+        )
+        from concurrent_schedule import _feature_branch_prefix
+
+        assert _feature_branch_prefix(tmp_path) == "work/bot/"
+
+
+# ---------------------------------------------------------------------------
+# _feature_branch_exists — live `git branch -r` check
+# ---------------------------------------------------------------------------
+
+class TestFeatureBranchExists:
+    def test_feature_branch_exists_exact_match_returns_true(self, tmp_path):
+        # Arrange
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-369-spec")
+
+        # Act & Assert
+        assert _real_feature_branch_exists("ADR-369", tmp_path) is True
+
+    def test_feature_branch_exists_suffixed_match_returns_true(self, tmp_path):
+        # Arrange — a branch like `dev/claude/ADR-369-spec-stack` must still match: the
+        # anchoring only needs to rule out a *different*, longer epic id sharing this prefix, not
+        # a hyphen-suffixed variant of this same epic id.
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-369-spec-stack")
+
+        # Act & Assert
+        assert _real_feature_branch_exists("ADR-369", tmp_path) is True
+
+    def test_feature_branch_exists_prefix_of_a_different_epic_id_returns_false(self, tmp_path):
+        # Arrange — regression test for the unanchored substring bug: `dev/claude/ADR-3690-spec`
+        # (a different epic's branch) must not be mistaken for `ADR-369`'s own branch.
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-3690-spec")
+
+        # Act & Assert
+        assert _real_feature_branch_exists("ADR-369", tmp_path) is False
+
+    def test_feature_branch_exists_no_matching_branch_returns_false(self, tmp_path):
+        # Arrange
+        _init_git_repo_with_remote_branch(tmp_path, "dev/claude/ADR-999-spec")
+
+        # Act & Assert
+        assert _real_feature_branch_exists("ADR-369", tmp_path) is False
+
+    def test_feature_branch_exists_git_command_failure_raises_runtime_error(self, tmp_path):
+        # Arrange — `tmp_path` is not a git repository at all, so `git branch -r` fails
+        # (returncode 128, "fatal: not a git repository" on stderr) rather than returning empty
+        # output for "no such branch"; that failure must surface, not be swallowed as False.
+
+        # Act & Assert
+        with pytest.raises(RuntimeError, match="git branch -r"):
+            _real_feature_branch_exists("ADR-369", tmp_path)
+
+
+# ---------------------------------------------------------------------------
 # poll_until_actionable — blocking wait for something actionable
 # ---------------------------------------------------------------------------
 
@@ -417,7 +831,7 @@ class TestPollUntilActionable:
 
         # Assert — spawn is non-empty on the very first poll, so no sleep is ever needed
         assert result["status"] == "waiting"
-        assert result["spawn"] == [{"task_id": "ADR-1", "base_branch": None}]
+        assert result["spawn"] == [{"task_id": "ADR-1"}]
         assert sleeps == []
 
     def test_poll_until_actionable_returns_immediately_on_complete_without_sleeping(
@@ -447,7 +861,7 @@ class TestPollUntilActionable:
         # marked "done" partway through polling, the next poll should surface ADR-1 as newly
         # eligible instead of exhausting all cycles.
         _set_repo_root(tmp_path, monkeypatch)
-        _write_spec(tmp_path, {"ADR-1": ["ADR-2"], "ADR-2": []})
+        _write_spec(tmp_path, {"ADR-2": [], "ADR-1": ["ADR-2"]})
         _save_context("ADR-2", state="done")
         from concurrent_schedule import TargetSpec, compute_next_batch, poll_until_actionable
 
@@ -455,7 +869,7 @@ class TestPollUntilActionable:
         # First real poll (outside the function, to seed "spawned") — simulate ADR-1 already
         # spawned so the very first internal poll comes back idle ("waiting", empty spawn).
         first = compute_next_batch(target)
-        assert first["spawn"] == [{"task_id": "ADR-1", "base_branch": None}]
+        assert first["spawn"] == [{"task_id": "ADR-1"}]
         _save_context("ADR-1", state="researching")  # active, non-terminal — still "waiting"
 
         sleeps: list[float] = []
@@ -488,7 +902,7 @@ class TestPollUntilActionable:
         # forever (nothing newly eligible), so the poll loop must give up after exhausting its
         # configured cycle budget rather than blocking indefinitely.
         _set_repo_root(tmp_path, monkeypatch)
-        _write_spec(tmp_path, {"ADR-1": ["ADR-2"], "ADR-2": []})
+        _write_spec(tmp_path, {"ADR-2": [], "ADR-1": ["ADR-2"]})
         _save_context("ADR-2", state="researching")  # never reaches "done"
         from concurrent_schedule import TargetSpec, poll_until_actionable
 
@@ -587,7 +1001,7 @@ class TestConcurrencyCap:
         result = compute_next_batch(target)
 
         # Assert
-        assert result["spawn"] == [{"task_id": "ADR-7", "base_branch": None}]
+        assert result["spawn"] == [{"task_id": "ADR-7"}]
 
 
 # ---------------------------------------------------------------------------
@@ -619,10 +1033,13 @@ class TestMainCliWrapper:
     def test_main_up_to_single_task_no_dependencies_prints_waiting_with_spawn(
         self, tmp_path, monkeypatch
     ):
-        # Arrange — a `.git` marker so dev_team.py's own repo-root discovery resolves to
-        # tmp_path (where the fake spec lives), the same way it would in a real checkout.
-        (tmp_path / ".git").mkdir()
+        # Arrange — a real minimal git repo whose `git branch -r` output already includes the
+        # epic's spec branch, so the live existence check (which can't be monkeypatched across
+        # this subprocess boundary) finds it already exists, exactly as it would in a real
+        # checkout. This also gives `dev_team.py`'s own repo-root discovery a genuine `.git` to
+        # resolve to `tmp_path` (where the fake spec lives).
         _write_spec(tmp_path, {"ADR-1": []})
+        _init_git_repo_with_remote_branch(tmp_path, f"dev/claude/{_DEFAULT_EPIC_ID}-spec")
         import os
         full_env = {**os.environ, "DEV_TEAM_STATE_DIR": str(tmp_path),
                      "GIT_REMOTE_URL_OVERRIDE": "https://github.com/example/repo.git"}
@@ -637,9 +1054,10 @@ class TestMainCliWrapper:
         assert result.returncode == 0
         assert json.loads(result.stdout) == {
             "status": "waiting",
-            "spawn": [{"task_id": "ADR-1", "base_branch": None}],
+            "spawn": [{"task_id": "ADR-1"}],
             "blocked_tasks": [],
             "running": [],
+            "human_tasks": [],
         }
 
     def test_main_list_dependency_outside_list_and_not_done_prints_error_and_exits_nonzero(
@@ -647,7 +1065,7 @@ class TestMainCliWrapper:
     ):
         # Arrange
         (tmp_path / ".git").mkdir()
-        _write_spec(tmp_path, {"ADR-1": ["ADR-2"], "ADR-2": []})
+        _write_spec(tmp_path, {"ADR-2": [], "ADR-1": ["ADR-2"]})
         import os
         full_env = {**os.environ, "DEV_TEAM_STATE_DIR": str(tmp_path),
                      "GIT_REMOTE_URL_OVERRIDE": "https://github.com/example/repo.git"}

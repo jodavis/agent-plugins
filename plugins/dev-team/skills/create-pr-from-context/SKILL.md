@@ -32,13 +32,23 @@ If `pr_url` is already set in the context file, the PR has already been created.
 
 ### 4 — Create the PR
 
-Use the `create-pr` skill, providing the `work-item-id`, working branch, base branch, and task brief content.
+Use the `create-pr` skill, providing the `work-item-id`, working branch, `base_branch` (from the
+context file), and task brief content.
+
+This task's branch is never registered into a `gh stack` at this point in the pipeline — that
+only happens later, in `add-to-pr-stack`, once sign-off approves (see that skill's own intro).
+`base_branch` (written by `ensure-working-branch`) is the single source of truth for this PR's
+base regardless of whether the task is part of a tracked epic at all: either the epic's feature
+branch, or the working branch of whichever declared dependency sorts latest in the epic's
+document order. This is what closes Issue-129 (PRs opening against the wrong base) — there is no
+separate stack-relative code path here to drift out of sync with it.
 
 ### 5 — Update the context file
 
 Use the `use-context-file` skill to write the returned PR URL to the `pr_url` frontmatter field in the context file.
 
-Output the PR URL:
+Use the `write-scratch-deliverable` skill to write the following in place of returning it as chat
+text:
 
 ```json
 {"pr_url": "https://github.com/..."}

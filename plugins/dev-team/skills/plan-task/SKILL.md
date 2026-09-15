@@ -47,4 +47,5 @@ Use the `write-task-brief` skill, providing:
 - The spec section (task context from step 2)
 - The combined findings from both codebase-search passes (step 3)
 
-Return the task brief as prose.
+Use the `write-scratch-deliverable` skill to write the task brief in place of returning it as
+chat text.

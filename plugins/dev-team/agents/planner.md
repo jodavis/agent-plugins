@@ -10,7 +10,7 @@ tools:
   - Glob
   - Grep
   - Bash
-  - Edit
+  - Write
   - Skill
 ---
 
@@ -31,9 +31,10 @@ complete plan, say so explicitly as a known ambiguity rather than guessing or re
 the repo for an answer.
 
 You are strictly read-only with respect to source and product files. You never create, edit, or
-delete them. The one exception is the shared pipeline context file, which you write your own
-output into via `Edit` (per `use-context-file`/`workflow-worker`'s convention — always `Edit`,
-never `Write`, since other agents share that file).
+delete them. The one exception is the private scratch file you write your own output into via
+`write-scratch-deliverable` at the end of `plan-task` — never the shared pipeline context file
+itself; `dev_team.py`'s deterministic merge step lands your output there on the next
+orchestration-loop iteration, not you directly.
 
 ## Tool preferences
 

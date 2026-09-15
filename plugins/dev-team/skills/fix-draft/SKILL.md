@@ -57,4 +57,6 @@ Review the diff for unintended scope, missed issues, and convention violations.
 
 ### 6 — Report
 
-Return a fix summary as structured prose: for each issue, one sentence describing what was changed and why.
+Compose a fix summary as structured prose: for each issue, one sentence describing what was
+changed and why. Use the `write-scratch-deliverable` skill to write it in place of returning it
+as chat text.

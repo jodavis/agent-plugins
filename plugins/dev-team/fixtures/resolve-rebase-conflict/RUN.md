@@ -19,10 +19,10 @@ deliberate rebase conflict, runs the skill against it, and asserts the resulting
 
 There is no checked-in git history here (unlike `fixtures/playbook-harvesting`'s
 `commits.json` replay) — each scenario is built fresh, in-process, by calling
-`rebase_mechanic.rebase_onto()` itself against two real, diverging branches, following
-`workflow-orchestrate/scripts/test_rebase_mechanic.py`'s bare-"origin"-plus-working-clone
-construction pattern. That means every dry run exercises the real Rebase mechanic's own
-conflict detection, not a hand-crafted stand-in.
+`build_fixture.py`'s own `_rebase_onto()` helper (a fixture-local stand-in for the retired
+`rebase_mechanic.rebase_onto()`, ADR-378) against two real, diverging branches, using a
+bare-"origin"-plus-working-clone construction pattern. That means every dry run exercises a real
+git rebase's own conflict detection, not a hand-crafted stand-in.
 
 ## Scenarios
 

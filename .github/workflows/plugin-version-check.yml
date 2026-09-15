@@ -1,0 +1,59 @@
+name: Plugin Version Check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Decide whether a plugin directory changed
+      id: decide
+      env:
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        git fetch origin "$BASE_REF" --depth=1
+        if git diff --name-only "origin/$BASE_REF" HEAD \
+            | grep -qE '^plugins/[^/]+/'; then
+          echo "run=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "run=false" >> "$GITHUB_OUTPUT"
+        fi
+
+  check-versions:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Fetch base branch
+      env:
+        BASE_REF: ${{ github.base_ref }}
+      run: git fetch origin "$BASE_REF" --depth=1
+
+    - name: Check plugin versions
+      env:
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        python3 scripts/check_plugin_versions.py --base-ref "origin/$BASE_REF" | tee "$GITHUB_STEP_SUMMARY"
+        exit "${PIPESTATUS[0]}"
+
+  test-script:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install pytest
+      run: pip install --user pytest
+
+    - name: Run tests
+      run: python3 -m pytest scripts/test_check_plugin_versions.py -v

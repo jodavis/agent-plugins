@@ -133,6 +133,132 @@ class TestComputeContextPath:
 
 
 # ---------------------------------------------------------------------------
+# _replace_or_append_section — deterministic sentinel-replace-or-append
+# ---------------------------------------------------------------------------
+
+class TestReplaceOrAppendSection:
+    def test_sentinel_absent_appends_after_last_line(self):
+        from dev_team import _replace_or_append_section
+        context_text = "---\nstate: researching\n---\n\nSome preamble.\n"
+        result = _replace_or_append_section(context_text, "Researcher Brief", "The brief text.")
+        assert result == (
+            "---\nstate: researching\n---\n\nSome preamble.\n\n"
+            "<!-- section:Researcher Brief -->\n\nThe brief text.\n\n"
+        )
+
+    def test_sentinel_present_replaces_content_up_to_next_sentinel(self):
+        from dev_team import _replace_or_append_section
+        context_text = (
+            "---\nstate: reviewing\n---\n\n"
+            "<!-- section:Researcher Brief -->\n\nOld brief.\n\n"
+            "<!-- section:Review Notes -->\n\nOld notes.\n"
+        )
+        result = _replace_or_append_section(context_text, "Researcher Brief", "New brief.")
+        assert result == (
+            "---\nstate: reviewing\n---\n\n"
+            "<!-- section:Researcher Brief -->\n\nNew brief.\n\n"
+            "<!-- section:Review Notes -->\n\nOld notes.\n"
+        )
+
+    def test_sentinel_present_as_last_section_replaces_to_end_of_file(self):
+        from dev_team import _replace_or_append_section
+        context_text = "---\nstate: reviewing\n---\n\n<!-- section:Review Notes -->\n\nOld notes.\n"
+        result = _replace_or_append_section(context_text, "Review Notes", "New notes.")
+        assert result == "---\nstate: reviewing\n---\n\n<!-- section:Review Notes -->\n\nNew notes.\n\n"
+
+    def test_content_is_stripped_of_surrounding_whitespace(self):
+        from dev_team import _replace_or_append_section
+        result = _replace_or_append_section("", "Fix 1", "\n\n  Fixed the bug.  \n\n")
+        assert result == "<!-- section:Fix 1 -->\n\nFixed the bug.\n\n"
+
+
+# ---------------------------------------------------------------------------
+# merge_pending_deliverables — scratch-file merge preprocessing step (issue #191)
+# ---------------------------------------------------------------------------
+
+class TestMergePendingDeliverables:
+    def test_no_pending_directory_is_a_silent_no_op(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        context_path.write_text("---\nstate: researching\n---\n")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        assert context_path.read_text() == "---\nstate: researching\n---\n"
+
+    def test_no_matching_scratch_files_for_this_work_item_is_a_no_op(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        context_path.write_text("---\nstate: researching\n---\n")
+        pending_dir = tmp_path / ".pending"
+        pending_dir.mkdir()
+        (pending_dir / "ADR-111__Researcher_Brief.md").write_text("someone else's brief")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        assert context_path.read_text() == "---\nstate: researching\n---\n"
+        assert (pending_dir / "ADR-111__Researcher_Brief.md").exists()
+
+    def test_matching_scratch_file_is_merged_in_and_deleted(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        context_path.write_text("---\nstate: researching\n---\n")
+        pending_dir = tmp_path / ".pending"
+        pending_dir.mkdir()
+        scratch_path = pending_dir / "ADR-999__Researcher_Brief.md"
+        scratch_path.write_text("The researched brief.")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        assert "<!-- section:Researcher Brief -->" in context_path.read_text()
+        assert "The researched brief." in context_path.read_text()
+        assert not scratch_path.exists()
+
+    def test_section_name_underscore_to_space_reconstruction(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        context_path.write_text("---\nstate: researching\n---\n")
+        pending_dir = tmp_path / ".pending"
+        pending_dir.mkdir()
+        (pending_dir / "ADR-999__Post-Handoff_Fix_3.md").write_text("Fixed the review comment.")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        assert "<!-- section:Post-Handoff Fix 3 -->" in context_path.read_text()
+
+    def test_multiple_matching_scratch_files_are_all_merged_and_deleted(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        context_path.write_text("---\nstate: reviewing\n---\n")
+        pending_dir = tmp_path / ".pending"
+        pending_dir.mkdir()
+        brief_path = pending_dir / "ADR-999__Researcher_Brief.md"
+        notes_path = pending_dir / "ADR-999__Review_Notes.md"
+        brief_path.write_text("The brief.")
+        notes_path.write_text("The notes.")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        final_text = context_path.read_text()
+        assert "<!-- section:Researcher Brief -->" in final_text
+        assert "<!-- section:Review Notes -->" in final_text
+        assert not brief_path.exists()
+        assert not notes_path.exists()
+
+    def test_context_file_does_not_yet_exist_treats_it_as_empty(self, tmp_path):
+        from dev_team import merge_pending_deliverables
+        context_path = tmp_path / "ADR-999.md"
+        pending_dir = tmp_path / ".pending"
+        pending_dir.mkdir()
+        (pending_dir / "ADR-999__Researcher_Brief.md").write_text("The brief.")
+
+        merge_pending_deliverables(context_path, "ADR-999")
+
+        assert context_path.exists()
+        assert "<!-- section:Researcher Brief -->" in context_path.read_text()
+
+
+# ---------------------------------------------------------------------------
 # signoff_cycle_count counter
 # ---------------------------------------------------------------------------
 
@@ -1237,6 +1363,110 @@ class TestCreatePrStep:
 
 
 # ---------------------------------------------------------------------------
+# AddToPrStackStep
+# ---------------------------------------------------------------------------
+
+class TestAddToPrStackStep:
+    def _make_ctx(self, tmp_path, **kwargs):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-TEST", **kwargs)
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+        return ctx, context_path
+
+    def test_get_actions_returns_descriptor_when_not_added_to_stack(self, tmp_path):
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        step = AddToPrStackStep(ctx, context_path)
+        actions = step.get_actions()
+        assert len(actions) == 1
+        assert actions[0]["skill"] == "add-to-pr-stack"
+
+    def test_get_actions_returns_empty_when_already_added_to_stack(self, tmp_path):
+        """Recovery re-entry: added_to_stack already true — inline step."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path, added_to_stack=True)
+        step = AddToPrStackStep(ctx, context_path)
+        assert step.get_actions() == []
+
+    def test_handle_results_returns_linked_when_already_added_to_stack(self, tmp_path):
+        """Inline path: added_to_stack was set before handle_results() — returns linked."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path, added_to_stack=True)
+        step = AddToPrStackStep(ctx, context_path)
+        trigger = step.handle_results()
+        assert trigger == "linked"
+
+    def test_get_actions_returns_empty_when_stack_link_status_already_resolved(self, tmp_path):
+        """Recovery re-entry for a not-applicable task: added_to_stack never becomes true for
+        it, so stack_link_status (an extra_frontmatter key add_to_pr_stack.py always writes on
+        success) is what actually prevents re-spawning the agent forever."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(
+            tmp_path, extra_frontmatter={"stack_link_status": "not_applicable"}
+        )
+        step = AddToPrStackStep(ctx, context_path)
+        assert step.get_actions() == []
+
+    def test_handle_results_returns_linked_when_stack_link_status_already_resolved(self, tmp_path):
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(
+            tmp_path, extra_frontmatter={"stack_link_status": "not_applicable"}
+        )
+        step = AddToPrStackStep(ctx, context_path)
+        trigger = step.handle_results()
+        assert trigger == "linked"
+        assert ctx.consecutive_failures == 0
+
+    def test_handle_results_extracts_linked_status_from_section(self, tmp_path):
+        """Normal dispatch: agent writes Stack Link Result section; handle_results extracts it."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        text = context_path.read_text(encoding="utf-8")
+        text += '\n<!-- section:Stack Link Result -->\n\n{"status": "linked"}\n'
+        context_path.write_text(text, encoding="utf-8")
+
+        step = AddToPrStackStep(ctx, context_path)
+        trigger = step.handle_results()
+        assert trigger == "linked"
+        assert ctx.consecutive_failures == 0
+
+    def test_handle_results_treats_not_applicable_status_as_success(self, tmp_path):
+        """A task with no epic (or no local spec) reports not_applicable, not linked — still a
+        success, since there was genuinely nothing to register."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        text = context_path.read_text(encoding="utf-8")
+        text += '\n<!-- section:Stack Link Result -->\n\n{"status": "not_applicable"}\n'
+        context_path.write_text(text, encoding="utf-8")
+
+        step = AddToPrStackStep(ctx, context_path)
+        trigger = step.handle_results()
+        assert trigger == "linked"
+        assert ctx.consecutive_failures == 0
+
+    def test_handle_results_increments_failures_when_no_result_written(self, tmp_path):
+        """Failure path: agent ran but did not write a Stack Link Result section."""
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        step = AddToPrStackStep(ctx, context_path)
+        trigger = step.handle_results()
+        # Still returns linked (no dedicated retry edge, mirroring CreatePrStep's own
+        # precedent), but consecutive_failures is incremented for troubleshooter escalation.
+        assert trigger == "linked"
+        assert ctx.consecutive_failures == 1
+
+    def test_descriptor_includes_required_fields(self, tmp_path):
+        from dev_team import AddToPrStackStep
+        ctx, context_path = self._make_ctx(tmp_path)
+        step = AddToPrStackStep(ctx, context_path)
+        actions = step.get_actions()
+        assert actions[0]["action"] == "spawn_agent"
+        assert actions[0]["write_section"] == "Stack Link Result"
+        assert "context_file" in actions[0]
+
+
+# ---------------------------------------------------------------------------
 # PlanStep / ResearchStep — /implement's `planning` state vs /fix's `researching` state
 # ---------------------------------------------------------------------------
 
@@ -1388,6 +1618,7 @@ class TestEventNamePerStep:
         ("FixStep", "fix"),
         ("FixPrStep", "fix"),
         ("SignoffStep", "signoff"),
+        ("AddToPrStackStep", "add-to-pr-stack"),
     ])
     def test_step_declares_expected_event_name(self, step_class_name, expected_event):
         import dev_team
@@ -1746,10 +1977,12 @@ class TestWorkflowAssetSignoffRouting:
     workflow assets let `reviewing --> handoff : approved` bypass `signoff` entirely on a
     clean first-pass review, so a task that never needed a `fixing_pr` cycle skipped the
     signoff parallel checks (and, before this fix, the hand-off hooks tied to them) outright.
-    `reviewing`'s only `approved` exit must be `signoff` — `signoff` is what may reach `done`,
-    never `reviewing` directly. `handoff` no longer exists as its own state (the `signoff`
-    pipeline event now hangs directly off `SignoffStep`'s own resolution), so the invariant is
-    now "only `signoff` reaches `done`" rather than "only `signoff` reaches `handoff`"."""
+    `reviewing`'s only `approved` exit must be `signoff` — `signoff` is what may reach
+    `add_to_pr_stack`, never `reviewing` directly. `handoff` no longer exists as its own state
+    (the `signoff` pipeline event now hangs directly off `SignoffStep`'s own resolution), and
+    `add_to_pr_stack` (registering the signed-off PR into its epic's `gh stack`) is now the only
+    state that reaches `done` — `signoff` itself no longer does, so the invariant is now "only
+    `add_to_pr_stack` reaches `done`, and only `signoff` reaches `add_to_pr_stack`"."""
 
     ASSETS_DIR = SCRIPTS_DIR.parent / "assets"
 
@@ -1766,11 +1999,24 @@ class TestWorkflowAssetSignoffRouting:
         "implement-task-plan.md",
         "fix-issue-plan.md",
     ])
-    def test_only_signoff_reaches_done(self, asset_name):
+    def test_only_add_to_pr_stack_reaches_done(self, asset_name):
         from dev_team import parse_workflow
         workflow = parse_workflow(self.ASSETS_DIR / asset_name)
         sources_reaching_done = [
             src for src, triggers in workflow.transitions.items()
             if "done" in triggers.values()
         ]
-        assert sources_reaching_done == ["signoff"]
+        assert sources_reaching_done == ["add_to_pr_stack"]
+
+    @pytest.mark.parametrize("asset_name", [
+        "implement-task-plan.md",
+        "fix-issue-plan.md",
+    ])
+    def test_only_signoff_reaches_add_to_pr_stack(self, asset_name):
+        from dev_team import parse_workflow
+        workflow = parse_workflow(self.ASSETS_DIR / asset_name)
+        sources_reaching_add_to_pr_stack = [
+            src for src, triggers in workflow.transitions.items()
+            if "add_to_pr_stack" in triggers.values()
+        ]
+        assert sources_reaching_add_to_pr_stack == ["signoff"]

@@ -168,20 +168,45 @@ attribution:
 The configured string is used verbatim as `<name>` in `Written by <name>` — there is no
 separate built-in default name to fall back to.
 
+### `troubleshooter.can-fix` / `troubleshooter.can-push-fix` — booleans
+
+Two independent authorization gates read by `workflow-troubleshoot`, both defaulting `false`
+(the shipped default ships a blank `troubleshooter:` key — neither flag set). Issue searching
+and filing is unconditional either way; these gates only affect whether the troubleshooter
+attempts a root-cause code fix.
+
+- **`can-fix`** — authorizes writing a root-cause fix and committing it on a branch in the
+  plugin checkout `workflow-troubleshoot` resolves via `<skill-dir>`, then merging that branch
+  directly into whatever is checked out there. No push, no PR.
+- **`can-push-fix`** — has no effect unless `can-fix` is also set. Additionally authorizes
+  pushing the fix branch and opening a draft PR via `gh stack`, instead of a local merge.
+
+Set only in machine-tier config (`.dev-team/config.local.yaml`), never project-tier, since
+authorization to make and push automated code changes is a personal, not project-wide,
+decision:
+
+```yaml
+troubleshooter:
+  can-fix: true
+  can-push-fix: true
+```
+
 ### `git-repo`
 
 `user-alias` — substituted for `<user-alias>` in the `working-branches.*` templates below.
 Defaults to `claude`; overridable per project or per machine (e.g. a human working in another
 team's repo under their own alias, via `.dev-team/config.local.yaml`).
 
-`working-branches.task` / `.feature` — branch name templates. The calling skill performs the
-substitution; this skill only returns the raw template.
+`working-branches.task` — the one branch name template, used for both task branches and a
+feature's own spec branch: the spec branch is built from this same template, substituting
+`<task-work-item-id>` with `<feature-work-item-id>-spec` (see `write-dev-spec`'s own step 1.5)
+rather than from a separate template — there is no dedicated "feature" branch scheme. The calling
+skill performs the substitution; this skill only returns the raw template.
 
 | Placeholder | Meaning |
 |---|---|
 | `<user-alias>` | From `git-repo.user-alias` |
-| `<task-work-item-id>` | task-work-item ID, supplied by the calling skill |
-| `<feature-work-item-id>` | feature-work-item ID, supplied by the calling skill |
+| `<task-work-item-id>` | task-work-item ID (or `<feature-work-item-id>-spec` for a feature's own branch), supplied by the calling skill |
 | `<slug>` | Short kebab-case description, supplied by the calling skill |
 
 ### `instructions` — map of event name → ordered map of label → instruction

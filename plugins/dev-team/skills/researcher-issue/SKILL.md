@@ -73,4 +73,5 @@ gathered. Frame each criterion the same way spec exit criteria are written (obse
 behaviour, not implementation detail). Label the section **"Exit criteria (proposed)"**
 so the caller knows these are inferred, not authoritative.
 
-Return the task brief as prose.
+Use the `write-scratch-deliverable` skill to write the task brief in place of returning it as
+chat text.

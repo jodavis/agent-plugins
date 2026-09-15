@@ -23,10 +23,22 @@ section for the definitions used throughout this skill.
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an
-environment variable. The Task readiness checker's scripts (`task_readiness.py`,
-`task_dependencies.py`) live in the sibling `workflow-orchestrate` skill's `scripts/` directory,
-so they are invoked as `<skill-dir>/../workflow-orchestrate/scripts/<script>.py` — still anchored
-to `<skill-dir>`, never to an assumed repo-root CWD.
+environment variable. This skill's own `stack_registration.py` script lives in its sibling
+`scripts/` directory (`<skill-dir>/scripts/stack_registration.py`); it in turn imports the Stack
+order validator (`validate_stack_order`) and dependency parser (`parse_task_dependencies`), from
+the sibling `workflow-orchestrate` skill's `task_dependencies.py`, so no separate `Bash` call to
+`task_dependencies.py` is needed here.
+
+**This skill never touches `gh stack`.** A task's working branch is a plain git branch, based
+directly on whichever of its own declared dependencies is furthest along the epic's stack (or the
+feature branch, if it has none) — never registered into the epic's `gh stack` itself. That
+registration is `add-to-pr-stack`'s sole job, and only happens once this task's own PR has been
+signed off (see that skill). This is a deliberate split: `gh stack`'s local stack-membership state
+is worktree-private (ADR-370 finding #1, `work-with-stacked-prs/SKILL.md`), so registering here —
+in whatever fresh per-task worktree `concurrent-orchestrate` spawned this task into — would race
+against `monitor-stack`'s own shared-worktree view of the same stack. `add-to-pr-stack` avoids
+that entirely by using `gh stack link`, the one operation that doesn't need local tracking state
+at all.
 
 ## Configured behavior
 
@@ -45,17 +57,27 @@ confirmed upstream `isolation: "worktree"` bug (Claude Code issues #51596, #3787
 can silently reuse a stale worktree/branch on an 8-hex-char ID-prefix collision — a dirty
 worktree at this point means it isn't the fresh one this task expects.
 
+(A properly isolated worktree never sees another concurrent session's `.claude/worktrees/`
+bookkeeping — that only shows up when this check is run from the main checkout instead. See
+`workflow-orchestrate`'s own preflight check, which stops before this skill would ever run in
+that situation.)
+
 ### 2 — Check the context file for already-known values
 
 Use the `use-context-file` skill with the `work-item-id` to locate and read the context file.
-Note any of these frontmatter fields that are already set: `working_branch`, `base_branch`,
-`spec_path`, `parent_work_item`. Skip the corresponding step below for each one found, and use
-the recorded value instead of recomputing it.
+Note any of these frontmatter fields that are already set: `working_branch`, `spec_path`,
+`parent_work_item`. Skip the corresponding step below for each one found, and use the recorded
+value instead of recomputing it. A pre-populated `base_branch` is never treated as a skip signal
+here — step 4 always recomputes the base branch regardless of any `base_branch` already on the
+context file.
 
 Also read `git-repo` and `documentation` from the same context file's
 `<!-- section:Project Configuration -->` section.
 
-If `working_branch` is already known, skip straight to step 5.
+If `working_branch` is already known, this task's branch was already created by a previous run of
+this skill — skip straight to step 5, which simply checks it out (this skill's own branch-creation
+step is not safely repeatable — running it twice would try to `git checkout -b` an already-
+existing branch). Otherwise continue normally through step 3 then step 4.
 
 ### 3 — Compute the working branch name
 
@@ -67,10 +89,6 @@ short kebab-case slug of the task. Call the result `<working-branch>`. Write it 
 file's `working_branch` field via `use-context-file`.
 
 ### 4 — Determine the base branch
-
-Skip this step if `base_branch` was already known from step 2 — including the case where the
-context file has it explicitly set (a scheduler-spawned task may pre-populate it; a plain
-`/implement <key>` run never has it pre-populated, so this step always runs for that case).
 
 #### 4a — Search the repo for a spec file
 
@@ -84,49 +102,6 @@ feature-work-item: a heading or field naming it, e.g. a heading shaped `<type> <
 or a field labelled `Parent:`. Extract the key (pattern `[A-Z]+-\d+`). That key is the parent
 feature-work-item ID.
 
-#### 4b — Dependency-aware base branch
-
-This is the only dependency-aware step in the pipeline itself — no rebasing happens here or
-anywhere else mid-pipeline; it only decides which base branch this task's own working branch
-should start from.
-
-Skip this sub-step entirely (fall through to 4c unchanged) if no `spec_path` is known at this
-point (neither pre-populated nor found in 4a) — without a spec there is nothing to read this
-task's own dependencies from.
-
-Otherwise:
-
-1. Read this task's own dependency ids: invoke
-   `python3 "<skill-dir>/../workflow-orchestrate/scripts/task_dependencies.py" "<spec_path>"` via
-   `Bash`. It prints the whole spec's `{task_key: [dependency_ids]}` graph as JSON on success.
-   Look up this task's own work-item-id key in that graph — that list is this task's own
-   dependency ids (an empty list if the task declares `— none —` or has no `Depends on:` line at
-   all). If the command exits non-zero, it prints a clear `Error: ...` message to stderr instead
-   of JSON — stop and report that error in detail; do not fall through to 4c.
-
-2. If that list is empty, skip the rest of this sub-step and fall through to 4c unchanged (no
-   dependencies means nothing for this step to override).
-
-3. Otherwise, invoke
-   `python3 "<skill-dir>/../workflow-orchestrate/scripts/task_readiness.py" "<work-item-id>" "<dep1>,<dep2>,..."`
-   via `Bash`, passing this task's own dependency ids as a comma-separated list. It prints
-   `{"status": "eligible" | "waiting" | "blocked", "base_branch": <branch-name-or-null>}` as JSON
-   on success. If the command exits non-zero, it prints a clear `Error: ...` message to stderr
-   instead of JSON — stop and report that error in detail; do not fall through to 4c.
-
-4. If `status` is `"eligible"` and `base_branch` is a real (non-null) branch name: write it to
-   the context file's `base_branch` field via `use-context-file`, then skip the rest of step 4
-   entirely (4c–4f) and proceed straight to step 5.
-
-5. If `status` is `"eligible"` and `base_branch` is `null`: no override is needed (every
-   dependency is already done) — fall through to 4c and let the existing feature-branch lookup
-   run unchanged.
-
-6. If `status` is `"waiting"` or `"blocked"`: this task's dependencies are not yet ready to start
-   from. Stop and report the failure in detail (name the task, its dependency ids, and the
-   returned status) — do not fall back to the feature-branch lookup, since that would silently
-   start this task's working branch without the dependency it actually needs.
-
 #### 4c — Query the tracker if no parent feature-work-item ID found
 
 Skip if `parent_work_item` was already known from step 2. If no parent feature-work-item ID was
@@ -138,59 +113,91 @@ parent is not an issue key, continue with no parent feature-work-item ID.
 If a parent feature-work-item ID was found in step 4a or 4c, write it to the context file's
 `parent_work_item` field via `use-context-file`.
 
-#### 4d — Find the feature-work-item branch
+#### 4d — Find the epic's spec branch
 
-If a parent feature-work-item ID is known (from step 2, 4a, or 4c), search remote branches for
-it. Take the literal prefix of `git-repo.working-branches.feature` up to its first `<placeholder>`
-(e.g. `feature/` from `feature/<feature-work-item-id>-<slug>`) and search for it:
+Skip this sub-step and go straight to 4f if no parent feature-work-item ID is known at all
+(neither 4a nor 4c found one) — there is no epic to look for a spec branch under.
 
-```bash
-git fetch origin
-git branch -r | grep "<feature-prefix><parent-feature-work-item-id>"
-```
+The epic's spec branch is named like a task branch, not a special "feature" one — see
+`write-dev-spec`'s own step 1.5 for why. Otherwise:
 
-Strip the `origin/` prefix from the matching branch name. That is the base branch. If more than
-one branch matches, prefer the one most recently pushed.
+1. Take `git-repo.working-branches.task`, substitute `<user-alias>` with `git-repo.user-alias`,
+   then take the literal prefix up to its next `<placeholder>` (`<task-work-item-id>`) — e.g.
+   `dev/claude/` — call this `<feature-prefix>`.
+2. ```bash
+   git fetch origin
+   git branch -r --sort=-committerdate | grep -E "<feature-prefix><parent-feature-work-item-id>-spec(-|$)"
+   ```
+   (Anchored the same way `write-dev-spec`'s own step 1.5 search is — tolerant of a missing or
+   different slug, but anchored so `<parent-feature-work-item-id>-spec` must end at a `-` or the
+   branch name's end.)
+3. If one or more matches are found, take the first line (most recently pushed), strip the
+   `origin/` prefix — that is `<feature-branch>`. Skip to 4e.
+4. If no match is found, this is a **hard stop**: stop immediately and report that
+   `<parent-feature-work-item-id>` has no spec branch yet, and that `/write-dev-spec` must be run
+   for it before this task can start.
 
-#### 4e — Fallback: nearest ancestor feature branch
-
-If no parent feature-work-item ID is known and step 4d was not reached, check for the nearest
-ancestor branch matching the `<feature-prefix>` from step 4d:
-
-```bash
-git branch -r --merged HEAD | grep "<feature-prefix>"
-```
-
-Use the closest ancestor matching branch as the base branch.
-
-#### 4f — Fallback or error
-
-If no matching feature branch has been found:
-- `work-item-type` is `jira`: stop and report an error — a feature-work-item branch is required
-  for Jira-tracked task-work-items.
-- Otherwise: use `main` as the base branch.
-
-Once the base branch is determined, write it to the context file's `base_branch` field via
+Once `<feature-branch>` is known, write it to the context file's `base_branch` field via
 `use-context-file`.
 
-### 5 — Prepare the working branch
+#### 4e — Pick this task's base branch from among its own dependencies
 
-Fetch the latest state from the remote:
+Skip this sub-step if 4d fell through to 4f (no epic known) — go straight to 4f for the base
+branch.
+
+Also skip this sub-step if `spec_path` is not known at this point (4a found no local spec file,
+and the parent feature-work-item ID was discovered only via 4c's Jira fallback). Without a spec
+document there is no validated stack order to compute from — treat `<feature-branch>` itself as
+this task's base (already written to `base_branch` in 4d) and go straight to step 5.
+
+Otherwise:
+
+1. Run `python3 "<skill-dir>/scripts/stack_registration.py" anchor "<work-item-id>" "<spec_path>"`
+   via `Bash`. It prints `{"anchor_task": <task-id-or-null>}` as JSON on success — the one
+   declared dependency of this task whose own branch this task should be based on, chosen as
+   whichever sorts latest in the epic's document order when this task has more than one declared
+   dependency (a linear stack transitively contains everything earlier), or `null` when this task
+   has no declared dependencies at all. If the command exits non-zero, it prints a clear
+   `Error: ...` message to stderr instead of JSON — stop and report that error in detail.
+
+   Every dependency this can name is guaranteed already `done` — `is_task_eligible`
+   (`task_readiness.py`) never lets this task start until all of them are.
+
+2. If `anchor_task` is `null`, `<base-branch>` is `<feature-branch>` (already written in 4d — no
+   further write needed). Otherwise, use the `use-context-file` skill with `anchor_task` as an
+   explicit work-item-id to read its `working_branch` field — that is `<base-branch>`. Write it to
+   this task's own context file's `base_branch` field via `use-context-file` (overwriting the
+   `<feature-branch>` placeholder 4d wrote).
+
+This task's branch is **not** registered into the epic's `gh stack` here, and `added_to_stack`
+stays unset for the rest of implementation, review, and sign-off — see this skill's own intro.
+`add-to-pr-stack` is the sole place that registration happens, once this task's PR is signed off.
+
+#### 4f — Fallback when no epic is known
+
+Reached only when no parent feature-work-item ID could be found at all (neither 4a nor 4c). This
+task isn't part of a tracked epic/stack:
+- `work-item-type` is `jira`: stop and report an error — a feature-work-item branch is required
+  for Jira-tracked task-work-items.
+- Otherwise: use `main` as the base branch, write it to the context file's `base_branch` field via
+  `use-context-file`.
+
+### 5 — Create and verify the working branch
+
+If `working_branch` was already known from step 2, `<working-branch>` already exists locally from
+a previous run of this skill. Just confirm it's current:
 
 ```bash
 git fetch origin
-```
-
-If `<working-branch>` already exists locally or on the remote, check it out and pull:
-
-```bash
 git checkout <working-branch>
 git pull origin <working-branch>
 ```
 
-If it does not yet exist, create it from the base branch:
+Otherwise, create it directly from `<base-branch>` (step 4 always determines one, whether from
+4e's dependency-anchor logic or 4f's fallback):
 
 ```bash
+git fetch origin
 git checkout --no-track -b <working-branch> origin/<base-branch>
 ```
 
@@ -203,6 +210,19 @@ pushes — a real, previously-shipped bug (see PR #158's ADR-338 push-rejection 
 `--no-track`, `<working-branch>` starts with no upstream configured at all, so the first push
 must set it explicitly (`git push -u origin <working-branch>`) — see `run-hook-instructions`'s
 push-instruction handling, which does exactly this rather than a bare `git push`.
+
+**Guardrail (closes #126), when a `<feature-branch>` is known** (4d ran — skip this call entirely
+in 4f's no-epic case, where there's no feature branch to conflate with): run
+`python3 "<skill-dir>/scripts/stack_registration.py" verify "$(git rev-parse --abbrev-ref HEAD)" "<working-branch>" "<feature-branch>"`
+via `Bash`. A zero exit confirms HEAD is genuinely `<working-branch>` and not `<feature-branch>`.
+A non-zero exit is a **hard stop**: stop immediately, report the mismatch in detail (its stderr
+names the branch HEAD is actually on, the expected working branch, and — when this is the exact
+conflation bug — the feature branch).
+
+This skill does not push `<working-branch>` itself — with no upstream configured (`--no-track`
+above), the first push is left to the pipeline's own later "push changes" hook
+(`run-hook-instructions`'s push-instruction handling), the same as this skill's old no-epic
+fallback already did.
 
 ---
 

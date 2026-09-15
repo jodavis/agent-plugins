@@ -137,7 +137,7 @@ list was non-empty — the per-component commits from steps 6–7 are unaffected
 
 ### 11 — Report
 
-Return a work summary as structured prose:
+Compose a work summary as structured prose:
 
 **Files created or modified**
 List each file by path with a one-line description of what changed.
@@ -154,6 +154,9 @@ Feature file path(s) and scenario title(s) for all new or modified Gherkin scena
 **Known ambiguities**
 Any ambiguity notes recorded while implementing a component (declared or ad hoc) or during this
 skill's own step 7 triage, for human review after the fact. Omit this section if there are none.
+
+Use the `write-scratch-deliverable` skill to write this summary in place of returning it as chat
+text.
 
 ## Skills
 
