@@ -1,11 +1,11 @@
 # \<Feature Name\>
 
 > **Status:** Draft
-> **Design:** `_design_<FeatureName>.md` — the detailed design doc this spec implements, if one
-> exists; otherwise "— none"
-> **Architecture doc:** `_doc_<FeatureName>.md` — authored by `dev-spec-task-breakdown`'s
-> unconditional final "Author design documentation" task once implementation completes; this
-> spec persists afterward for harvesting
+> **Design:** \<path to the detailed design doc this spec implements, resolved via
+> `documentation.specs`\>, if one exists; otherwise "— none"
+> **Architecture doc:** \<path to the architecture doc, resolved via `documentation.architecture`\>
+> — authored by `dev-spec-task-breakdown`'s unconditional final "Author design documentation" task
+> once implementation completes; this spec persists afterward for harvesting
 
 This line names an obligation owned by `dev-spec-task-breakdown`, not by this skill: every task
 breakdown must append that unconditional final documentation task, so the reference above is
@@ -78,11 +78,13 @@ Public interfaces — method signatures, types, and responsibilities.
 
 ### Key Classes
 
-Planned classes, their roles, and important relationships.
+Planned classes, their roles, and important relationships. Use a Mermaid class or flowchart
+diagram to illustrate the relationships where that's clearer than prose.
 
 ### Data Flow
 
-How data moves through the feature from trigger to output.
+How data moves through the feature from trigger to output. Use a Mermaid sequence or flowchart
+diagram to illustrate the flow where that's clearer than prose.
 
 ## Related Features
 

@@ -2,17 +2,25 @@
 name: dev-spec-first-draft
 user-invocable: false
 description: >
-  Use when writing a first draft of a complete new dev spec or a new part of an existing dev spec.
-  Gathers context from docs, source code, and the user, then writes the draft to a _spec_*.md file.
+  Use when writing a dev spec — a new one, or revising an existing one with new information.
+  Gathers context from docs, source code, and the user, then writes the draft to a location
+  next to the feature's code.
 argument-hint: <feature brief | work-item-id | spec-file-path>
 ---
 
 Use this skill when:
-- You are writing a first draft of a complete new dev spec or a new part of an existing dev spec
+- You are writing a dev spec, whether drafting a new one or revising an existing one with new information
+
+You are writing a dev spec — a new one, or revising an existing one whose path the caller passed
+in.
 
 ## Steps
 
 ### 1 — Gather context
+
+If revising, the calling command has already found the existing dev spec and passed its path —
+read it in full now, and treat the new brief as the reason for revision rather than a
+from-scratch rewrite.
 
 Use the `find-repo-documentation` skill to read the architecture docs relevant to the feature area.
 
@@ -22,7 +30,7 @@ questions — do not re-ask those; only ask what the design doc leaves open for 
 
 Spawn one or more `dev-team:researcher` agents to research any frameworks, libraries, or patterns the feature will use. Each agent uses the `research-learn` skill and returns findings with source links.
 
-Use `AskUserQuestion` to ask the user focused questions that fill gaps the docs, design doc, and feature description don't answer. Good questions cover:
+Use `AskUserQuestion` to ask the user focused questions that fill gaps the docs, design doc, and feature description don't answer — if revising, focus on what actually changes rather than re-asking settled ground. Good questions cover:
 
 - Ownership and boundaries (what this feature owns vs. delegates)
 - Integration points with existing subsystems
@@ -36,22 +44,11 @@ Skip questions you can already answer from docs, the design doc, or source. Prov
 
 If answers raise new ambiguities that would materially affect the spec, ask one more targeted follow-up round. Otherwise proceed.
 
-Treat this step as the place unresolved questions get eliminated, not deferred. If you notice a gap while writing the draft in step 3, stop and go back through this same research/`AskUserQuestion` process before continuing — do not carry it forward into the draft's Open Questions section instead. An item belongs in Open Questions only if the user was asked and explicitly said something like "I don't know, we'll have to figure that out as we go" — a genuinely open question that can't be resolved by research or a decision right now. It is not for questions you simply haven't asked yet, or that research could answer.
+Treat this step as the place unresolved questions get eliminated, not deferred. If you notice a gap while writing the draft in step 2, stop and go back through this same research/`AskUserQuestion` process before continuing — do not carry it forward into the draft's Open Questions section instead. An item belongs in Open Questions only if the user was asked and explicitly said something like "I don't know, we'll have to figure that out as we go" — a genuinely open question that can't be resolved by research or a decision right now. It is not for questions you simply haven't asked yet, or that research could answer.
 
-### 2 — Revising an existing document
+### 2 — Write the draft
 
-If a dev spec for this feature/task already exists, the calling command will have already found
-it and will be invoking this skill in revise mode, passing its path. Read the existing document
-in full. Treat the new brief as the reason for revision, not as a from-scratch rewrite: use step
-1's research/`AskUserQuestion` process to ask what actually changes — a revision may touch
-several existing sections, not just append one bounded new part. Continue to step 3 once every
-changed section is resolved.
-
-### 3 — Write the first draft
-
-Determine the spec file location: the `_spec_*.md` lives next to the code it describes — in the directory where the new feature's code will live.
-
-Name: `_spec_<FeatureName>.md` in PascalCase. Skip this location step if revising an existing document — use its current location instead.
+If drafting new, determine the spec file location: the `_spec_*.md` lives next to the code it describes — in the directory where the new feature's code will live. Name it `_spec_<FeatureName>.md` in PascalCase. If revising, use the existing document's location instead.
 
 Write (or update) the file following the template at
 [`assets/dev_spec_template.md`](assets/dev_spec_template.md).
@@ -62,7 +59,7 @@ Write or regenerate the `## Contents` section last, once every other section is 
 
 Once the draft is complete, invoke the `document-concision-pass` skill on the file to tighten it.
 
-### 4 — Pause for review
+### 3 — Pause for review
 
 After writing, tell the user:
 
