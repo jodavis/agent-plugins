@@ -4,9 +4,10 @@ developer-standards:
 
 work-tracking:
   jira:
-    issue-key-pattern: ADR-\d+
+    issue-key-pattern: AIP-\d+
     recognize-patterns:
     - Task \d+
+    - Story \d+
     - Epic \d+
     - Jira \d+
     task-work-item:
@@ -14,9 +15,13 @@ work-tracking:
       replace-description-when: This task is added to a spec, and the current description contains initial notes
       update-description-when: Revising a spec
     feature-work-item:
-      type: Epic
+      type: Story
       update-description-when: Adding to a spec or revising a spec
       replace-description-when: Writing a spec for the first time, and the description contains initial notes
+    design-work-item:
+      type: Epic
+      update-description-when: Adding to a proposal or revising a proposal
+      replace-description-when: Writing a proposal for the first time, and the description contains initial notes
   github:
     issue-key-pattern: Issue-\d+
     recognize-patterns:
