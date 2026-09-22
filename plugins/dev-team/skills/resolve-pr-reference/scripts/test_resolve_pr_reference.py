@@ -202,6 +202,54 @@ class TestResolvePrReferenceUnrecognizedShape:
         assert "project configuration could not be loaded" in result["detail"]
         mock_run.assert_not_called()
 
+    def test_resolve_pr_reference_malformed_provider_regex_pattern_is_skipped_not_raised(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/acme/widget.git")
+        import resolve_pr_reference
+        from resolve_pr_reference import resolve_pr_reference as resolve
+
+        broken_work_tracking = {"jira": {"issue-key-pattern": "AIP-[", "recognize-patterns": []}}
+        monkeypatch.setattr(
+            resolve_pr_reference, "build_merged_config", lambda: {"work-tracking": broken_work_tracking}
+        )
+        mock_run = MagicMock()
+
+        # Act
+        with patch("subprocess.run", mock_run):
+            result = resolve("AIP-18")
+
+        # Assert
+        assert result["status"] == "not_found"
+        assert "did not match any recognized format" in result["detail"]
+        mock_run.assert_not_called()
+
+    def test_resolve_pr_reference_work_item_provider_with_no_dispatch_logic_returns_not_found(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/acme/widget.git")
+        import resolve_pr_reference
+        from resolve_pr_reference import resolve_pr_reference as resolve
+
+        gitlab_work_tracking = {"gitlab": {"issue-key-pattern": "GL-\\d+", "recognize-patterns": []}}
+        monkeypatch.setattr(
+            resolve_pr_reference, "build_merged_config", lambda: {"work-tracking": gitlab_work_tracking}
+        )
+        mock_run = MagicMock()
+
+        # Act
+        with patch("subprocess.run", mock_run):
+            result = resolve("GL-9")
+
+        # Assert
+        assert result["status"] == "not_found"
+        assert "gitlab" in result["detail"]
+        mock_run.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Work-item ID with an existing use-context-file context file whose pr_url is set
@@ -271,6 +319,34 @@ class TestResolvePrReferenceWorkItemContextFile:
         assert result["status"] == "not_found"
         assert "pr_url" in result["detail"]
         mock_run.assert_not_called()
+
+    def test_resolve_pr_reference_context_file_exists_with_empty_pr_url_falls_through_to_provider(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/acme/widget.git")
+        import resolve_pr_reference
+        from resolve_pr_reference import resolve_pr_reference as resolve
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+
+        monkeypatch.setattr(
+            resolve_pr_reference, "build_merged_config", lambda: {"work-tracking": JIRA_WORK_TRACKING}
+        )
+        path = compute_context_path("AIP-18", get_repo_slug())
+        PipelineContext(work_item_id="AIP-18", pr_url="").save(path)
+        jira_links = [{"object": {"url": "https://github.com/acme/widget/pull/7"}}]
+
+        # Act
+        with patch("subprocess.run", MagicMock()):
+            result = resolve("AIP-18", jira_links=jira_links)
+
+        # Assert
+        assert result["status"] == "resolved"
+        assert result["source"] == "work-item-jira-remote-link"
+        assert result["number"] == 7
 
 
 # ---------------------------------------------------------------------------

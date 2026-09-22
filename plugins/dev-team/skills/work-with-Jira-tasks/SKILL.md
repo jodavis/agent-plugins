@@ -67,6 +67,12 @@ caller's own failure contract; do not retry a second time.
 | Look up account ID by email | `lookupJiraAccountId` | Resolve a user's Jira account ID (and linked GitHub username, if any) from their email |
 | Get authenticated user info | `atlassianUserInfo` | Return the identity of the currently authenticated Atlassian user |
 | Link two issues | `createIssueLink` | Create a typed link (e.g. `Blocks`) between two issues |
+| List remote issue links | `getJiraIssueRemoteIssueLinks` | List the issue's Remote Issue Links (e.g. linked PR URLs) |
+
+`getJiraIssueRemoteIssueLinks` hits Jira's generic Remote Issue Links API, not the Development
+panel's separate dev-status API — no MCP tool connected in this environment exposes the
+dev-status API, so a PR linked only via Smart Commits or branch-name convention (and never added
+as an explicit remote link) won't show up here.
 
 Other skills should reference these operations by name (e.g. "the `editJiraIssue` operation
 from `work-with-Jira-tasks`") rather than hardcoding a `mcp__<prefix>__<suffix>` tool name

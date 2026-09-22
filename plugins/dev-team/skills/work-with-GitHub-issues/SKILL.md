@@ -33,6 +33,22 @@ gh issue view <issue-number>
 | Write/update issue | `mcp__plugin_github_github__issue_write` |
 | Search issues | `mcp__plugin_github_github__search_issues` |
 | List issues | `mcp__plugin_github_github__list_issues` |
+| Get linked pull requests | `getLinkedPullRequests` |
+
+`getLinkedPullRequests` is not an MCP tool — it's a plain `gh api graphql` call reading the
+issue's `closedByPullRequestsReferences` connection, the same way `gh issue view <n>` above is a
+CLI alternative to the MCP read tool:
+
+```bash
+gh api graphql -f query='
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        closedByPullRequestsReferences(first: 10) { nodes { number } }
+      }
+    }
+  }' -F owner=<owner> -F repo=<repo> -F number=<issue-number>
+```
 
 ## Issue number
 
