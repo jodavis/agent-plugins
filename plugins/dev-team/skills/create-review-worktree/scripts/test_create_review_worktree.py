@@ -675,6 +675,39 @@ class TestFinishCrossRepoSiblingWorktreeRealGitIntegration:
         )
         assert str(target_dir) in worktree_list.stdout
 
+    def test_finish_cross_repo_sibling_worktree_does_not_leave_a_stray_branch_in_sibling_clone(self, tmp_path):
+        # Arrange
+        repo_root = tmp_path / "repo"
+        _init_fake_repo(repo_root, "https://github.com/myorg/other.git")
+        sibling_dir = tmp_path / "widgets"
+        _init_fake_repo(sibling_dir, "https://github.com/acme/widgets.git")
+        resolved = _resolved()
+
+        real_run = subprocess.run
+
+        def _passthrough_except_gh(cmd, cwd=None, **kwargs):
+            if cmd[:1] == ["gh"]:
+                return _completed()
+            return real_run(cmd, cwd=cwd, **kwargs)
+
+        # Act
+        with patch("subprocess.run", side_effect=_passthrough_except_gh):
+            finish_cross_repo(resolved, repo_root)
+
+        # Assert: `gh pr checkout` (mocked here) is responsible for creating/switching the real
+        # PR branch — this call must not have pre-created a `review-<owner>-<repo>-<number>`
+        # branch of its own in the sibling clone, since nothing ever renames or deletes it, and
+        # `-b` would fail outright on a second review of the same PR while it's still there.
+        stray_branch = f"review-{resolved['owner']}-{resolved['repo']}-{resolved['number']}"
+        branch_list = real_run(
+            ["git", "branch", "--list", stray_branch],
+            cwd=sibling_dir,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert branch_list.stdout.strip() == ""
+
 
 # ---------------------------------------------------------------------------
 # main — CLI dispatch

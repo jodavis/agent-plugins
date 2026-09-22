@@ -137,9 +137,8 @@ def finish_cross_repo(resolved: dict, repo_root: Path) -> dict:
 
     if classification["isolation_kind"] == "sibling-worktree":
         sibling_dir = Path(classification["sibling_path"])
-        branch = _scratch_dir_name(owner, repo, number)
         result = _run(
-            ["git", "worktree", "add", "-b", branch, str(target_dir), "HEAD"],
+            ["git", "worktree", "add", "--detach", str(target_dir), "HEAD"],
             cwd=sibling_dir,
         )
         if result.returncode != 0:
