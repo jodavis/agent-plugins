@@ -104,7 +104,7 @@ tool-use turn — no script in this repo calls it, and none can.
    {"isolation_kind": "enterworktree", "worktree_path": "<pwd output>", "head_ref": "<branch name>"}
    ```
 
-Skip step 3 entirely — it only applies to the cross-repo paths.
+The Cross-repo section below does not apply to the same-repo path.
 
 ### 3 — Cross-repo: stand up the sibling worktree or scratch clone
 
