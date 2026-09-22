@@ -350,6 +350,65 @@ class TestResolvePrReferenceWorkItemContextFile:
 
 
 # ---------------------------------------------------------------------------
+# Jira work-item path — no --jira-links supplied yet (pending lookup)
+# ---------------------------------------------------------------------------
+
+class TestResolvePrReferenceJiraLinksNotYetSupplied:
+    def test_resolve_pr_reference_jira_ref_with_no_jira_links_supplied_returns_needs_jira_links_without_running_fallback(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/acme/widget.git")
+        import resolve_pr_reference
+        from resolve_pr_reference import resolve_pr_reference as resolve
+
+        monkeypatch.setattr(
+            resolve_pr_reference, "build_merged_config", lambda: {"work-tracking": JIRA_WORK_TRACKING}
+        )
+        mock_run = MagicMock()
+
+        # Act
+        with patch("subprocess.run", mock_run):
+            result = resolve("AIP-18")
+
+        # Assert
+        assert result["status"] == "needs_jira_links"
+        assert "AIP-18" in result["detail"]
+        mock_run.assert_not_called()
+
+    def test_resolve_pr_reference_jira_ref_with_context_file_pr_url_short_circuits_needs_jira_links(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/acme/widget.git")
+        import resolve_pr_reference
+        from resolve_pr_reference import resolve_pr_reference as resolve
+        from dev_team import compute_context_path
+        from get_context_path import get_repo_slug
+        from pipeline_context import PipelineContext
+
+        monkeypatch.setattr(
+            resolve_pr_reference, "build_merged_config", lambda: {"work-tracking": JIRA_WORK_TRACKING}
+        )
+        path = compute_context_path("AIP-18", get_repo_slug())
+        PipelineContext(
+            work_item_id="AIP-18", pr_url="https://github.com/acme/widget/pull/57"
+        ).save(path)
+        mock_run = MagicMock()
+
+        # Act
+        with patch("subprocess.run", mock_run):
+            result = resolve("AIP-18")
+
+        # Assert — context file already resolved it, so no pending Jira lookup is needed
+        assert result["status"] == "resolved"
+        assert result["source"] == "work-item-context-file"
+        mock_run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Jira work-item path — remote links
 # ---------------------------------------------------------------------------
 
@@ -530,7 +589,7 @@ class TestResolvePrReferenceJiraGithubSearchFallback:
 
         # Act
         with patch("subprocess.run", side_effect=fake_run):
-            result = resolve("AIP-18", jira_links=None)
+            result = resolve("AIP-18", jira_links=[])
 
         # Assert
         assert result["status"] == "resolved"
@@ -649,6 +708,37 @@ class TestResolvePrReferenceJiraGithubSearchFallback:
 
         # Assert
         assert result["status"] == "not_found"
+        assert "unexpected (non-JSON) output" in result["detail"]
+
+    def test_resolve_pr_reference_jira_fallback_gh_calls_pass_explicit_limit_flag(
+        self, tmp_path, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/acme/widget.git")
+        import resolve_pr_reference
+        from resolve_pr_reference import resolve_pr_reference as resolve
+
+        monkeypatch.setattr(
+            resolve_pr_reference, "build_merged_config", lambda: {"work-tracking": JIRA_WORK_TRACKING}
+        )
+        seen_commands = []
+
+        def record_and_respond(cmd, **kwargs):
+            seen_commands.append(cmd)
+            if cmd[:3] == ["gh", "search", "prs"]:
+                return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+            return MagicMock(returncode=0, stdout=json.dumps([]), stderr="")
+
+        # Act
+        with patch("subprocess.run", side_effect=record_and_respond):
+            resolve("AIP-18", jira_links=[])
+
+        # Assert
+        search_cmd = next(cmd for cmd in seen_commands if cmd[:3] == ["gh", "search", "prs"])
+        list_cmd = next(cmd for cmd in seen_commands if cmd[:3] == ["gh", "pr", "list"])
+        assert "--limit" in search_cmd
+        assert "--limit" in list_cmd
 
 
 # ---------------------------------------------------------------------------
@@ -955,6 +1045,30 @@ class TestMain:
         captured = json.loads(capsys.readouterr().out)
         assert captured["status"] == "resolved"
         assert captured["number"] == 42
+
+    def test_main_jira_ref_without_jira_links_flag_prints_needs_jira_links_without_calling_gh(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Arrange
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/acme/widget.git")
+        import resolve_pr_reference
+        from resolve_pr_reference import main
+
+        monkeypatch.setattr(
+            resolve_pr_reference, "build_merged_config", lambda: {"work-tracking": JIRA_WORK_TRACKING}
+        )
+        monkeypatch.setattr(sys, "argv", ["resolve_pr_reference.py", "AIP-18"])
+        mock_run = MagicMock()
+
+        # Act
+        with patch("subprocess.run", mock_run):
+            main()
+
+        # Assert
+        captured = json.loads(capsys.readouterr().out)
+        assert captured["status"] == "needs_jira_links"
+        mock_run.assert_not_called()
 
     def test_main_with_jira_links_flag_passes_parsed_json_through(
         self, tmp_path, monkeypatch, capsys

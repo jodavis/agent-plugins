@@ -13,9 +13,12 @@ calling the `getJiraIssueRemoteIssueLinks` MCP operation — is not reachable fr
 `resolve-pr-reference` skill calls it itself and passes the result back in via `--jira-links`.
 
 `main()` is a thin CLI wrapper: prints `resolve_pr_reference()`'s result as one JSON object to
-stdout with exit 0, whether it resolved or reports a structured `not_found`/`ambiguous`/
-`access_denied` failure. A hard failure of the script itself (e.g. malformed `--jira-links` JSON)
-prints `Error: ...` to stderr and exits non-zero instead.
+stdout with exit 0, whether it resolved, reports a structured `not_found`/`ambiguous`/
+`access_denied` failure, or (Jira work-item path only, first call with no `--jira-links` flag)
+reports `needs_jira_links` — a distinct pending status telling the caller to fetch
+`getJiraIssueRemoteIssueLinks` and re-invoke with `--jira-links` before a final result is
+possible. A hard failure of the script itself (e.g. malformed `--jira-links` JSON) prints
+`Error: ...` to stderr and exits non-zero instead.
 """
 
 import argparse
@@ -183,11 +186,26 @@ def _jira_links_to_prs(jira_links: list) -> list[tuple[str, str, int]]:
     return matches
 
 
-def _github_search_fallback(owner: str, repo: str, issue_key: str) -> list[tuple[str, str, int]]:
+_GH_SEARCH_LIMIT = "100"
+
+
+def _github_search_fallback(
+    owner: str, repo: str, issue_key: str
+) -> tuple[list[tuple[str, str, int]], list[str]]:
+    """Search the current repo's PRs for `issue_key` in the title/body (`gh search prs`) and in
+    the branch name (`gh pr list`, since GitHub's search doesn't index branch names). Returns
+    (matches, warnings) — `warnings` records a gh call that failed or returned unparseable
+    output, so a real gh failure isn't silently indistinguishable from a genuine empty result."""
     matches: set[tuple[str, str, int]] = set()
+    warnings: list[str] = []
 
     search_result = subprocess.run(
-        ["gh", "search", "prs", issue_key, "--repo", f"{owner}/{repo}", "--json", "number,url"],
+        [
+            "gh", "search", "prs", issue_key,
+            "--repo", f"{owner}/{repo}",
+            "--limit", _GH_SEARCH_LIMIT,
+            "--json", "number,url",
+        ],
         capture_output=True,
         text=True,
         timeout=30,
@@ -199,10 +217,16 @@ def _github_search_fallback(owner: str, repo: str, issue_key: str) -> list[tuple
                 if number is not None:
                     matches.add((owner, repo, int(number)))
         except json.JSONDecodeError:
-            pass
+            warnings.append("gh search prs returned unexpected (non-JSON) output")
 
     list_result = subprocess.run(
-        ["gh", "pr", "list", "--repo", f"{owner}/{repo}", "--state", "all", "--json", "number,headRefName"],
+        [
+            "gh", "pr", "list",
+            "--repo", f"{owner}/{repo}",
+            "--state", "all",
+            "--limit", _GH_SEARCH_LIMIT,
+            "--json", "number,headRefName",
+        ],
         capture_output=True,
         text=True,
         timeout=30,
@@ -216,17 +240,31 @@ def _github_search_fallback(owner: str, repo: str, issue_key: str) -> list[tuple
                     if number is not None:
                         matches.add((owner, repo, int(number)))
         except json.JSONDecodeError:
-            pass
+            warnings.append("gh pr list returned unexpected (non-JSON) output")
 
-    return list(matches)
+    return list(matches), warnings
 
 
-def _resolve_jira_work_item(ref: str, owner: str, repo: str, jira_links: list) -> dict:
+def _resolve_jira_work_item(ref: str, owner: str, repo: str, jira_links: list | None) -> dict:
+    if jira_links is None:
+        # No --jira-links flag was supplied at all (the skill's step 1 call) — distinct from an
+        # explicitly-empty list (step 2, after getJiraIssueRemoteIssueLinks returned nothing).
+        # Report a pending status instead of eagerly running the GitHub-search fallback.
+        return {
+            "status": "needs_jira_links",
+            "detail": (
+                f"ref {ref!r} matched the jira provider's work-item-id pattern; call "
+                "getJiraIssueRemoteIssueLinks and re-run with --jira-links before this can resolve"
+            ),
+        }
     pr_refs = _jira_links_to_prs(jira_links)
     if pr_refs:
         return _finalize_matches(pr_refs, source="work-item-jira-remote-link", ref=ref)
-    pr_refs = _github_search_fallback(owner, repo, ref)
-    return _finalize_matches(pr_refs, source="work-item-jira-github-search", ref=ref)
+    pr_refs, warnings = _github_search_fallback(owner, repo, ref)
+    result = _finalize_matches(pr_refs, source="work-item-jira-github-search", ref=ref)
+    if result["status"] == "not_found" and warnings:
+        result["detail"] += f" (gh warnings: {'; '.join(warnings)})"
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +318,7 @@ def _resolve_github_work_item(ref: str, owner: str, repo: str) -> dict:
 # Work-item dispatch: context file first, then provider-specific resolution
 # ---------------------------------------------------------------------------
 
-def _resolve_work_item(ref: str, provider: str, jira_links: list) -> dict:
+def _resolve_work_item(ref: str, provider: str, jira_links: list | None) -> dict:
     repo_slug = get_repo_slug()
 
     context_pr_url = _context_file_pr_url(ref, repo_slug)
@@ -354,7 +392,7 @@ def resolve_pr_reference(ref: str, jira_links: list | None = None) -> dict:
             ),
         }
 
-    return _resolve_work_item(ref, provider, jira_links or [])
+    return _resolve_work_item(ref, provider, jira_links)
 
 
 def main() -> None:

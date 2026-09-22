@@ -33,7 +33,9 @@ Every path except the Jira work-item path is fully deterministic and handled by
     - **GitHub**: `resolve_pr_reference.py` calls the new `getLinkedPullRequests` operation
       (documented in `work-with-GitHub-issues`) directly — a plain `gh api graphql` call, no
       MCP tool needed.
-    - **Jira**: see below — this is the one path this skill itself performs a tool-use call for.
+    - **Jira**: the first script call (no `--jira-links` flag) reports `status: "needs_jira_links"`
+      instead of resolving — see below, this is the one path this skill itself performs a
+      tool-use call for.
 - A ref matching none of the above shapes is `not_found`, with `detail` distinguishing it from a
   well-formed reference that resolved to nothing.
 
@@ -45,10 +47,11 @@ Every path except the Jira work-item path is fully deterministic and handled by
 python3 "<skill-dir>/scripts/resolve_pr_reference.py" "<ref>"
 ```
 
-If the result's `status` is `resolved`, `not_found`, `ambiguous`, or `access_denied` and its
-`source` is anything other than a Jira-specific value pending a links lookup — i.e. the ref
-didn't match Jira's `work-tracking` patterns, or it did but a `use-context-file` context file
-already resolved it — that result is final. Skip step 2.
+If the result's `status` is `resolved`, `not_found`, `ambiguous`, or `access_denied`, that result
+is final — skip step 2.
+
+If the result's `status` is `needs_jira_links`, the ref matched the `jira` provider's configured
+patterns and no `use-context-file` context file already resolved it — proceed to step 2.
 
 The script also exits non-zero with `Error: ...` on stderr for a hard failure unrelated to ref
 resolution itself (not part of the documented JSON contract) — stop and report that verbatim
@@ -56,10 +59,7 @@ rather than treating it as a resolution result.
 
 ### 2 — Jira work-item path only
 
-Re-run this step only when step 1's ref matched the `jira` provider's configured patterns and no
-context file already resolved it (step 1's own script run already checked the context file; if
-none was found, it fell through to attempting the Jira dispatch, which needs data only this step
-can supply).
+Run this step only when step 1 returned `status: "needs_jira_links"`.
 
 Call the `getJiraIssueRemoteIssueLinks` operation (documented in `work-with-Jira-tasks`'s
 Operations table) with the work-item's issue key, to fetch its Remote Issue Links. Then re-run
@@ -71,7 +71,8 @@ python3 "<skill-dir>/scripts/resolve_pr_reference.py" "<ref>" --jira-links '<jso
 
 If `getJiraIssueRemoteIssueLinks` returns nothing, pass an empty array (`[]`) — the script's own
 GitHub-search fallback (`gh pr list`/`gh search prs` for the issue key in title, body, or branch
-name) runs before reporting `not_found`.
+name) runs before reporting `not_found`. This second call's result (`resolved`, `not_found`, or
+`ambiguous`) is always final.
 
 ## Output contract
 
@@ -82,6 +83,12 @@ On success, one JSON object on stdout:
  "pr_url": "https://github.com/.../pull/123",
  "source": "url" | "number" | "work-item-context-file" | "work-item-jira-remote-link"
    | "work-item-jira-github-search" | "work-item-github-linked-pr"}
+```
+
+On a pending Jira lookup (only possible from step 1, before step 2 has run):
+
+```json
+{"status": "needs_jira_links", "detail": "<why the Jira lookup is required>"}
 ```
 
 On failure:
