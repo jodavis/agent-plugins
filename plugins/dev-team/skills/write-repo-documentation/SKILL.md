@@ -1,6 +1,9 @@
 ---
 name: write-repo-documentation
 user-invocable: false
+description: >
+  Use when you are drafting or updating architecture documentation in this repo.
+  Establishes where to put new documents, what they must contain, and the expected structure.
 ---
 
 **Extension point skill** — configure this via `get-project-configuration`'s `documentation`

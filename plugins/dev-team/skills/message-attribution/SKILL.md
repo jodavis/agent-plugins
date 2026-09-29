@@ -1,6 +1,10 @@
 ---
 name: message-attribution
 user-invocable: false
+description: >
+  Use when a skill is about to write a message on the user's behalf — a commit message, PR
+  description, PR/review comment, or work-item comment or description. Formats the configured
+  "Written by <name>" attribution line, or returns nothing when attribution is unconfigured.
 ---
 
 ## Getting the configured wording

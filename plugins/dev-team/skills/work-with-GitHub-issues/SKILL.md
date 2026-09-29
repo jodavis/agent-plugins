@@ -1,6 +1,9 @@
 ---
 name: work-with-github-issues
 user-invocable: false
+description: >
+  Use when you are working with a GitHub issue.
+  Provides tool names and CLI commands for reading and updating GitHub issues.
 ---
 
 ## General guidance

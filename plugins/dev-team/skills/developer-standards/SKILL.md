@@ -1,6 +1,9 @@
 ---
 name: developer-standards
 user-invocable: false
+description: >
+  Use when planning new code, writing code, or reviewing code.
+  Loads project code guidelines and quality gates from CONTRIBUTING.md and CLAUDE.md.
 ---
 
 **Extension point skill** — configure this via `get-project-configuration`'s
