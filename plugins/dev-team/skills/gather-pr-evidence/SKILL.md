@@ -92,15 +92,30 @@ interactively) is unreachable from this subagent's context, since there is no us
 into. Match the configured regex patterns directly instead.
 
 For every distinct match found, resolve it via the matching provider's adapter:
-- `jira` match → `work-with-Jira-tasks`'s `getJiraIssue` operation, keyed by the matched issue
-  key; take the issue's summary field as `summary`.
+- `jira` match — a match against `recognize-patterns` is NOT itself a resolvable Jira issue key,
+  unlike a match against `issue-key-pattern`:
+  - If the match came from `issue-key-pattern` itself (e.g. `ADR-314`), it is already a resolvable
+    key — use it verbatim.
+  - If the match came from a `recognize-patterns` entry instead (e.g. `Task 314`, `Epic 314`,
+    `Jira 314`), the literal matched text is not a resolvable key. Extract the numeric id from the
+    match, then derive the provider's key prefix from its own `issue-key-pattern` (strip the
+    trailing `-\d+` — or equivalent numeric-quantifier suffix — to get the literal prefix, e.g.
+    `ADR-\d+` → `ADR-`). Combine that prefix with the extracted numeric id to build the resolvable
+    key (e.g. `Task 314` + prefix `ADR-` → `ADR-314`).
+  - Resolve the verbatim or derived key via `work-with-Jira-tasks`'s `getJiraIssue` operation; take
+    the issue's summary field as `summary`. This resolved key is also the value to use for the
+    bundle's `id` field below — never the raw `recognize-patterns` matched text.
 - `github` match → `work-with-GitHub-issues`'s issue-read operation
-  (`mcp__plugin_github_github__issue_read`, or `gh issue view <n>`), keyed by the matched issue
-  number; take the issue's title as `summary`.
+  (`mcp__plugin_github_github__issue_read`, or `gh issue view <n>`), keyed by the numeric issue
+  number extracted from the match. Unlike Jira, no prefix derivation is needed here: both
+  `issue-key-pattern` and every `recognize-patterns` entry for `github` carry a bare number as the
+  match's own numeric id. Take the issue's title as `summary`.
 
-Populate each resolved match as `{"id": "<matched key/number>", "provider": "jira" | "github",
-"summary": "<resolved summary/title>"}`. Deduplicate repeated matches of the same id (e.g. the
-same reference appearing in both the description and the branch name).
+Populate each resolved match as `{"id": "<resolved issue key/number>", "provider": "jira" |
+"github", "summary": "<resolved summary/title>"}` — for `jira`, `id` is the verbatim-or-derived key
+above, never the raw `recognize-patterns` matched text. Deduplicate repeated matches of the same
+resolved id (e.g. the same reference appearing in both the description and the branch name, or a
+`recognize-patterns` match and an `issue-key-pattern` match both resolving to the same key).
 
 No matches (or `work-tracking` not configured) → `related_work_items: []` — a present, empty
 list, never an omitted key and never an error.
