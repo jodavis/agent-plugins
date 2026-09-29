@@ -1,14 +1,7 @@
 ---
 name: create-pr-from-context
 user-invocable: false
-description: >
-  Use when creating a pull request for a work item using the workflow context file.
-  Reads the context file, ensures the working branch, creates a PR, and writes the PR URL back to the context file.
-argument-hint: <work-item-id | context-file>
 ---
-
-Use this skill when:
-- You are creating a pull request in GitHub for a work item and the task brief is in the workflow context file
 
 You are reading from the context file, creating a new pull request in GitHub, and updating the context file.
 

@@ -1,15 +1,7 @@
 ---
 name: detailed-design-first-draft
 user-invocable: false
-description: >
-  Use when writing a Detailed Design document — a new one, or revising an existing one with new
-  information. Reads the approved Proposal, interviews the user section by section, then writes
-  the draft to the location resolved via `documentation.specs`.
-argument-hint: <proposal-file-path | work-item-id | design-file-path>
 ---
-
-Use this skill when:
-- You are writing a Detailed Design document, whether drafting a new one or revising an existing one with new information
 
 You are writing a Detailed Design document — a new one, or revising an existing one whose path
 the caller passed in. This skill elaborates an approved Proposal into a full behavior spec — user

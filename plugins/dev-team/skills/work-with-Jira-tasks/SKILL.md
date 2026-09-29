@@ -1,15 +1,7 @@
 ---
 name: work-with-Jira-tasks
 user-invocable: false
-description: >
-  Use when you are working with a Jira task.
-  Provides tool names and patterns for reading and updating Jira issues via MCP.
 ---
-
-Use this skill when:
-- You need to read details from a Jira issue
-- You need to add a comment, update fields, or transition a Jira issue
-- Another skill tells you to use a Jira operation "from `work-with-Jira-tasks`"
 
 ## Finding the right tool
 

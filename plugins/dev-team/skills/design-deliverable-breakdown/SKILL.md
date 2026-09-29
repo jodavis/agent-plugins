@@ -1,15 +1,7 @@
 ---
 name: design-deliverable-breakdown
 user-invocable: false
-description: >
-  Use when breaking down a Detailed Design doc into deliverables.
-  Sizes deliverables to be independently cuttable and drafts the Detailed Design doc's Deliverables section for user approval.
-argument-hint: <path to _design_*.md file>
 ---
-
-Use this skill when:
-- You are breaking down a Detailed Design doc into deliverables
-- You need to draft a deliverable breakdown for user approval before tracked work items are created
 
 ## Sizing rule: independently cuttable
 

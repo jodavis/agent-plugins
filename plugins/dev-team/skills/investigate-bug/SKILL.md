@@ -1,15 +1,7 @@
 ---
 name: investigate-bug
 user-invocable: false
-description: >
-  Use when investigating a bug report.
-  Fetches the GitHub issue, reads architecture docs, writes a repro test, traces the root cause, and produces a root-cause report.
-argument-hint: <Issue-NNN>
 ---
-
-Use this skill when:
-- You are investigating a bug report
-- You need to reproduce an issue and identify its root cause
 
 You are identifying a work item to fix, reading architecture documentation in this repo, writing E2E or unit tests to reproduce the issue, and providing analysis of the root cause.
 

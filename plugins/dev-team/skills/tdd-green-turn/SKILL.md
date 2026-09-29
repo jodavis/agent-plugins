@@ -1,16 +1,7 @@
 ---
 name: tdd-green-turn
 user-invocable: false
-description: >
-  Use when tdd-implementer is taking a turn in the tdd-tester / tdd-implementer red/green
-  loop. Resolves whatever tdd-tester just reported (structural-red or red) with the smallest
-  possible change, or escalates, and reports the outcome in one line.
 ---
-
-Use this skill when:
-- You (`tdd-implementer`) are taking your turn to resolve `tdd-tester`'s most recent
-  `structural-red` or `red` reply — including a retry after `tdd-tester` relays a response to
-  your `revise-request`, or after Developer answers a `clarify` escalation
 
 ## Steps
 

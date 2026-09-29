@@ -1,22 +1,7 @@
 ---
 name: run-hook-instructions
 user-invocable: false
-description: >
-  Use when the hook-runner agent needs to follow an already-resolved list of pipeline hook
-  instructions. Takes a bare, ordered list of instruction strings directly — dev_team.py owns
-  resolving which config keys apply and in what order — and follows each entry using whatever
-  existing skill or tool fits, then reports the result.
-argument-hint: --instructions <json-array> --context-file <path>
 ---
-
-Use this skill when:
-- You (`dev-team:hook-runner`) were spawned to run a pipeline's `"hooks"` action and need to
-  follow its resolved `instructions` list
-
-Do NOT use this skill when:
-- Nothing spawned you for a `"hooks"` action — `dev_team.py` only emits one when this project's
-  `instructions:` config actually has a non-empty list for the current before-/after-<event>
-  phase; there is no "check if hooks apply" step for any other agent to perform
 
 ## Arguments
 

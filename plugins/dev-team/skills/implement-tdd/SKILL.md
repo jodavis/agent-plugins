@@ -1,21 +1,7 @@
 ---
 name: implement-tdd
 user-invocable: false
-description: >
-  Use when implementing one Testable component from a task brief's Components in scope list.
-  Writes all of the component's unit tests in one pass, confirms they fail for the right
-  reason, implements until green, then commits. (Simplified flow for issue #152 — the
-  tdd-tester/tdd-implementer/tdd-refactorer trio and its driver script are parked, not
-  deleted, pending a fix.)
-argument-hint: <component-row> <task-brief-path> <spec-path>
 ---
-
-Use this skill when:
-- You (Developer) are implementing one component classified `Testable` in a task brief's
-  Components in scope list
-
-Do NOT use this skill when:
-- The component is `Wrapper` or `Orchestrator` — use `implement-direct` instead
 
 ## Steps
 

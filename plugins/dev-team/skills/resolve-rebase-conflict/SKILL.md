@@ -1,27 +1,7 @@
 ---
 name: resolve-rebase-conflict
 user-invocable: false
-description: >
-  Use when a rebase has been left in progress with conflicts and the task's own brief/spec
-  context is available to resolve them. Reads each conflicted file's hunks, resolves what the
-  task context makes unambiguous, stages them, and drives `git rebase --continue` to
-  completion. Reports "resolved" or "unresolved"; never runs `git push` or `git rebase
-  --abort` itself.
-argument-hint: <task-brief-or-spec-context>
 ---
-
-Use this skill when:
-- You (the Developer agent) have been invoked in the current worktree after `gh stack sync`'s
-  own cascading rebase already detected a conflict and left the rebase in progress — the
-  `sync` operation itself has already exited; this skill does not call it and does not
-  re-enter it
-- You have the task's own brief/spec section available as context for what the working
-  branch's changes were meant to accomplish
-
-Do NOT use this skill when:
-- No rebase is currently in progress in this worktree — there is nothing to resolve
-- You need to start or retry a sync from scratch — that is the `sync` operation's job, not this
-  skill's
 
 You are working entirely inside a rebase already left mid-flight with conflicts. You never
 call `sync` yourself, and you never run `git push` or `git rebase --abort` yourself — those

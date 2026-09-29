@@ -1,15 +1,7 @@
 ---
 name: behavior-driven-development
 user-invocable: false
-description: >
-  Use when you are writing new code or fixing issues in existing code.
-  Writes E2E/API tests first from the exit criteria, then confirms them passing once
-  implementation is complete.
-argument-hint: <task context or exit criteria>
 ---
-
-Use this skill when:
-- You are writing new code or fixing issues in existing code
 
 ## Steps
 

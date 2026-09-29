@@ -1,13 +1,7 @@
 ---
 name: review-guidelines
 user-invocable: false
-description: >
-  Use when you are reviewing code changes.
-  Defines the priority-ordered criteria for evaluating a diff.
 ---
-
-Use this skill when:
-- You are reviewing code changes
 
 Evaluate the diff against each dimension below in priority order. For each issue you find, note the file, line number, and a clear description of the problem.
 

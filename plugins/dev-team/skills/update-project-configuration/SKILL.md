@@ -1,16 +1,7 @@
 ---
 name: update-project-configuration
 user-invocable: false
-description: >
-  Use when initializing or changing settings in a .dev-team/config.yaml file (user-level, project-level,
-  or a per-user local override) — either a full guided walkthrough or a single setting. Companion to
-  get-project-configuration, which reads the merged result; this skill writes the tiers that feed it.
 ---
-
-Use this skill when:
-- The user wants to set up dev-team configuration for the first time (full initialization)
-- The user wants to change one specific setting (e.g. "the work item source", "the validation script")
-- The user isn't sure what's configurable and wants a menu of options
 
 This skill only writes files. It never edits the shipped default
 (`get-project-configuration/assets/default-config.yaml`) — that tier is read-only.

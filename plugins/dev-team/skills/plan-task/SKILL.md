@@ -1,14 +1,7 @@
 ---
 name: plan-task
 user-invocable: false
-description: >
-  Use when making a plan to implement a task-work-item.
-  Identifies the work item, reads the spec, researches architecture, source, and external knowledge, and produces a task brief.
 ---
-
-Use this skill when:
-- A user asks to make a plan to implement a task
-- You need to produce a task brief for a work item
 
 You need to identify a task-work-item and learn the architecture from documentation in this repo, then you are researching the work item and writing a task brief for the work item.
 

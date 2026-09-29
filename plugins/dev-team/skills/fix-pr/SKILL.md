@@ -1,15 +1,7 @@
 ---
 name: fix-pr
 user-invocable: false
-description: >
-  Use when fixing build failures, test failures, or addressing code review comments for a work item with an existing PR.
-  Reads the task brief and PR threads, triages each issue, commits fixes one at a time, and returns a fix summary.
-argument-hint: <work-item-id | context-file>
 ---
-
-Use this skill when:
-- You are fixing build failures, test failures, or addressing code review comments
-- There is an existing GitHub PR for the work item
 
 You are working with an existing GitHub PR, reading from the workflow context file, fixing issues in existing code, and committing changes locally to the repo.
 

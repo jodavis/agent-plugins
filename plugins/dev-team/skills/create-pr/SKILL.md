@@ -1,14 +1,7 @@
 ---
 name: create-pr
 user-invocable: false
-description: >
-  Use when creating a new pull request in GitHub.
-  Determines repo coordinates from the git remote, creates a draft PR with a structured body, and returns the PR URL.
-argument-hint: <work-item-id> <working-branch> <base-branch> <task-brief>
 ---
-
-Use this skill when:
-- You are creating a new pull request in GitHub
 
 ## Steps
 

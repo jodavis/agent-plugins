@@ -1,14 +1,7 @@
 ---
 name: commit-changes
 user-invocable: false
-description: >
-  Use when committing changes locally to the repo.
-  Stages all changes and commits with a descriptive message. Does not push.
-argument-hint: <work-item-id> <short description>
 ---
-
-Use this skill when:
-- You are committing changes locally to the repo
 
 ## Steps
 

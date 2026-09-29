@@ -1,17 +1,7 @@
 ---
 name: researcher-detailed-design-review
 user-invocable: false
-description: >
-  Use when verifying a detailed design doc's user scenarios, functional requirements, and
-  success metrics are complete and well-formed, and its deliverables are independently
-  shippable. Reads the design and related docs, then returns blocking questions or a ready
-  confirmation.
-argument-hint: <path to _design_*.md file>
 ---
-
-Use this skill when:
-- You need to verify a detailed design doc is complete before implementation planning begins
-- You are reviewing a detailed design doc, or its deliverable breakdown, for blocking gaps
 
 This is an objective, critical review of the detailed design's own completeness and internal
 consistency — not a problem/solution-fit review (that's `researcher-proposal-review`'s job on

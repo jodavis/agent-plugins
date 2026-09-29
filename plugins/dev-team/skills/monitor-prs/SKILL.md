@@ -1,35 +1,7 @@
 ---
 name: monitor-prs
 user-invocable: false
-description: >
-  Long-lived PR monitor, in two modes. Stack mode (default) is a one-per-epic monitor for a
-  whole GitHub stack: repeatedly polls via `stack_pr_poll.py`, reacting to exactly the one
-  outcome each call returns — spawning `fix-pr` for a review comment or CI failure, notifying
-  the user instead of auto-fixing a human-authored PR comment, resolving a rebase conflict via
-  the developer agent, or halting once every task in the target set has merged. PR mode
-  (`--pr-numbers`) is a lighter-weight monitor for one or more explicit PRs that aren't part of
-  (or aren't known to be part of) a stack — same review-comment/CI-failure/human-comment
-  reactions, no `gh stack` involvement at all. Replaces the per-task `monitor-pr` fleet.
-argument-hint: [--work-item-id <epic-id> | --pr-numbers <pr1>[,<pr2>...]]
 ---
-
-Use this skill when:
-- **Stack mode:** The first task in an epic's target set has reached hand-off (its PR is open,
-  registered into the epic's `gh stack`) and something needs to keep every task's PR in that
-  stack in sync until it merges. You were spawned to do exactly this — auto-started by
-  `concurrent-orchestrate` the moment the first task in an epic's target set hands off (always
-  with `--work-item-id`, into a fresh isolated worktree), or invoked manually via `/watch-stack`,
-  in-session, with no argument, when already checked out on one of the stack's own branches
-- **PR mode:** One or more specific, already-open PRs need the same review-comment/CI-failure/
-  human-comment monitoring, but aren't part of a stack you want to (or can) run `gh stack`
-  operations against — invoked manually via `/watch-pr <PR#> [PR#...]`, in-session
-
-Do NOT use this skill when:
-- Stack mode, no task in the epic's target set has reached hand-off yet — there is no stack
-  entry to monitor
-- Stack mode, every task in the target set has already merged and a prior run of this skill
-  already halted for this epic
-- PR mode, every given PR has already merged and a prior run of this skill already halted
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an

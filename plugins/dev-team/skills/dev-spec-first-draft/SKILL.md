@@ -1,15 +1,7 @@
 ---
 name: dev-spec-first-draft
 user-invocable: false
-description: >
-  Use when writing a dev spec — a new one, or revising an existing one with new information.
-  Gathers context from docs, source code, and the user, then writes the draft to the location
-  resolved via `documentation.dev-specs`.
-argument-hint: <feature brief | work-item-id | spec-file-path>
 ---
-
-Use this skill when:
-- You are writing a dev spec, whether drafting a new one or revising an existing one with new information
 
 You are writing a dev spec — a new one, or revising an existing one whose path the caller passed
 in.

@@ -1,15 +1,7 @@
 ---
 name: message-attribution
 user-invocable: false
-description: >
-  Use when a skill is about to write a message on the user's behalf — a commit message, PR
-  description, PR/review comment, or work-item comment or description. Formats the configured
-  "Written by <name>" attribution line, or returns nothing when attribution is unconfigured.
 ---
-
-Use this skill when:
-- You are about to write a commit message, PR description, PR/review comment, or a work-item
-  (Jira/GitHub) description or comment, and need to know whether to append an attribution line
 
 ## Getting the configured wording
 

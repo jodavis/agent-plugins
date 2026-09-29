@@ -1,14 +1,7 @@
 ---
 name: write-task-brief
 user-invocable: false
-description: >
-  Use when you are writing a task brief for a work item.
-  Produces a structured implementation plan from a spec section and research findings.
-argument-hint: <task-key> <spec-section> <research-findings>
 ---
-
-Use this skill when:
-- You have completed research for a work item and need to write the task brief
 
 ## Task brief format
 

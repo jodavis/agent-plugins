@@ -1,17 +1,11 @@
 ---
 name: write-repo-documentation
 user-invocable: false
-description: >
-  Use when you are drafting or updating architecture documentation in this repo.
-  Establishes where to put new documents, what they must contain, and the expected structure.
 ---
 
 **Extension point skill** — configure this via `get-project-configuration`'s `documentation`
 section (preferred). Full-file override remains available as an escape hatch: place a `SKILL.md`
 in `.claude/skills/write-repo-documentation/` to replace this skill's process entirely.
-
-Use this skill when:
-- You are drafting or updating architecture documentation in this repo
 
 ## Configured behavior
 
@@ -51,7 +45,6 @@ here:
 - **Data Flow:** how data moves through the subsystem
 
 Do not go into implementation details — link to the source files for those.
-
 
 ## Updating an existing doc
 

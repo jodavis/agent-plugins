@@ -1,15 +1,7 @@
 ---
 name: dev-spec-create-work-items
 user-invocable: false
-description: >
-  Use when an approved, readiness-reviewed task breakdown needs tracked work items.
-  Creates task-work-items and feature-work-items, links task dependencies, and updates the spec with the assigned keys.
-argument-hint: <path to _spec_*.md file> <feature-work-item-key (optional)>
 ---
-
-Use this skill when:
-- A spec's task breakdown has been drafted, approved, and readiness-reviewed
-- You need to create tracked work items for a set of spec tasks
 
 ## Steps
 

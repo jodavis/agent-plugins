@@ -1,16 +1,7 @@
 ---
 name: document-readiness-review
 user-invocable: false
-description: >
-  Use when verifying a document (design doc or dev spec) is complete and ready to proceed.
-  Spawns a researcher to review it, resolves questions itself where it confidently can, and
-  surfaces only the rest to the user.
-argument-hint: <path to document> <researcher-skill-name>
 ---
-
-Use this skill when:
-- You need to verify a design doc or dev spec is complete before moving to the next phase
-- You want a readiness review on either the document's content or its breakdown into deliverables/tasks
 
 Takes two arguments: the path to the document, and the name of the researcher skill to use for
 the review (e.g. `researcher-design-review` for a design doc, `researcher-dev-spec-review` for a

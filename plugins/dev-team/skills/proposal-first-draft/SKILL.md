@@ -1,15 +1,7 @@
 ---
 name: proposal-first-draft
 user-invocable: false
-description: >
-  Use when writing a Proposal document — a new one, or revising an existing one with new
-  information. Gathers context from docs and prior art, interviews the user section by section,
-  then writes the draft to a file at the user-chosen location.
-argument-hint: <feature brief | work-item-id | proposal-file-path>
 ---
-
-Use this skill when:
-- You are writing a Proposal document, whether drafting a new one or revising an existing one with new information
 
 You are writing a Proposal document — a new one, or revising an existing one whose path the
 caller passed in. This skill designs observable system **behavior** — the problem and the

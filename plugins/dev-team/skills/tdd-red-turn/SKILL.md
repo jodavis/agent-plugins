@@ -1,16 +1,7 @@
 ---
 name: tdd-red-turn
 user-invocable: false
-description: >
-  Use when tdd-tester is taking a turn in the tdd-tester / tdd-implementer red/green loop.
-  Picks the next behavior, decides whether it needs a structural turn first, adds exactly one
-  test behavior, and reports the turn's outcome in one line.
 ---
-
-Use this skill when:
-- You (`tdd-tester`) are taking your next turn for the component you were spawned for —
-  including a retry after Developer relays a `clarify` answer from `tdd-implementer`, and the
-  turn right after `tdd-implementer` replies `structural-green`
 
 ## Steps
 

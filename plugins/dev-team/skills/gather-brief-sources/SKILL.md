@@ -1,15 +1,7 @@
 ---
 name: gather-brief-sources
 user-invocable: false
-description: >
-  Use when resolving a feature brief from a flexible mix of sources — a tracked work item,
-  pasted notes, a file, a link, or any combination — rather than a single fixed source type.
-argument-hint: <work-item-id | #issue | pasted notes | file path | URL | combination>
 ---
-
-Use this skill when:
-- A command needs a feature or design brief and the input could be a tracked work item, pasted
-  notes, a file, a link, or some combination of these — not just a single known source type
 
 ## Steps
 

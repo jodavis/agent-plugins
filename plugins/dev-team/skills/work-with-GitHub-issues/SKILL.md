@@ -1,14 +1,7 @@
 ---
 name: work-with-github-issues
 user-invocable: false
-description: >
-  Use when you are working with a GitHub issue.
-  Provides tool names and CLI commands for reading and updating GitHub issues.
 ---
-
-Use this skill when:
-- You need to read details from a GitHub issue
-- You need to add a comment or update a GitHub issue
 
 ## General guidance
 

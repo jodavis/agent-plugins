@@ -1,17 +1,11 @@
 ---
 name: write-e2e-test
 user-invocable: false
-description: >
-  Use when you are writing E2E tests.
-  Establishes where to put feature files, how to write test scenarios, and how they should be structured.
 ---
 
 **Extension point skill** — projects must override this skill to specify their E2E test framework,
 file locations, and conventions. Place a `SKILL.md` in `.claude/skills/write-e2e-test/` to define
 these for this repo.
-
-Use this skill when:
-- You are writing E2E tests
 
 ## Default behavior (no project override)
 
