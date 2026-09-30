@@ -224,6 +224,18 @@ reported as finished *successfully*:
    If `pr_url` is empty, report the inconsistency in detail (task_id and the fact that a
    successful hand-off left no `pr_url`) and skip the rest of this step for this task_id — do
    not spawn or record anything for it.
+1a. Unlock the task's own now-finished implement-phase worktree (#232), if `worktree_path` is
+   recorded on the context file: `git worktree unlock <worktree_path>`. A non-zero exit here
+   (e.g. it was never locked to begin with) is harmless — log it and continue; it does not block
+   the rest of this step. **Do not call `git worktree remove` here or anywhere else in this
+   step** — a prior occurrence found this environment's own permission classifier can refuse an
+   autonomous `git worktree remove` call outright even after independently confirming it's safe
+   (fully pushed, identical to origin, not locked), so an inline removal attempt here would be
+   unreliable at best. Unlocking is deliberately as far as this step goes: it clears the one
+   condition (`git worktree prune`/a later manual `git worktree remove` both refuse a still-locked
+   worktree) that would otherwise block a separate, human-triggered or lower-privilege
+   maintenance pass from actually reclaiming the directory afterward — this step itself does not
+   reclaim any disk space or free the branch for reuse on its own.
 2. Read that same context file's `parent_work_item` field — the task's own epic id, recorded by
    `ensure-working-branch`'s existing step 4a/4c. If it's empty (e.g. a plain GitHub-issue-driven
    task, or a spec section with no parent heading, has no discoverable epic), report the
