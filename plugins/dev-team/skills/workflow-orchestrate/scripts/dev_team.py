@@ -161,6 +161,53 @@ def _apply_counter_updates(ctx: "PipelineContext", step_name: str, trigger: str)
             ctx.review_cycle_count = 0
 
 
+class ResumeError(RuntimeError):
+    """Raised by resume_from_terminal_state() for any --resume usage error."""
+
+
+def default_resume_state(ctx: "PipelineContext") -> str:
+    """The natural re-entry point for a bare `--resume` (no explicit target) — depends on which
+    of the two distinct edges into terminal 'failed' actually fired (`implement-task-plan.md`):
+    `fixing -> failed` (the pre-PR build/test loop, `MAX_FIX_ITERATIONS`) has no PR yet, so
+    resuming at 'signoff' would run SignoffStep against an empty `pr_url`; `fixing_pr -> failed`
+    (the post-review fix loop, `MAX_REVIEW_FIX_ITERATIONS`) already has one. `pr_url` being set or
+    not is exactly the distinguishing signal between the two, so it's what this picks on."""
+    return "signoff" if ctx.pr_url else "validating"
+
+
+def resume_from_terminal_state(ctx: "PipelineContext", workflow: "WorkflowDefinition", resume_state: str) -> None:
+    """Reset every fix/signoff retry counter to 0 and re-enter at `resume_state` (#202) — the
+    formal recovery path for a task that reached the terminal 'failed' state after a human fixed
+    the underlying issue by hand outside the pipeline. Mutates `ctx` in place; does not save it
+    (the caller does, alongside its own other bookkeeping).
+
+    `resume_state` is the caller's already-resolved target — pass `default_resume_state(ctx)` for
+    the "no explicit target given" case rather than hardcoding one here, since the right default
+    depends on `ctx.pr_url`, not just the workflow shape.
+
+    Raises ResumeError if `ctx.state` isn't actually a terminal state to resume from, if it's
+    specifically 'done' (a successful completion is never something to "resume" from), or if
+    `resume_state` isn't a real state this workflow's transition table knows about.
+    """
+    if ctx.state not in workflow.terminal_states:
+        raise ResumeError(
+            f"--resume has nothing to do: current state '{ctx.state}' is not terminal"
+        )
+    if ctx.state == "done":
+        raise ResumeError("--resume is not valid from the terminal 'done' state")
+    if resume_state not in workflow.transitions:
+        raise ResumeError(
+            f"--resume target state '{resume_state}' is not a known state in this workflow"
+        )
+
+    ctx.fix_iteration = 0
+    ctx.review_fix_iteration = 0
+    ctx.signoff_cycle_count = 0
+    ctx.review_cycle_count = 0
+    ctx.consecutive_failures = 0
+    ctx.state = resume_state
+
+
 def _handle_agent_failure(ctx: "PipelineContext") -> None:
     """Increment consecutive_failures after an agent return was empty or unparseable."""
     ctx.consecutive_failures += 1
@@ -1453,6 +1500,15 @@ def main() -> None:
                         help="Path to the pipeline context file (computed by dev-team.md)")
     parser.add_argument("--print-context-path", metavar="repo-slug", default=None,
                         help="Print the context file path for the given repo slug and exit")
+    parser.add_argument(
+        "--resume", nargs="?", const="__auto__", default=None, metavar="state",
+        help="Resume from a prior terminal 'failed' state after a manual fix outside the "
+             "pipeline: resets every fix/signoff retry counter to 0 and re-enters at <state>. "
+             "With no <state>, the target is chosen automatically from which retry loop actually "
+             "exhausted its budget ('signoff' if a PR already exists, 'validating' if the "
+             "failure happened before one was ever created). Never valid when the prior run "
+             "ended in 'done'.",
+    )
     args = parser.parse_args()
 
     # --print-context-path mode: compute and print the context file path, then exit.
@@ -1485,14 +1541,34 @@ def main() -> None:
     if context_path.exists():
         ctx = PipelineContext.load(context_path)
         if ctx.state in workflow.terminal_states:
-            print(f"Previous run ended with state '{ctx.state}'.")
-            print(f"Delete {context_path} to run again.")
-            exit_with_actions([{
-                "action": "done",
-                "result": "success" if ctx.state == "done" else "failed",
-                "reason": f"Pipeline previously ended in state '{ctx.state}'",
-            }])
-        print(f"Resuming {work_item_id} from state '{ctx.state}'...", flush=True)
+            if args.resume is not None:
+                resume_state = (
+                    default_resume_state(ctx) if args.resume == "__auto__" else args.resume
+                )
+                try:
+                    resume_from_terminal_state(ctx, workflow, resume_state)
+                except ResumeError as e:
+                    print(f"Error: {e}", file=sys.stderr)
+                    sys.exit(1)
+                print(
+                    f"Resuming {work_item_id} from terminal state via --resume: "
+                    f"retry counters reset, re-entering at '{ctx.state}'.", flush=True,
+                )
+                ctx.save(context_path)
+            else:
+                print(f"Previous run ended with state '{ctx.state}'.")
+                print(
+                    f"Delete {context_path} to run again from scratch, or pass "
+                    f"--resume[=<state>] to retry after a manual fix instead (never valid from "
+                    f"the terminal 'done' state)."
+                )
+                exit_with_actions([{
+                    "action": "done",
+                    "result": "success" if ctx.state == "done" else "failed",
+                    "reason": f"Pipeline previously ended in state '{ctx.state}'",
+                }])
+        else:
+            print(f"Resuming {work_item_id} from state '{ctx.state}'...", flush=True)
     else:
         ctx = PipelineContext(work_item_id=work_item_id, state=workflow.initial_state)
         ctx.project_configuration = json.dumps(_load_project_config(REPO_ROOT), indent=2)
