@@ -1961,6 +1961,113 @@ class TestHookPhaseGating:
 
 
 # ---------------------------------------------------------------------------
+# DevTeamPipeline.run() — signoff_deadlock removed entirely (#205/#201);
+# review_loop's own check still runs after the transition, skipped on terminal
+# ---------------------------------------------------------------------------
+
+class TestSignoffDeadlockRemoved:
+    """Regression coverage for #205/#201: a raw signoff_cycle_count-based "signoff_deadlock"
+    troubleshooter check (in any of its attempted forms — the original pre-transition check, and
+    a later raise-threshold-and-reorder attempt) can preempt fixing_pr's own legitimate
+    max_retries budget, because every changes_requested from signoff routes unconditionally to
+    fixing_pr, which already has its own complete, correctly-ordered exhaustion path. Whenever
+    signoff resolves inline (a normal recovery re-entry — no agent spawn needed), the transition
+    into fixing_pr and any post-transition check happen within the same run() call, before
+    fixing_pr's own step ever gets a turn through this loop — so no threshold placed on this
+    counter is ever actually safe. The check was removed entirely rather than re-tuned again;
+    fixing_pr's own max_retries -> failed path is the sole authority on when this loop ends."""
+
+    def _make_pipeline(self, ctx, context_path, transitions, terminal_states, starting_state, step_handlers):
+        from dev_team import DevTeamPipeline, WorkflowDefinition, StateMachine
+        workflow = WorkflowDefinition(
+            # A placeholder distinct from starting_state — run()'s own "boot" shortcut fires
+            # `next(iter(transitions[initial_state]))` unconditionally whenever
+            # machine.state == workflow.initial_state, which would bypass step dispatch (and
+            # this test's counter-check logic) entirely if it coincided with starting_state.
+            transitions=transitions, terminal_states=terminal_states, initial_state="__unused__",
+        )
+        pipeline = DevTeamPipeline.__new__(DevTeamPipeline)
+        pipeline.ctx = ctx
+        pipeline.context_path = context_path
+        pipeline.log_dir = context_path.parent / "logs"
+        pipeline.workflow = workflow
+        pipeline.machine = StateMachine(workflow.transitions, initial=starting_state)
+        pipeline.step_handlers = step_handlers
+        return pipeline
+
+    def _make_ctx(self, tmp_path, **kwargs):
+        from dev_team import PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-TEST", **kwargs)
+        context_path = tmp_path / "ctx.md"
+        ctx.save(context_path)
+        return ctx, context_path
+
+    def test_reaching_failed_via_max_retries_is_the_only_signal_reported(self, tmp_path, monkeypatch):
+        """fixing_pr's own max_retries -> failed transition is the only outcome reported — no
+        separate signoff_deadlock troubleshooter spawn exists to duplicate or race it."""
+        captured: list = []
+        import dev_team
+
+        def fake_exit(descriptors):
+            captured.append(descriptors)
+            raise SystemExit(0)
+
+        monkeypatch.setattr(dev_team, "exit_with_actions", fake_exit)
+        ctx, context_path = self._make_ctx(tmp_path, signoff_cycle_count=99)
+        pipeline = self._make_pipeline(
+            ctx, context_path,
+            transitions={"fixing_pr": {"max_retries": "failed"}},
+            terminal_states={"failed"},
+            starting_state="fixing_pr",
+            step_handlers={"fixing_pr": _StubStep([], "max_retries")},
+        )
+
+        with pytest.raises(SystemExit):
+            pipeline.run()
+
+        assert len(captured) == 1
+        assert captured[0] == [{
+            "action": "done", "result": "failed",
+            "reason": "Pipeline ended in state 'failed' for ADR-TEST",
+        }]
+
+    def test_signoff_resolving_inline_does_not_preempt_fixing_pr_dispatch(self, tmp_path, monkeypatch):
+        """The exact shape that made every signoff_cycle_count-based threshold wrong: signoff
+        resolves inline (no agent spawn needed) and transitions straight to fixing_pr, all within
+        this same run() call. A huge signoff_cycle_count (99 — far past any threshold ever tried)
+        must not stop fixing_pr's own step from getting its turn and dispatching for real."""
+        captured: list = []
+        import dev_team
+
+        def fake_exit(descriptors):
+            captured.append(descriptors)
+            raise SystemExit(0)
+
+        monkeypatch.setattr(dev_team, "exit_with_actions", fake_exit)
+        ctx, context_path = self._make_ctx(tmp_path, signoff_cycle_count=99)
+        fixing_pr_action = {"action": "spawn_agent", "skill": "fix-pr"}
+        pipeline = self._make_pipeline(
+            ctx, context_path,
+            transitions={
+                "signoff": {"changes_requested": "fixing_pr"},
+                "fixing_pr": {"fix_done": "signoff"},
+            },
+            terminal_states={"done"},
+            starting_state="signoff",
+            step_handlers={
+                "signoff": _StubStep([], "changes_requested"),
+                "fixing_pr": _StubStep([fixing_pr_action], "fix_done"),
+            },
+        )
+
+        with pytest.raises(SystemExit):
+            pipeline.run()
+
+        assert len(captured) == 1
+        assert captured[0] == [fixing_pr_action]
+
+
+# ---------------------------------------------------------------------------
 # Workflow asset transitions — reviewing must always route through signoff
 # ---------------------------------------------------------------------------
 
