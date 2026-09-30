@@ -28,28 +28,26 @@ Run the command via Bash, capturing combined stdout and stderr to the log file:
 3. Otherwise: use `Succeeded` if the exit code is 0, or a short failure description (including
    the exit code) if non-zero.
 
-### 3 — Write the log path to the context file
+### 3 — Write the result to the context file
 
-Write the log file path to the `<write-section>` section of `<context-file>`.
-Use `Edit`, never `Write` — concurrent agents share this file.
-_Do not touch any other part of the file, and never modify the YAML
-frontmatter unless explicitly instructed to do so._
+Use the `write-scratch-deliverable` skill to persist the result — do not edit `<context-file>`
+yourself, with `Edit` or otherwise; concurrent agents share it, and a direct edit here has no way
+to guarantee the exact byte-for-byte `<result>` from step 2 actually lands (a freehand edit can
+silently reword, summarize, or drop it — the same failure mode `workflow-worker` moved off of
+for this same reason).
 
-The section format in the file is:
+`<work-item-id>` (needed by `write-scratch-deliverable`'s own step 1) is `<context-file>`'s own
+filename without the `.md` extension — context files are always named `<work-item-id>.md`.
 
+Compose the deliverable content exactly as:
 ```
-<!-- section:<write-section> -->
-
 <result>
 
 log: <log_file>
 ```
 
-**If the sentinel `<!-- section:<write-section> -->` already exists:** use `Edit` to replace all
-content between the sentinel and the next `<!-- section:` marker or end of file.
-
-**If the sentinel does not exist:** use `Edit` to append the sentinel and content after the last
-line of the file.
+`dev_team.py`'s `merge_pending_deliverables()` picks up the scratch file and merges it into
+`<context-file>`'s `<write-section>` section on the next orchestration-loop iteration.
 
 ### 4 — Return status
 
