@@ -11,9 +11,12 @@ skill's own `SKILL.md` for why that matters).
 
 Prints one of these as JSON on success:
   {"status": "linked"}          - registered; added_to_stack and stack_link_status written
-  {"status": "not_applicable"}  - task isn't part of a tracked epic (or has no local spec);
-                                    nothing to register; stack_link_status written, added_to_stack
-                                    stays false
+  {"status": "not_applicable"}  - nothing to register: task isn't part of a tracked epic, has no
+                                    local spec, has no declared dependency (its own PR is already
+                                    correctly based on the feature branch directly), or its
+                                    resolved dependency was completed outside the pipeline and has
+                                    no context file of its own; stack_link_status written,
+                                    added_to_stack stays false
 
 `stack_link_status` (an extra_frontmatter key, not a named PipelineContext field, like
 `working_branch`/`base_branch`/`parent_work_item`) is what makes a "not_applicable" outcome
@@ -26,6 +29,7 @@ retry; see `SKILL.md` for why that's a known, accepted risk rather than engineer
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -67,6 +71,55 @@ def write_pending_deliverable(context_path: Path, section_name: str, content: st
     (pending_dir / f"{context_path.stem}__{slug}.md").write_text(content, encoding="utf-8")
 
 
+_MAX_STACK_DEPTH = 25
+
+
+def _resolve_real_stack_chain(anchor_branch: str) -> list[str]:
+    """Walk the PR base-ref chain starting at `anchor_branch`, downward through whichever
+    earlier branches already have their own open PR, to build the real, current stack
+    membership bottom-to-top (`anchor_branch` itself last).
+
+    Uses plain `gh pr list` rather than `gh stack view`: gh-stack's own local tracking state
+    is worktree-private (see `gh_stack.py`'s module docstring), and this script may run from a
+    different worktree than the one that last registered the anchor's stack, so only a plain
+    GitHub API read can be trusted here regardless of which worktree invoked it.
+
+    Falls back to `[anchor_branch]` alone if the chain can't be resolved (e.g. `gh` is
+    unavailable, unauthenticated, or `anchor_branch` unexpectedly has no open PR of its own) —
+    the same single-anchor behavior this function replaces, so a lookup failure degrades safely
+    instead of failing the whole add-to-pr-stack run."""
+    chain: list[str] = []
+    branch = anchor_branch
+    seen: set[str] = set()
+    for _ in range(_MAX_STACK_DEPTH):
+        if not branch or branch in seen:
+            break
+        seen.add(branch)
+        try:
+            result = subprocess.run(
+                ["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "baseRefName"],
+                capture_output=True, text=True, timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            break
+        if result.returncode != 0:
+            break
+        try:
+            prs = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            break
+        if not prs:
+            # `branch` has no open PR of its own — either it's the epic's feature/trunk
+            # branch (never gets its own PR) or the lookup came up empty; either way, it's
+            # not a stack member to include, so stop walking further down.
+            break
+        chain.append(branch)
+        branch = prs[0].get("baseRefName", "")
+
+    chain.reverse()
+    return chain if chain else [anchor_branch]
+
+
 def add_to_pr_stack(context_path: Path) -> dict:
     """Returns `{"status": "linked" | "not_applicable"}`. Raises `AddToPrStackError` on failure."""
     ctx = PipelineContext.load(context_path)
@@ -98,22 +151,44 @@ def add_to_pr_stack(context_path: Path) -> dict:
     anchor_task = compute_stack_anchor(ctx.work_item_id, dependency_ids, order)
 
     if anchor_task is None:
-        if not working_branch or not base_branch:
-            raise AddToPrStackError(
-                "no anchor dependency, but working_branch/base_branch is missing from the "
-                "context file — ensure-working-branch should have written both"
-            )
-        status, detail = gh_stack.link(working_branch, base=base_branch)
-    else:
-        anchor_path = compute_context_path(anchor_task, get_repo_slug())
-        if not anchor_path.exists():
-            raise AddToPrStackError(f"anchor task '{anchor_task}' has no context file yet")
-        anchor_branch = PipelineContext.load(anchor_path).extra_frontmatter.get("working_branch", "")
-        if not anchor_branch or not working_branch:
-            raise AddToPrStackError(
-                f"anchor task '{anchor_task}' or this task is missing a working_branch"
-            )
-        status, detail = gh_stack.link(anchor_branch, working_branch)
+        # No declared dependency: this task's own branch is based directly on the feature
+        # branch (via ensure-working-branch), with no cross-PR stack relationship to
+        # register yet — nothing becomes an anchor for anyone until a task that depends on
+        # this one runs add_to_pr_stack itself. `gh stack link` also structurally requires
+        # at least 2 positional branch/PR arguments (confirmed against the installed
+        # extension), so a lone `working_branch` call here would always fail regardless (#256).
+        ctx.extra_frontmatter["stack_link_status"] = "not_applicable"
+        ctx.save(context_path)
+        return {"status": "not_applicable"}
+
+    anchor_path = compute_context_path(anchor_task, get_repo_slug())
+    if not anchor_path.exists():
+        # The anchor dependency was completed outside the dev-team pipeline entirely (e.g. a
+        # human-owned task landed directly on the shared feature branch) — it has no context
+        # file and therefore nothing of its own was ever registered into a gh stack. There is
+        # nothing for this task to link onto either in that case (#271).
+        ctx.extra_frontmatter["stack_link_status"] = "not_applicable"
+        ctx.save(context_path)
+        return {"status": "not_applicable"}
+
+    anchor_branch_from_spec = PipelineContext.load(anchor_path).extra_frontmatter.get("working_branch", "")
+    # Prefer this task's own recorded base_branch over re-deriving the anchor's branch from
+    # the spec: ensure-working-branch sets base_branch from the same spec-derived anchor up
+    # front, but a developer who fast-forwards this task's branch onto a later dependency
+    # mid-implementation corrects base_branch to match — while the spec's own Depends-on line
+    # (and therefore anchor_task/anchor_branch_from_spec) can be left stale (#276). base_branch
+    # is this task's ground truth for what it's really built on right now.
+    anchor_branch = base_branch or anchor_branch_from_spec
+    if not anchor_branch or not working_branch:
+        raise AddToPrStackError(
+            f"anchor task '{anchor_task}' or this task is missing a working_branch"
+        )
+    # Resolve the anchor's real, current stack membership from GitHub rather than assuming
+    # the immediate anchor is the only existing member below this task: an anchor that is
+    # itself mid-stack (not the bottom) has earlier PRs below it that `link` must also be
+    # given, or it refuses the update rather than risk dropping them (#273).
+    stack_chain = _resolve_real_stack_chain(anchor_branch)
+    status, detail = gh_stack.link(*stack_chain, working_branch)
 
     if status != "ok":
         raise AddToPrStackError(f"gh stack link failed: {detail}")
