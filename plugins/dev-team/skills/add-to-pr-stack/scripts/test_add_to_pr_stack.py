@@ -133,11 +133,14 @@ class TestAddToPrStackNothingToRegister:
 
 
 # ---------------------------------------------------------------------------
-# add_to_pr_stack — first task in the epic's stack (anchor is None): links with --base
+# add_to_pr_stack — first task in the epic's stack (anchor is None): nothing to link yet (#256)
 # ---------------------------------------------------------------------------
 
 class TestAddToPrStackFirstTaskInStack:
-    def test_no_dependencies_links_own_branch_with_base(self, tmp_path, monkeypatch):
+    def test_no_dependencies_marks_not_applicable_without_calling_link(self, tmp_path, monkeypatch):
+        """An epic's first task (no declared dependency) is based directly on the feature
+        branch — there's no stack relationship to register yet, and `gh stack link` structurally
+        requires >=2 positional args anyway, so this must not attempt to call it at all (#256)."""
         # Arrange
         spec_path = _write_spec(tmp_path, [("ADR-1", "— none —")])
         path = _seed_context(
@@ -155,32 +158,15 @@ class TestAddToPrStackFirstTaskInStack:
         from pipeline_context import PipelineContext
 
         # Act
-        with patch("add_to_pr_stack.gh_stack.link", return_value=("ok", "Linked")) as mock_link:
+        with patch("add_to_pr_stack.gh_stack.link") as mock_link:
             result = add_to_pr_stack(path)
 
         # Assert
-        assert result == {"status": "linked"}
-        mock_link.assert_called_once_with("dev/claude/ADR-1", base="feature/ADR-EPIC")
-        reloaded = PipelineContext.load(path)
-        assert reloaded.added_to_stack is True
-        assert reloaded.extra_frontmatter["stack_link_status"] == "linked"
-
-    def test_no_dependencies_missing_base_branch_raises(self, tmp_path, monkeypatch):
-        # Arrange
-        spec_path = _write_spec(tmp_path, [("ADR-1", "— none —")])
-        path = _seed_context(tmp_path, monkeypatch, spec_path=str(spec_path))
-        text = path.read_text(encoding="utf-8").replace(
-            "added_to_stack: False",
-            "added_to_stack: False\nparent_work_item: ADR-EPIC\nworking_branch: dev/claude/ADR-1",
-        )
-        path.write_text(text, encoding="utf-8")
-        from add_to_pr_stack import add_to_pr_stack, AddToPrStackError
-
-        # Act / Assert
-        with patch("add_to_pr_stack.gh_stack.link") as mock_link:
-            with pytest.raises(AddToPrStackError, match="base_branch"):
-                add_to_pr_stack(path)
+        assert result == {"status": "not_applicable"}
         mock_link.assert_not_called()
+        reloaded = PipelineContext.load(path)
+        assert reloaded.added_to_stack is False
+        assert reloaded.extra_frontmatter["stack_link_status"] == "not_applicable"
 
 
 # ---------------------------------------------------------------------------
@@ -205,15 +191,87 @@ class TestAddToPrStackHasDependency:
         path.write_text(text, encoding="utf-8")
         from add_to_pr_stack import add_to_pr_stack
 
-        # Act
-        with patch("add_to_pr_stack.gh_stack.link", return_value=("ok", "Linked")) as mock_link:
-            result = add_to_pr_stack(path)
+        # Act — _resolve_real_stack_chain mocked to its degraded-fallback shape (single anchor,
+        # no earlier members found) so this test doesn't need a real `gh pr list` call.
+        with patch("add_to_pr_stack._resolve_real_stack_chain", return_value=["dev/claude/ADR-1"]):
+            with patch("add_to_pr_stack.gh_stack.link", return_value=("ok", "Linked")) as mock_link:
+                result = add_to_pr_stack(path)
 
         # Assert
         assert result == {"status": "linked"}
         mock_link.assert_called_once_with("dev/claude/ADR-1", "dev/claude/ADR-2")
 
-    def test_anchor_context_file_missing_raises(self, tmp_path, monkeypatch):
+    def test_dependency_with_multi_level_chain_passes_every_earlier_member(self, tmp_path, monkeypatch):
+        """Regression (#273): when the anchor is itself mid-stack, every real earlier member
+        below it must also be passed to `link`, or `gh stack link` refuses the update rather
+        than risk dropping them."""
+        # Arrange
+        spec_path = _write_spec(tmp_path, [("ADR-1", "— none —"), ("ADR-2", "ADR-1")])
+        anchor_path = _seed_context(tmp_path, monkeypatch, work_item_id="ADR-1")
+        anchor_text = anchor_path.read_text(encoding="utf-8").replace(
+            "added_to_stack: False", "added_to_stack: True\nworking_branch: dev/claude/ADR-1"
+        )
+        anchor_path.write_text(anchor_text, encoding="utf-8")
+
+        path = _seed_context(tmp_path, monkeypatch, work_item_id="ADR-2", spec_path=str(spec_path))
+        text = path.read_text(encoding="utf-8").replace(
+            "added_to_stack: False",
+            "added_to_stack: False\nparent_work_item: ADR-EPIC\nworking_branch: dev/claude/ADR-2",
+        )
+        path.write_text(text, encoding="utf-8")
+        from add_to_pr_stack import add_to_pr_stack
+
+        # Act — the anchor's real chain (as resolved from GitHub) has an earlier member below it
+        with patch(
+            "add_to_pr_stack._resolve_real_stack_chain",
+            return_value=["feature/ADR-EPIC-doc", "dev/claude/ADR-1"],
+        ):
+            with patch("add_to_pr_stack.gh_stack.link", return_value=("ok", "Linked")) as mock_link:
+                result = add_to_pr_stack(path)
+
+        # Assert
+        assert result == {"status": "linked"}
+        mock_link.assert_called_once_with(
+            "feature/ADR-EPIC-doc", "dev/claude/ADR-1", "dev/claude/ADR-2"
+        )
+
+    def test_own_base_branch_preferred_over_stale_spec_derived_anchor(self, tmp_path, monkeypatch):
+        """Regression (#276): a mid-implementation fast-forward corrects this task's own
+        base_branch to the real anchor, even when the spec's Depends-on line (and therefore the
+        spec-derived anchor task's own working_branch) is left stale."""
+        # Arrange — spec still says ADR-2 depends only on ADR-1, but this task's own base_branch
+        # was corrected to a later dependency's branch after a real mid-implementation rebase.
+        spec_path = _write_spec(tmp_path, [("ADR-1", "— none —"), ("ADR-2", "ADR-1")])
+        anchor_path = _seed_context(tmp_path, monkeypatch, work_item_id="ADR-1")
+        anchor_text = anchor_path.read_text(encoding="utf-8").replace(
+            "added_to_stack: False", "added_to_stack: True\nworking_branch: dev/claude/ADR-1"
+        )
+        anchor_path.write_text(anchor_text, encoding="utf-8")
+
+        path = _seed_context(tmp_path, monkeypatch, work_item_id="ADR-2", spec_path=str(spec_path))
+        text = path.read_text(encoding="utf-8").replace(
+            "added_to_stack: False",
+            "added_to_stack: False\nparent_work_item: ADR-EPIC\nworking_branch: dev/claude/ADR-2\n"
+            "base_branch: dev/claude/ADR-3",
+        )
+        path.write_text(text, encoding="utf-8")
+        from add_to_pr_stack import add_to_pr_stack
+
+        # Act
+        with patch(
+            "add_to_pr_stack._resolve_real_stack_chain", return_value=["dev/claude/ADR-3"]
+        ) as mock_resolve:
+            with patch("add_to_pr_stack.gh_stack.link", return_value=("ok", "Linked")) as mock_link:
+                result = add_to_pr_stack(path)
+
+        # Assert
+        assert result == {"status": "linked"}
+        mock_resolve.assert_called_once_with("dev/claude/ADR-3")
+        mock_link.assert_called_once_with("dev/claude/ADR-3", "dev/claude/ADR-2")
+
+    def test_anchor_context_file_missing_marks_not_applicable(self, tmp_path, monkeypatch):
+        """The anchor dependency was completed outside the pipeline (e.g. a human-owned task on
+        the shared feature branch) and has no context file — nothing to link onto (#271)."""
         # Arrange
         spec_path = _write_spec(tmp_path, [("ADR-1", "— none —"), ("ADR-2", "ADR-1")])
         path = _seed_context(tmp_path, monkeypatch, work_item_id="ADR-2", spec_path=str(spec_path))
@@ -222,13 +280,19 @@ class TestAddToPrStackHasDependency:
             "added_to_stack: False\nparent_work_item: ADR-EPIC\nworking_branch: dev/claude/ADR-2",
         )
         path.write_text(text, encoding="utf-8")
-        from add_to_pr_stack import add_to_pr_stack, AddToPrStackError
+        from add_to_pr_stack import add_to_pr_stack
+        from pipeline_context import PipelineContext
 
-        # Act / Assert
+        # Act
         with patch("add_to_pr_stack.gh_stack.link") as mock_link:
-            with pytest.raises(AddToPrStackError, match="ADR-1"):
-                add_to_pr_stack(path)
+            result = add_to_pr_stack(path)
+
+        # Assert
+        assert result == {"status": "not_applicable"}
         mock_link.assert_not_called()
+        reloaded = PipelineContext.load(path)
+        assert reloaded.added_to_stack is False
+        assert reloaded.extra_frontmatter["stack_link_status"] == "not_applicable"
 
     def test_anchor_missing_working_branch_raises(self, tmp_path, monkeypatch):
         # Arrange
@@ -289,27 +353,99 @@ class TestAddToPrStackSpecFailures:
 class TestAddToPrStackLinkFails:
     def test_link_error_result_raises_with_detail(self, tmp_path, monkeypatch):
         # Arrange
-        spec_path = _write_spec(tmp_path, [("ADR-1", "— none —")])
-        path = _seed_context(tmp_path, monkeypatch, spec_path=str(spec_path))
+        spec_path = _write_spec(tmp_path, [("ADR-1", "— none —"), ("ADR-2", "ADR-1")])
+        anchor_path = _seed_context(tmp_path, monkeypatch, work_item_id="ADR-1")
+        anchor_text = anchor_path.read_text(encoding="utf-8").replace(
+            "added_to_stack: False", "added_to_stack: True\nworking_branch: dev/claude/ADR-1"
+        )
+        anchor_path.write_text(anchor_text, encoding="utf-8")
+
+        path = _seed_context(tmp_path, monkeypatch, work_item_id="ADR-2", spec_path=str(spec_path))
         text = path.read_text(encoding="utf-8").replace(
             "added_to_stack: False",
-            "added_to_stack: False\nparent_work_item: ADR-EPIC\n"
-            "working_branch: dev/claude/ADR-1\nbase_branch: feature/ADR-EPIC",
+            "added_to_stack: False\nparent_work_item: ADR-EPIC\nworking_branch: dev/claude/ADR-2",
         )
         path.write_text(text, encoding="utf-8")
         from add_to_pr_stack import add_to_pr_stack, AddToPrStackError
         from pipeline_context import PipelineContext
 
         # Act / Assert
-        with patch(
-            "add_to_pr_stack.gh_stack.link",
-            return_value=("error", "PR #42 belongs to a different stack"),
-        ):
-            with pytest.raises(AddToPrStackError, match="PR #42 belongs to a different stack"):
-                add_to_pr_stack(path)
+        with patch("add_to_pr_stack._resolve_real_stack_chain", return_value=["dev/claude/ADR-1"]):
+            with patch(
+                "add_to_pr_stack.gh_stack.link",
+                return_value=("error", "PR #42 belongs to a different stack"),
+            ):
+                with pytest.raises(AddToPrStackError, match="PR #42 belongs to a different stack"):
+                    add_to_pr_stack(path)
 
         reloaded = PipelineContext.load(path)
         assert reloaded.added_to_stack is False
+
+
+# ---------------------------------------------------------------------------
+# _resolve_real_stack_chain
+# ---------------------------------------------------------------------------
+
+def _gh_pr_list_result(prs: list[dict]) -> "subprocess.CompletedProcess":
+    return subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(prs), stderr="")
+
+
+class TestResolveRealStackChain:
+    def test_single_member_chain_stops_at_branch_with_no_pr(self, monkeypatch):
+        """anchor_branch's own PR bases off the feature branch, which has no PR of its own —
+        the chain is just [anchor_branch]."""
+        from add_to_pr_stack import _resolve_real_stack_chain
+
+        calls = [
+            _gh_pr_list_result([{"baseRefName": "feature/ADR-EPIC"}]),  # anchor's own PR
+            _gh_pr_list_result([]),  # feature branch has no PR of its own
+        ]
+        with patch("subprocess.run", side_effect=calls):
+            result = _resolve_real_stack_chain("dev/claude/ADR-1")
+
+        assert result == ["dev/claude/ADR-1"]
+
+    def test_multi_level_chain_resolved_bottom_to_top(self, monkeypatch):
+        """anchor_branch (ADR-2) bases off ADR-1, which itself has its own open PR based off
+        the feature branch — both real members must be returned, bottom-to-top."""
+        from add_to_pr_stack import _resolve_real_stack_chain
+
+        calls = [
+            _gh_pr_list_result([{"baseRefName": "dev/claude/ADR-1"}]),  # ADR-2's own PR
+            _gh_pr_list_result([{"baseRefName": "feature/ADR-EPIC"}]),  # ADR-1's own PR
+            _gh_pr_list_result([]),  # feature branch has no PR of its own
+        ]
+        with patch("subprocess.run", side_effect=calls):
+            result = _resolve_real_stack_chain("dev/claude/ADR-2")
+
+        assert result == ["dev/claude/ADR-1", "dev/claude/ADR-2"]
+
+    def test_falls_back_to_single_anchor_when_gh_unavailable(self, monkeypatch):
+        from add_to_pr_stack import _resolve_real_stack_chain
+
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            result = _resolve_real_stack_chain("dev/claude/ADR-1")
+
+        assert result == ["dev/claude/ADR-1"]
+
+    def test_falls_back_to_single_anchor_on_nonzero_exit(self, monkeypatch):
+        from add_to_pr_stack import _resolve_real_stack_chain
+
+        failure = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="not authenticated")
+        with patch("subprocess.run", return_value=failure):
+            result = _resolve_real_stack_chain("dev/claude/ADR-1")
+
+        assert result == ["dev/claude/ADR-1"]
+
+    def test_falls_back_to_single_anchor_when_anchor_itself_has_no_open_pr(self, monkeypatch):
+        """Degenerate/unexpected case: anchor_branch's own PR lookup comes up empty. Still
+        returns the anchor alone rather than an empty chain."""
+        from add_to_pr_stack import _resolve_real_stack_chain
+
+        with patch("subprocess.run", return_value=_gh_pr_list_result([])):
+            result = _resolve_real_stack_chain("dev/claude/ADR-1")
+
+        assert result == ["dev/claude/ADR-1"]
 
 
 # ---------------------------------------------------------------------------
@@ -375,25 +511,31 @@ class TestMainCliWrapper:
         """In-process (not subprocess) so `gh_stack.link` can be mocked — a real subprocess call
         would need actual `gh` credentials and would shell out for real."""
         # Arrange
-        spec_path = _write_spec(tmp_path, [("ADR-1", "— none —")])
-        path = _seed_context(tmp_path, monkeypatch, spec_path=str(spec_path))
+        spec_path = _write_spec(tmp_path, [("ADR-1", "— none —"), ("ADR-2", "ADR-1")])
+        anchor_path = _seed_context(tmp_path, monkeypatch, work_item_id="ADR-1")
+        anchor_text = anchor_path.read_text(encoding="utf-8").replace(
+            "added_to_stack: False", "added_to_stack: True\nworking_branch: dev/claude/ADR-1"
+        )
+        anchor_path.write_text(anchor_text, encoding="utf-8")
+
+        path = _seed_context(tmp_path, monkeypatch, work_item_id="ADR-2", spec_path=str(spec_path))
         text = path.read_text(encoding="utf-8").replace(
             "added_to_stack: False",
-            "added_to_stack: False\nparent_work_item: ADR-EPIC\n"
-            "working_branch: dev/claude/ADR-1\nbase_branch: feature/ADR-EPIC",
+            "added_to_stack: False\nparent_work_item: ADR-EPIC\nworking_branch: dev/claude/ADR-2",
         )
         path.write_text(text, encoding="utf-8")
-        monkeypatch.setattr(sys, "argv", ["add_to_pr_stack.py", "ADR-1"])
+        monkeypatch.setattr(sys, "argv", ["add_to_pr_stack.py", "ADR-2"])
         import add_to_pr_stack
 
         # Act
-        with patch("add_to_pr_stack.gh_stack.link", return_value=("ok", "Linked")):
-            add_to_pr_stack.main()
+        with patch("add_to_pr_stack._resolve_real_stack_chain", return_value=["dev/claude/ADR-1"]):
+            with patch("add_to_pr_stack.gh_stack.link", return_value=("ok", "Linked")):
+                add_to_pr_stack.main()
 
         # Assert
         captured = capsys.readouterr()
         assert json.loads(captured.out) == {"status": "linked"}
-        pending = path.parent / ".pending" / "ADR-1__Stack_Link_Result.md"
+        pending = path.parent / ".pending" / "ADR-2__Stack_Link_Result.md"
         assert json.loads(pending.read_text(encoding="utf-8")) == {"status": "linked"}
 
     def test_main_missing_context_file_prints_error_and_exits_nonzero(self, tmp_path, monkeypatch):
