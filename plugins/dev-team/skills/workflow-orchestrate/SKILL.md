@@ -164,7 +164,11 @@ Log each result:
 [<work-item-id>] <item.skill or item.command or "hooks">: <result>
 ```
 
-If any result is anything other than `successful` (case-insensitive), run the troubleshooter agent (see below).
+If any result is anything other than `successful` (case-insensitive), run the troubleshooter agent (see below) —
+**except** a result starting with `skipped:` (case-insensitive), which marks a known, unfixable-by-any-agent
+condition the operation itself already recognized and decided not to treat as a failure (e.g. `work-with-pr`'s
+`request-review` on a reviewer who isn't a repo collaborator, #254). Log it exactly like any other result — it
+just doesn't trigger a troubleshooter spawn on its own.
 
 **If `descriptors` matches none of the shapes above** (e.g. an unrecognized `action` value, a
 single-item array whose one item is neither `"done"` nor `troubleshooter`): do not guess and
