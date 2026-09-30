@@ -39,7 +39,6 @@ class PipelineContext:
     last_updated: datetime.datetime = field(default_factory=datetime.datetime.now, metadata=FRONTMATTER_FIELD)
     extra_frontmatter: dict = field(default_factory=dict)
     workspace_setup: str = ""
-    debug_report: str = ""
     brief: str = ""
     work_summaries: list = field(default_factory=list)
     review_notes: str = ""
@@ -92,9 +91,6 @@ class PipelineContext:
 
         if self.workspace_setup:
             lines += ["<!-- section:Workspace Setup -->", "", self.workspace_setup.strip(), ""]
-
-        if self.debug_report:
-            lines += ["<!-- section:Debug Report -->", "", self.debug_report.strip(), ""]
 
         if self.brief:
             lines += ["<!-- section:Researcher Brief -->", "", self.brief.strip(), ""]
@@ -200,7 +196,6 @@ class PipelineContext:
         }
         ctx.project_configuration = sections.get("Project Configuration", "")
         ctx.workspace_setup = sections.get("Workspace Setup", "")
-        ctx.debug_report = sections.get("Debug Report", "")
         ctx.brief = sections.get("Researcher Brief", "")
         ctx.review_notes = sections.get("Review Notes", "")
         ctx.last_failure = sections.get("Last Failure", "")

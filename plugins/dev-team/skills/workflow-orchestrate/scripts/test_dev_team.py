@@ -1467,7 +1467,7 @@ class TestAddToPrStackStep:
 
 
 # ---------------------------------------------------------------------------
-# PlanStep / ResearchStep — /implement's `planning` state vs /fix's `researching` state
+# PlanStep — /implement's `planning` state
 # ---------------------------------------------------------------------------
 
 class TestPlanStep:
@@ -1509,33 +1509,6 @@ class TestPlanStep:
         trigger = step.handle_results()
         assert trigger == "ready"
         assert ctx.consecutive_failures == 1
-
-
-class TestResearchStep:
-    """`/fix`'s researching state: hardcodes the Researcher agent and researcher-issue skill."""
-
-    def _make_ctx(self, tmp_path, **kwargs):
-        from dev_team import PipelineContext
-        ctx = PipelineContext(work_item_id="Issue-TEST", **kwargs)
-        context_path = tmp_path / "ctx.md"
-        ctx.save(context_path)
-        return ctx, context_path
-
-    def test_get_actions_spawns_researcher_agent_with_researcher_issue_skill(self, tmp_path):
-        from dev_team import ResearchStep
-        ctx, context_path = self._make_ctx(tmp_path)
-        step = ResearchStep(ctx, context_path)
-        actions = step.get_actions()
-        assert len(actions) == 1
-        assert actions[0]["agent"] == "dev-team:researcher"
-        assert actions[0]["skill"] == "researcher-issue"
-        assert actions[0]["write_section"] == "Researcher Brief"
-
-    def test_handle_results_returns_research_done_when_brief_present(self, tmp_path):
-        from dev_team import ResearchStep
-        ctx, context_path = self._make_ctx(tmp_path, brief="# Root-cause plan")
-        step = ResearchStep(ctx, context_path)
-        assert step.handle_results() == "research_done"
 
 
 # ---------------------------------------------------------------------------
@@ -1608,8 +1581,6 @@ class TestEventNamePerStep:
     there is no separate hand-off step to carry it instead."""
 
     @pytest.mark.parametrize("step_class_name,expected_event", [
-        ("DebugStep", "debug"),
-        ("ResearchStep", "research"),
         ("PlanStep", "plan"),
         ("ImplementStep", "implement"),
         ("ValidateStep", "validate"),
@@ -1986,19 +1957,13 @@ class TestWorkflowAssetSignoffRouting:
 
     ASSETS_DIR = SCRIPTS_DIR.parent / "assets"
 
-    @pytest.mark.parametrize("asset_name", [
-        "implement-task-plan.md",
-        "fix-issue-plan.md",
-    ])
+    @pytest.mark.parametrize("asset_name", ["implement-task-plan.md"])
     def test_reviewing_approved_routes_to_signoff_not_done(self, asset_name):
         from dev_team import parse_workflow
         workflow = parse_workflow(self.ASSETS_DIR / asset_name)
         assert workflow.transitions["reviewing"]["approved"] == "signoff"
 
-    @pytest.mark.parametrize("asset_name", [
-        "implement-task-plan.md",
-        "fix-issue-plan.md",
-    ])
+    @pytest.mark.parametrize("asset_name", ["implement-task-plan.md"])
     def test_only_add_to_pr_stack_reaches_done(self, asset_name):
         from dev_team import parse_workflow
         workflow = parse_workflow(self.ASSETS_DIR / asset_name)
@@ -2008,10 +1973,7 @@ class TestWorkflowAssetSignoffRouting:
         ]
         assert sources_reaching_done == ["add_to_pr_stack"]
 
-    @pytest.mark.parametrize("asset_name", [
-        "implement-task-plan.md",
-        "fix-issue-plan.md",
-    ])
+    @pytest.mark.parametrize("asset_name", ["implement-task-plan.md"])
     def test_only_signoff_reaches_add_to_pr_stack(self, asset_name):
         from dev_team import parse_workflow
         workflow = parse_workflow(self.ASSETS_DIR / asset_name)
