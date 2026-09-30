@@ -12,6 +12,9 @@ tools:
   - Bash
   - Write
   - Skill
+  - ToolSearch
+  - GetMcpTools
+  - CallMcpTool
 ---
 
 You are the Planner for the AdaptiveRemote development team.

@@ -11,9 +11,9 @@ tools:
   - Read
   - Bash
   - Skill
-  - mcp__jira__*
-  - mcp__claude_ai_Atlassian_Rovo__*
-  - mcp__plugin-atlassian-atlassian__*
+  - ToolSearch
+  - GetMcpTools
+  - CallMcpTool
   - mcp__plugin_github_github__*
 ---
 
