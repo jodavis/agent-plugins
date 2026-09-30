@@ -119,14 +119,31 @@ either (ADR-370 finding #1 — that state is worktree-private). Materialize the 
 worktree and land on a real member instead:
 
 ```bash
-gh pr list --base <feature-branch> --state open --json number --jq '.[0].number'
+gh pr list --base <feature-branch> --state open --json number,headRefName
 ```
 
 In a linear stack, exactly one open PR bases directly off the trunk — the bottom-most entry, the
 one whose task triggered this monitor's own auto-start. A missing result here means the "a task
 has already reached hand-off" precondition this skill requires wasn't actually met — run the
 troubleshooter agent with problem `"monitor-prs step 2a: no open PR based directly on
-<feature-branch> for epic <epic-id>"`. Otherwise call this `<member-pr-number>` and run:
+<feature-branch> for epic <epic-id>"`.
+
+**Do not assume the first (or only) result is a genuine stack member without checking.** A task
+with no declared dependency in its epic (`add-to-pr-stack` resolved `stack_link_status:
+not_applicable` for it — see #256/#271) has its own PR based directly on the trunk too, exactly
+like a real bottom-of-stack member, but was deliberately never registered into a real GitHub
+`gh stack`. Bootstrapping `stack_checkout.py` against that PR anyway makes `gh-stack` fall back to
+treating the repo's default branch as this stack's trunk instead of `<feature-branch>` — a
+confirmed cause of branch corruption once a later `sync` cascade-rebases against it (#260). For
+each candidate PR's `headRefName`, derive its task-work-item-id (the leading `<PROJECT>-<NUMBER>`
+segment of the branch's last path component, same convention `detect_next_stack_event.py`'s
+`_WORK_ITEM_ID_RE` uses), resolve its context file via `use-context-file`, and only accept a
+candidate whose `stack_link_status` extra-frontmatter key is `linked` (or whose `added_to_stack`
+is `true`) — never one that's `not_applicable` or absent. If every candidate fails this check,
+this epic has no genuinely stack-linked PR yet — run the troubleshooter agent with problem
+`"monitor-prs step 2a: no genuinely stack-linked open PR based directly on <feature-branch> for
+epic <epic-id>"` rather than guessing. Otherwise call the accepted PR's number `<member-pr-number>`
+and run:
 
 ```bash
 python3 "<skill-dir>/../workflow-orchestrate/scripts/stack_checkout.py" <member-pr-number>
