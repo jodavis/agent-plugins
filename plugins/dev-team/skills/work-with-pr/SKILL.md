@@ -4,14 +4,7 @@ user-invocable: false
 description: >
   Use when you are working with an existing GitHub PR.
   Covers reading PR details and diffs, posting inline comments, managing pending reviews, resolving threads, and requesting human review.
-argument-hint: <pr_url>
 ---
-
-Use this skill when:
-- You are working with an existing GitHub PR
-- You need to read PR details, comments, or diffs
-- You need to post a review or inline comments
-- You need to resolve review threads
 
 ## General guidance
 

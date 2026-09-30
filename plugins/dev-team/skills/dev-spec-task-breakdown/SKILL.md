@@ -1,15 +1,7 @@
 ---
 name: dev-spec-task-breakdown
 user-invocable: false
-description: >
-  Use when breaking down a spec into tasks.
-  Sizes tasks to roughly one PR each and drafts the spec's Tasks section for user approval.
-argument-hint: <path to _spec_*.md file>
 ---
-
-Use this skill when:
-- You are breaking down a spec into implementable tasks
-- You need to draft a task breakdown for user approval before tracked work items are created
 
 ## Sizing rules
 

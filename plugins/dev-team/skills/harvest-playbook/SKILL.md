@@ -1,19 +1,7 @@
 ---
 name: harvest-playbook
 user-invocable: false
-description: >
-  Use when turning a validated spec and/or exemplar repos into a reusable playbook.
-  Gathers inputs from supplied paths, classifies candidate methodology content via Method
-  markers, litmus-test classification, and exemplar diffing, interviews the user, authors a
-  vendor-neutral playbook directory, replaces consumed Method markers with provenance links,
-  and presents the resulting TODO list.
-argument-hint: <spec-path | none> [--exemplar <repo-path>]... [--template-output <path>] --out <playbook-directory> [--name <playbook-name>]
 ---
-
-Use this skill when:
-- A user runs `/harvest` to turn a method that has proven itself (recorded in a spec's Method
-  markers, visible in exemplar repos' git history, or both) into a reusable playbook
-- An existing playbook needs an update pass because a later instance's build diverged from it
 
 You are gathering durable-artifact inputs, classifying which of their content is reusable
 methodology, interviewing the user to confirm candidates and fill gaps, authoring a

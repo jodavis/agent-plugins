@@ -1,13 +1,7 @@
 ---
 name: code-change-expectations
 user-invocable: false
-description: >
-  Use when you are writing new code or fixing issues in existing code.
-  Sets baseline expectations: build and test after each change, write unit tests first, and self-review before reporting.
 ---
-
-Use this skill when:
-- You are writing new code or fixing issues in existing code
 
 ## Expectations
 

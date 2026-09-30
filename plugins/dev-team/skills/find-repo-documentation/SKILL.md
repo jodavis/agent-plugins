@@ -4,15 +4,11 @@ user-invocable: false
 description: >
   Use when you need to learn the architecture from documentation in this repo.
   Discovers available architecture docs and reads the ones relevant to the current task.
-argument-hint: <task context or area to research>
 ---
 
 **Extension point skill** — configure this via `get-project-configuration`'s `documentation`
 section (preferred). Full-file override remains available as an escape hatch: place a `SKILL.md`
 in `.claude/skills/find-repo-documentation/` to replace this skill's process entirely.
-
-Use this skill when:
-- You need to learn the architecture from documentation in this repo
 
 ## Configured behavior
 

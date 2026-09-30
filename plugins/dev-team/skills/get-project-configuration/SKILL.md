@@ -1,15 +1,7 @@
 ---
 name: get-project-configuration
 user-invocable: false
-description: >
-  Use when a skill needs project-specific configuration (work tracking, documentation
-  conventions, developer standards, git-repo conventions). Merges the shipped default with
-  machine- and project-level YAML overrides and returns the result as JSON.
 ---
-
-Use this skill when:
-- You need to know how this project tracks work items, where it keeps documentation, which
-  files define its coding standards, or its git branch/commit/PR conventions
 
 ## Getting the merged configuration
 

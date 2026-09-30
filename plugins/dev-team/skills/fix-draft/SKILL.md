@@ -1,15 +1,7 @@
 ---
 name: fix-draft
 user-invocable: false
-description: >
-  Use when fixing build failures or test failures for a work item that does not yet have a GitHub PR.
-  Reads the task brief, triages each issue, commits fixes one at a time, and returns a fix summary.
-argument-hint: <work-item-id | context-file>
 ---
-
-Use this skill when:
-- You are fixing build failures or test failures
-- There is no existing GitHub PR for the work item yet
 
 You are reading from the workflow context file, fixing issues in existing code, and committing changes locally to the repo.
 

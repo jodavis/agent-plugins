@@ -10,9 +10,6 @@ description: >
 section (preferred). Full-file override remains available as an escape hatch: place a `SKILL.md`
 in `.claude/skills/write-repo-documentation/` to replace this skill's process entirely.
 
-Use this skill when:
-- You are drafting or updating architecture documentation in this repo
-
 ## Configured behavior
 
 Invoke `get-project-configuration` and read `documentation`.
@@ -51,7 +48,6 @@ here:
 - **Data Flow:** how data moves through the subsystem
 
 Do not go into implementation details — link to the source files for those.
-
 
 ## Updating an existing doc
 

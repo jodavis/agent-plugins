@@ -1,25 +1,7 @@
 ---
 name: checkout-stack-pr-for-review
 user-invocable: false
-description: >
-  Use when you need to look at, manually test, or run a stacked PR's code locally — for review,
-  debugging, or any ad hoc reason outside the automated pipeline. Runs
-  `scripts/checkout_stack_pr_for_review.py`, which creates a new throwaway local branch off the
-  PR's own branch tip instead of checking out the shared stack branch itself.
-argument-hint: <pr-number | pr-url | branch-name>
 ---
-
-Use this skill when:
-- A human, or any process outside the automated `/implement`/`/fix`/`monitor-stack` pipeline,
-  wants to check out a task's PR to read, run, or manually test its code
-- You're about to run `git checkout <some-stacked-branch>` for any ad hoc reason and pause to ask
-  "is this branch actually mine to check out?"
-
-Do NOT use this skill when:
-- You're the `dev-team:developer` agent already running inside a task's own pipeline worktree —
-  that branch is already yours; there's nothing to "review" a copy of
-- You're `monitor-stack` — it owns the epic's one shared worktree and checks out real stack
-  members directly, by design (see `work-with-stacked-prs/SKILL.md`'s cross-worktree caveat)
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an

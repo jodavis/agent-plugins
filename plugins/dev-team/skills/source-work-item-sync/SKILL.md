@@ -1,17 +1,7 @@
 ---
 name: source-work-item-sync
 user-invocable: false
-description: >
-  Use when a Proposal or Detailed Design document (or a new part of one) is finalized.
-  Updates the originating tracked source (if any) with a summary of whichever document(s)
-  are finalized so far.
-argument-hint: <work-item-id (optional)> <finalized-doc-path>...
 ---
-
-Use this skill when:
-- A Proposal or Detailed Design document, or a new part of one, is finalized
-- The originating tracked source (if any) should reflect the decisions in the finalized
-  document(s) so far
 
 ## Configured behavior
 

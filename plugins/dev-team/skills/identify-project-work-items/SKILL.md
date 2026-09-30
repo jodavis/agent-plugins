@@ -1,20 +1,11 @@
 ---
 name: identify-project-work-items
 user-invocable: false
-description: >
-  Identifies the active work item from user input or conversation context.
-  Use this skill when you need to know the work-item-id or work-item-type.
 ---
 
 **Extension point skill** — configure this via `get-project-configuration`'s `work-tracking`
 section (preferred). Full-file override remains available as an escape hatch: place a `SKILL.md`
 in `.claude/skills/identify-project-work-items/` to replace this skill's process entirely.
-
-Use this skill when:
-- Another skill requires a `work-item-id` and `work-item-type`
-
-Do NOT use this skill when:
-- You already know the `work-item-id` and `work-item-type` that is under active development
 
 ## Configured behavior
 

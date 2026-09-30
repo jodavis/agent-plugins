@@ -1,13 +1,6 @@
 ---
 name: concurrent-orchestrate
 user-invocable: false
-description: >
-  Orchestration loop for running several dependency-ordered task-work-items concurrently.
-  Repeatedly invokes concurrent_schedule.py, spawns an isolated workflow-orchestrate run per
-  newly eligible task, auto-starts a dev-team:monitor-prs monitor once per epic the moment
-  the first task in that epic's target set reaches hand-off, and stops on "complete" or
-  "blocked" instead of polling forever.
-argument-hint: --target-mode <up-to|list> --target <key, or comma-separated keys>
 ---
 
 ## Arguments

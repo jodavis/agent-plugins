@@ -1,22 +1,11 @@
 ---
 name: ensure-working-branch
 user-invocable: false
-description: >
-  Ensures the repository is on the correct working branch for a task, creating it if it does not
-  yet exist. Use this skill before reading or writing any repository files to confirm the branch
-  is ready.
-argument-hint: <work-item-id>
 ---
 
 **Extension point skill** — configure this via `get-project-configuration`'s `git-repo` section
 (preferred). Full-file override remains available as an escape hatch: place a `SKILL.md` in
 `.claude/skills/ensure-working-branch/` to replace this skill's process entirely.
-
-Use this skill when:
-- You are about to write code or modify files and need to be on the correct working branch
-
-Do NOT use this skill when:
-- You already know the working branch is checked out and up to date
 
 `task-work-item` / `feature-work-item` — see `get-project-configuration`'s `work-tracking`
 section for the definitions used throughout this skill.

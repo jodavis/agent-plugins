@@ -1,16 +1,7 @@
 ---
 name: document-concision-pass
 user-invocable: false
-description: >
-  Use when a document needs a final tightening pass. Re-reads it section by section and cuts
-  restated context, redundant hedging, and multi-sentence explanations that could be one
-  sentence — without dropping any decision, requirement, or scenario.
-argument-hint: <path to document>
 ---
-
-Use this skill when:
-- A document has just been drafted or extended and its prose has accumulated padding
-- You are running a final tightening pass before a document is considered done
 
 Takes one argument: the path to the document. Makes no assumption about which template (or
 whether any template) produced it — this skill works unchanged on a Proposal, a Detailed

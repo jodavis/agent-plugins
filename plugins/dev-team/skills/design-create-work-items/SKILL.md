@@ -1,15 +1,7 @@
 ---
 name: design-create-work-items
 user-invocable: false
-description: >
-  Use when an approved, readiness-reviewed deliverable breakdown needs tracked work items.
-  Reconciles deliverables with existing work items, creates or updates feature-work-items, and updates the design doc with the assigned links.
-argument-hint: <path to _design_*.md file>
 ---
-
-Use this skill when:
-- A design doc's deliverable breakdown has been drafted, approved, and readiness-reviewed
-- You need to create or reuse tracked feature-work-items for a design's deliverables
 
 ## Steps
 

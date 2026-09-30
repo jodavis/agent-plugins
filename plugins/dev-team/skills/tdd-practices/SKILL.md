@@ -1,15 +1,7 @@
 ---
 name: tdd-practices
 user-invocable: false
-description: >
-  Reference skill for TDD practice rules — AAA structure, red-must-fail-for-the-right-reason,
-  frozen-Arrange/Act, and the default test naming convention. Non-negotiable dev-team process
-  conventions, language/stack-agnostic except the naming rule's syntax.
 ---
-
-Use this skill when:
-- You are writing or reviewing unit tests as part of the TDD ping-pong protocol, or any other
-  test-first workflow that follows these conventions
 
 ## Practice rules
 

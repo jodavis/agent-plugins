@@ -1,11 +1,6 @@
 ---
 name: workflow-orchestrate
 user-invocable: false
-description: >
-  Orchestration loop for the dev-team pipeline. Drives the step machine by repeatedly
-  invoking dev_team.py, parsing its JSON descriptor, and spawning the appropriate
-  agent for each step. Replaces dev-team.md.
-argument-hint: --work-item-id <id> --workflow <pipeline>
 ---
 
 ## Arguments
@@ -182,7 +177,6 @@ expected, and why it didn't match.
 ### 3 — Error handling
 
 If `dev_team.py` exits with a non-zero code, run the troubleshooter agent (see below).
-
 
 ## Running the troubleshooter agent
 

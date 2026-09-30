@@ -1,17 +1,7 @@
 ---
 name: add-to-pr-stack
 user-invocable: false
-description: >
-  Use after a task's PR has been signed off, to register it into its epic's `gh stack`. Runs
-  `scripts/add_to_pr_stack.py`, which resolves the context file, links this task's already-open
-  PR onto whichever of its own dependencies is furthest along the stack (or the feature branch,
-  for the epic's first task), and writes `added_to_stack: true` back to the context file.
-argument-hint: <work-item-id | context-file>
 ---
-
-Use this skill when:
-- A task's `signoff` step has just resolved `approved`, and its PR needs registering into the
-  epic's `gh stack`
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
 skill" path shown when this skill was invoked. Resolve it to that literal path; it is not an

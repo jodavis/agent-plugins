@@ -1,15 +1,7 @@
 ---
 name: document-section-interview
 user-invocable: false
-description: >
-  Use when gathering a document's content section by section against a template, whether drafting
-  a new document or revising an existing one with new information. Interviews the user per
-  section and enforces that no question is deferred without explicit sign-off.
-argument-hint: <template-path> [existing-document-path]
 ---
-
-Use this skill when:
-- A first-draft skill needs to gather a document's section content from the user, following a template's section order — whether drafting a new document or revising an existing one with new information
 
 Takes the path to the section template and, if revising, the path (or already-read content) of
 the existing document. Returns nothing itself — the calling skill uses the resolved answers to

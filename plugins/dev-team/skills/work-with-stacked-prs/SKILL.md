@@ -1,17 +1,7 @@
 ---
 name: work-with-stacked-prs
 user-invocable: false
-description: >
-  Use when you are working with a stack of dependent GitHub PRs via GitHub's `gh stack` CLI
-  extension (`github/gh-stack`). Provides the exact command/flags for each operation
-  (init, add, submit, sync, view, merge, rebase --continue, checkout, link) and the extension
-  preflight check.
 ---
-
-Use this skill when:
-- You need to create, extend, push, sync, inspect, or merge a stack of dependent branches/PRs
-- Another skill tells you to use a stacked-PR operation "from `work-with-stacked-prs`"
-- You need to run the `github/gh-stack` extension preflight before any stacked-PR work begins
 
 This skill is the **sole owner** of every direct `gh stack` CLI invocation in this feature — no
 other skill invokes `gh stack` directly; they all reference this skill's named operations

@@ -1,23 +1,7 @@
 ---
 name: playbook-contract
 user-invocable: false
-description: >
-  Reference skill defining the normative, vendor-neutral playbook directory contract: the
-  directory shape, TODO marker semantics, vendor-neutrality rules, the Method marker
-  convention, and bare-name playbook resolution. Cited by `harvest-playbook`, `dev-spec-first-draft`
-  instance mode, and `dev-spec-task-breakdown` playbook seeding so all three agree on one shared
-  definition instead of drifting apart.
 ---
-
-Use this skill when:
-- You are authoring, reading, or consuming a playbook — a standalone skill directory that
-  captures any reusable process discovered while implementing a spec (how to build a family of
-  similar components, a testing strategy, a documentation format, or any other repeatable
-  process worth reusing, not only component-building) — and need the normative shape of its
-  directory, its markers, or its resolution rules
-- You are writing `harvest-playbook` (produces playbooks against this contract),
-  `dev-spec-first-draft` instance mode (consumes a playbook's `spec-template.md`), or
-  `dev-spec-task-breakdown` playbook seeding (consumes a playbook's steps and validation gates)
 
 ## Playbooks are skills with a vendor-neutral directory contract
 

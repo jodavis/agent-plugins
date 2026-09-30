@@ -1,15 +1,7 @@
 ---
 name: use-context-file
 user-invocable: false
-description: >
-  Use when you will read from or write to a workflow context file.
-  Describes the context file format and how to resolve, initialize, read, and update it.
-argument-hint: <work-item-id | context-file-path>
 ---
-
-Use this skill when:
-- You need to locate and read the context file for a work item
-- You need to write or update a section in the context file
 
 ## Resolving the context file path
 

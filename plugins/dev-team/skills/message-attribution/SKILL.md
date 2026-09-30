@@ -7,10 +7,6 @@ description: >
   "Written by <name>" attribution line, or returns nothing when attribution is unconfigured.
 ---
 
-Use this skill when:
-- You are about to write a commit message, PR description, PR/review comment, or a work-item
-  (Jira/GitHub) description or comment, and need to know whether to append an attribution line
-
 ## Getting the configured wording
 
 If a context file has already been resolved for the current work item earlier in this task (via

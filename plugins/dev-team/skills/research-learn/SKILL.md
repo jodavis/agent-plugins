@@ -1,15 +1,7 @@
 ---
 name: research-learn
 user-invocable: false
-description: >
-  Use when you are researching a work item by learning from external resources.
-  Searches for best practices, framework documentation, and technical guidance not covered by local docs.
-argument-hint: <topic or framework to research>
 ---
-
-Use this skill when:
-- You are researching a work item
-- The task touches a framework, library, or pattern not fully covered by local architecture docs
 
 ## Steps
 

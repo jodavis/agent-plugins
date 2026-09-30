@@ -1,15 +1,7 @@
 ---
 name: document-discussion
 user-invocable: false
-description: >
-  Use when working with the user to refine a document (design doc or dev spec).
-  Finds REVIEW comments in the document and resolves them one at a time with the user.
-argument-hint: <path to document>
 ---
-
-Use this skill when:
-- You are working with the user to refine a design doc or dev spec
-- There are `**Review:**` comments in the document that need to be resolved
 
 ## Steps
 

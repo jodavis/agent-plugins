@@ -1,14 +1,7 @@
 ---
 name: review
 user-invocable: false
-description: >
-  Use when performing a first-pass code review for a work item.
-  Reads the task brief and architecture docs, evaluates the PR diff against requirements and quality criteria, and posts a GitHub PR review.
-argument-hint: <work-item-id | context-file>
 ---
-
-Use this skill when:
-- You are performing the first-pass code review for a work item
 
 You are working with an existing PR, reading from a workflow context file, learning the architecture from documents in this repo, reviewing code changes, and creating a PR review.
 

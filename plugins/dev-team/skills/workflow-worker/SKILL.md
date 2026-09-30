@@ -1,10 +1,6 @@
 ---
 name: workflow-worker
 user-invocable: false
-description: >
-  **Defines the rules for working as a part of a multi-agent orchestrated workflow.**
-  Use this skill when an agent is instructed to run as an orchestrated worker.
-argument-hint: --context-file <path> --write-section <section> --skill <skill> [--skill-args <args>]
 ---
 
 ## Arguments

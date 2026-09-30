@@ -1,15 +1,7 @@
 ---
 name: research-sources
 user-invocable: false
-description: >
-  Use when you are researching a work item by reading existing source code.
-  Reads the relevant source files and interfaces to understand existing patterns.
-argument-hint: <task context or description>
 ---
-
-Use this skill when:
-- You are researching a work item
-- You need to understand existing patterns, interfaces, or utilities in the source code before implementing
 
 ## Steps
 

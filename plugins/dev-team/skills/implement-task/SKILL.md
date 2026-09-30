@@ -1,18 +1,7 @@
 ---
 name: implement-task
 user-invocable: false
-description: >
-  Use when implementing a task from a task brief.
-  Reads the task brief, loads developer standards, then dispatches each in-scope component to
-  implement-direct or implement-tdd, triages any leftover exit-criteria work into an ad hoc
-  component or non-component-shaped work, re-runs E2E scenarios, self-reviews, and returns a
-  work summary.
-argument-hint: <work-item-id | context-file>
 ---
-
-Use this skill when:
-- You need to implement a task from a task brief
-- You are writing new code for a work item
 
 You are reading the workflow context file to find a task brief, dispatching each in-scope
 component to the skill that matches its testing tier, triaging any exit-criteria work that

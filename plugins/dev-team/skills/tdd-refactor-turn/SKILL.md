@@ -1,17 +1,7 @@
 ---
 name: tdd-refactor-turn
 user-invocable: false
-description: >
-  Use when tdd-refactorer is taking a turn after tdd-implementer reports a real green (not
-  structural-green) in the tdd-tester / tdd-implementer / tdd-refactorer trio's ping-pong loop.
-  Reviews the component-so-far for behavior-preserving cleanup opportunities, reruns the full
-  component suite, and reports the outcome in one line.
 ---
-
-Use this skill when:
-- You (`tdd-refactorer`) are taking your turn after `tdd-implementer` reports a real green
-  (`green: <TestName>`, or a Tier 2 `resolve_directly` resolution) for the component you were
-  spawned for — every such turn, not just a final one after `tdd-tester` reports `done`
 
 ## Steps
 

@@ -1,21 +1,7 @@
 ---
 name: implement-direct
 user-invocable: false
-description: >
-  Use when implementing one Wrapper or Orchestrator component from a task brief's Components
-  in scope list directly, with no pairing. Also used by implement-tdd's Tier 2
-  resolve_directly escalation to implement a disputed piece itself.
-argument-hint: <component-row> <task-brief-path> <spec-path> [skip-commit]
 ---
-
-Use this skill when:
-- You (Developer) are implementing one component classified `Wrapper` or `Orchestrator` in a
-  task brief's Components in scope list
-- `implement-tdd`'s Tier 2 escalation resolves to `resolve_directly` and you need to implement
-  the disputed piece yourself
-
-Do NOT use this skill when:
-- The component is `Testable` — use `implement-tdd` instead
 
 ## Two callers, same implementation steps, different final step
 

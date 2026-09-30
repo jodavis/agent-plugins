@@ -1,13 +1,7 @@
 ---
 name: missing-test-harness
 user-invocable: false
-description: >
-  Use when you are planning or writing unit, E2E, or API tests.
-  Establishes which test harnesses exist in the repo and prevents creating new ones without explicit instruction.
 ---
-
-Use this skill when:
-- You are planning or writing unit, E2E, or API tests
 
 ## Rules
 

@@ -1,27 +1,7 @@
 ---
 name: write-scratch-deliverable
 user-invocable: false
-description: >
-  Use as the final output step of a skill invoked via `workflow-worker`, in place of returning
-  your deliverable as chat text. Writes it to workflow-worker's own pending-scratch-file
-  convention instead, so it never has to pass through the spawning agent's own context —
-  `dev_team.py`'s `merge_pending_deliverables()` picks it up and merges it into the shared
-  context file on the next orchestration-loop iteration.
 ---
-
-Use this skill when:
-- You have just finished composing a deliverable (a task brief, fix summary, debug report, review
-  output, or similar) inside a skill invoked via `workflow-worker` (`plan-task`,
-  `researcher-issue`, `fix-pr`, `resolve-rebase-conflict`, `investigate-bug`, `implement-task`,
-  `create-pr-from-context`, `review`, `review-sign-off`, `fix-draft`, or any future skill invoked
-  the same way), and your own next step would otherwise have been to return it as chat text
-- `--context-file`, `--write-section`, and the work-item-id are in scope — they always are when
-  you were reached via `workflow-worker`, since it invokes you in the same session, never a
-  separate one
-
-Do NOT use this skill when:
-- You were invoked directly, standalone, with no `--context-file`/`--write-section` in scope (e.g.
-  ad hoc human use outside the pipeline) — return your deliverable as prose instead, unchanged
 
 ## Steps
 

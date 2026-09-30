@@ -1,15 +1,7 @@
 ---
 name: researcher-proposal-review
 user-invocable: false
-description: >
-  Use when verifying a design doc actually solves the problem it describes.
-  Reads the design and related docs, then returns blocking questions or a ready confirmation.
-argument-hint: <path to _design_*.md file>
 ---
-
-Use this skill when:
-- You need to verify a design doc is complete and actually solves the stated problem
-- You are reviewing a design doc for blocking gaps
 
 This is an objective, critical review of problem/solution fit — not an implementation-readiness
 review. Do not ask about interfaces, classes, or code-level concerns; that is
