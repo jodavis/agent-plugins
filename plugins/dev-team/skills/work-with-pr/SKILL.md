@@ -92,10 +92,24 @@ mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullN
 
 ### request-review
 
-Given a GitHub username (supplied by the caller), request their review on the PR:
+Given a GitHub username (supplied by the caller), request their review on the PR. Requesting a
+review is a distinct GitHub REST endpoint
+(`POST /repos/{owner}/{repo}/pulls/{number}/requested_reviewers`) — `update_pull_request`'s
+underlying PR-update endpoint has no `reviewers` field, so calling it with one succeeds
+(no error) without ever actually creating a review request. Call the dedicated endpoint directly
+via `gh api` instead:
+```bash
+gh api "repos/<owner>/<repo>/pulls/<number>/requested_reviewers" -X POST -f "reviewers[]=<github-username>"
 ```
-mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullNumber=<number>, reviewers=["<github-username>"])
-```
+A `422` here means `<github-username>` isn't a collaborator on the repo (e.g. a bot like
+`copilot-pull-request-reviewer[bot]` that was never installed) — not a transient failure; report
+it as-is rather than retrying.
+
+Verify success via the PR's timeline/review history (a `review_requested` or
+`copilot_work_started` event, or an eventual submitted review), never via whether
+`requested_reviewers` stays populated — GitHub clears a bot reviewer from that list the instant
+it starts work, even on complete success, so an empty `requested_reviewers` list does not mean
+the request failed.
 
 ### assign-issue
 
