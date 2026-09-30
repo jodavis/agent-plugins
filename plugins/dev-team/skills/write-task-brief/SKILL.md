@@ -11,14 +11,35 @@ Open with this exact heading (substitute the real task key):
 # Implementation plan for <task-key>
 ```
 
-The brief must include all of the following sections (**Components in scope** is
-conditional — see below):
+The brief must include all of the following sections (**External dependencies** and
+**Components in scope** are conditional — see below):
 
 **Task title and description**
 One sentence stating what the task accomplishes and why.
 
 **Exit criteria**
 Copy the exit criteria checklist from the spec section verbatim. If the spec uses Gherkin scenarios, include them.
+
+**External dependencies** (optional — omit the section entirely when not applicable)
+Name any exit criterion that cannot be verified by an autonomous sign-off cycle because it
+depends on infrastructure, a deployment, or a system outside this repo and this pipeline's
+control (e.g. a live authenticated probe against an environment that isn't deployed yet, a
+separate team's API, a manual human action). For each: which exit criterion it blocks, and
+concretely what needs to happen — and by whom — before it can be verified.
+
+This is a planning-time declaration, not a waiver — sign-off still runs and still tries. Its
+purpose is to save whoever investigates an eventual `fixing_pr` exhaustion (a human reading the
+plain pipeline-failed report, or a troubleshooter invoked for some other reason) from
+re-deriving from scratch why a task that looks stuck is actually waiting on something outside
+its own control (#209) — see `workflow-troubleshoot/SKILL.md`'s own note on this.
+
+Format when populated:
+```
+## External dependencies
+
+- Exit criterion 3 ("production smoke test passes") requires the EAC-2584 environment to be
+  deployed first — owned by the platform team, not this task.
+```
 
 **Key design decisions**
 Decisions already made in the spec that directly constrain this task's implementation. Do not include decisions from other parts of the spec that don't affect this task.

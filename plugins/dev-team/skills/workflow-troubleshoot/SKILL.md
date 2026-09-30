@@ -27,9 +27,18 @@ that hold agent output. Frontmatter fields relevant to troubleshooting:
 | Trigger | Meaning | What to look for |
 |---|---|---|
 | `consecutive_failures` | An agent has failed 3 times in a row | Check `pending_agent` and the section it should have written; look for missing output or error messages |
-| `signoff_deadlock` | Sign-off has cycled twice without resolution | Read the `signoff_review` and `signoff_research` sections; determine what is blocking agreement |
 | `review_loop` | Review/fix has iterated 3 times without approval | Read `review_notes` and `fix_summary` sections; identify what the reviewer keeps flagging |
 | `unknown_state` | Pipeline entered a state with no handler | Check the `state` field; it may be a typo or a state that was removed — set it to a valid state |
+
+There is no longer a `signoff_deadlock` trigger (#205/#201): `fixing_pr` exhausting its own
+retry budget (`review_fix_iteration` reaching `MAX_REVIEW_FIX_ITERATIONS`) transitions straight to
+the terminal `failed` state and is reported directly to the user as a plain `"done"`/`"failed"`
+descriptor — no troubleshooter spawn. If you're investigating a task that ended this way (invoked
+manually, or under a different trigger this table does cover), check the task's own brief for an
+**External dependencies** sub-heading (#209) before assuming it's a code-level bug: a declared,
+still-genuinely-blocked external dependency explains a legitimate exhaustion that no further fix
+attempt could have resolved. `dev_team.py --resume` (#202) re-enters at `signoff` once the
+underlying blocker clears.
 
 ## Before diagnosing
 
