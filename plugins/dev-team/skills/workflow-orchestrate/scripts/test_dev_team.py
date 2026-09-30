@@ -306,6 +306,179 @@ class TestSignoffCycleCount:
 
 
 # ---------------------------------------------------------------------------
+# resume_from_terminal_state — #202
+# ---------------------------------------------------------------------------
+
+class TestResumeFromTerminalState:
+    def _make_ctx(self, **kwargs):
+        from dev_team import PipelineContext
+        return PipelineContext(work_item_id="ADR-TEST", **kwargs)
+
+    def _make_workflow(self, **kwargs):
+        from dev_team import WorkflowDefinition
+        defaults = dict(
+            transitions={
+                "signoff": {"changes_requested": "fixing_pr", "approved": "add_to_pr_stack"},
+                "fixing_pr": {"fix_done": "signoff", "max_retries": "failed"},
+                "add_to_pr_stack": {"linked": "done"},
+            },
+            terminal_states={"failed", "done"},
+            initial_state="init",
+        )
+        defaults.update(kwargs)
+        return WorkflowDefinition(**defaults)
+
+    def test_resets_all_retry_counters_and_reenters_given_state(self):
+        from dev_team import resume_from_terminal_state
+        ctx = self._make_ctx(
+            state="failed", fix_iteration=5, review_fix_iteration=3,
+            signoff_cycle_count=4, review_cycle_count=3, consecutive_failures=2,
+        )
+        resume_from_terminal_state(ctx, self._make_workflow(), "signoff")
+        assert ctx.state == "signoff"
+        assert ctx.fix_iteration == 0
+        assert ctx.review_fix_iteration == 0
+        assert ctx.signoff_cycle_count == 0
+        assert ctx.review_cycle_count == 0
+        assert ctx.consecutive_failures == 0
+
+    def test_can_resume_to_a_different_named_state(self):
+        from dev_team import resume_from_terminal_state
+        ctx = self._make_ctx(state="failed", review_fix_iteration=3)
+        resume_from_terminal_state(ctx, self._make_workflow(), "fixing_pr")
+        assert ctx.state == "fixing_pr"
+
+    def test_raises_when_current_state_is_not_terminal(self):
+        from dev_team import resume_from_terminal_state, ResumeError
+        ctx = self._make_ctx(state="signoff")
+        with pytest.raises(ResumeError, match="not terminal"):
+            resume_from_terminal_state(ctx, self._make_workflow(), "signoff")
+
+    def test_raises_when_current_state_is_done(self):
+        from dev_team import resume_from_terminal_state, ResumeError
+        ctx = self._make_ctx(state="done")
+        with pytest.raises(ResumeError, match="'done'"):
+            resume_from_terminal_state(ctx, self._make_workflow(), "signoff")
+
+    def test_raises_when_resume_target_is_not_a_known_state(self):
+        from dev_team import resume_from_terminal_state, ResumeError
+        ctx = self._make_ctx(state="failed")
+        with pytest.raises(ResumeError, match="not a known state"):
+            resume_from_terminal_state(ctx, self._make_workflow(), "not-a-real-state")
+
+
+class TestDefaultResumeState:
+    """Regression coverage for a review finding on #202: the real workflow has two distinct
+    edges into terminal 'failed' — fixing -> failed (pre-PR, no pr_url yet) and
+    fixing_pr -> failed (post-review, pr_url already set). A single hardcoded default of
+    'signoff' is wrong for the first case (SignoffStep would run against an empty pr_url); the
+    right default depends on which edge actually fired, which pr_url being set or not
+    distinguishes exactly."""
+
+    def test_defaults_to_signoff_when_pr_already_exists(self):
+        from dev_team import default_resume_state, PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-TEST", pr_url="https://github.com/org/repo/pull/1")
+        assert default_resume_state(ctx) == "signoff"
+
+    def test_defaults_to_validating_when_no_pr_exists_yet(self):
+        from dev_team import default_resume_state, PipelineContext
+        ctx = PipelineContext(work_item_id="ADR-TEST")
+        assert default_resume_state(ctx) == "validating"
+
+
+# ---------------------------------------------------------------------------
+# --resume CLI integration (main()) — argparse wiring, error path, and the
+# resume-then-construct-DevTeamPipeline fall-through
+# ---------------------------------------------------------------------------
+
+class TestResumeCliIntegration:
+    """Regression coverage for a review finding on #202: every existing --resume test called
+    resume_from_terminal_state()/default_resume_state() directly — the argparse "__auto__"
+    sentinel wiring, the ResumeError -> exit(1) path, and falling through into a real
+    DevTeamPipeline construction afterward were all unverified. DevTeamPipeline itself is stubbed
+    out here (its real step handlers need full project configuration/git context this test has no
+    business setting up) so only main()'s own --resume-specific wiring is under test."""
+
+    def _seed_context(self, tmp_path, monkeypatch, **kwargs):
+        from dev_team import PipelineContext, compute_context_path
+        from get_context_path import get_repo_slug
+        monkeypatch.setenv("DEV_TEAM_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("GIT_REMOTE_URL_OVERRIDE", "https://github.com/example/repo.git")
+        ctx = PipelineContext(work_item_id="ADR-TEST", state="failed", **kwargs)
+        context_path = compute_context_path("ADR-TEST", get_repo_slug())
+        ctx.save(context_path)
+        return context_path
+
+    def _workflow_path(self):
+        return SCRIPTS_DIR.parent / "assets" / "implement-task-plan.md"
+
+    def _stub_pipeline(self, monkeypatch):
+        import dev_team
+        constructed: list = []
+
+        class FakePipeline:
+            def __init__(self, ctx, context_path, log_dir, workflow):
+                constructed.append(ctx.state)
+
+            def run(self):
+                pass
+
+        monkeypatch.setattr(dev_team, "DevTeamPipeline", FakePipeline)
+        return constructed
+
+    def test_bare_resume_flag_autodetects_validating_with_no_pr(self, tmp_path, monkeypatch):
+        context_path = self._seed_context(tmp_path, monkeypatch)
+        constructed = self._stub_pipeline(monkeypatch)
+        import dev_team
+        monkeypatch.setattr(sys, "argv", [
+            "dev_team.py", "ADR-TEST",
+            "--workflow", str(self._workflow_path()), "--context-file", str(context_path),
+            "--resume",
+        ])
+
+        dev_team.main()
+
+        assert constructed == ["validating"]
+
+    def test_explicit_resume_state_overrides_autodetection(self, tmp_path, monkeypatch):
+        context_path = self._seed_context(
+            tmp_path, monkeypatch, pr_url="https://github.com/org/repo/pull/1",
+        )
+        constructed = self._stub_pipeline(monkeypatch)
+        import dev_team
+        monkeypatch.setattr(sys, "argv", [
+            "dev_team.py", "ADR-TEST",
+            "--workflow", str(self._workflow_path()), "--context-file", str(context_path),
+            "--resume=fixing_pr",
+        ])
+
+        dev_team.main()
+
+        assert constructed == ["fixing_pr"]
+
+    def test_resume_from_done_exits_nonzero_without_constructing_pipeline(self, tmp_path, monkeypatch, capsys):
+        context_path = self._seed_context(tmp_path, monkeypatch)
+        from dev_team import PipelineContext
+        ctx = PipelineContext.load(context_path)
+        ctx.state = "done"
+        ctx.save(context_path)
+        constructed = self._stub_pipeline(monkeypatch)
+        import dev_team
+        monkeypatch.setattr(sys, "argv", [
+            "dev_team.py", "ADR-TEST",
+            "--workflow", str(self._workflow_path()), "--context-file", str(context_path),
+            "--resume",
+        ])
+
+        with pytest.raises(SystemExit) as exc_info:
+            dev_team.main()
+
+        assert exc_info.value.code == 1
+        assert "not valid from the terminal 'done' state" in capsys.readouterr().err
+        assert constructed == []
+
+
+# ---------------------------------------------------------------------------
 # project_configuration field / section
 # ---------------------------------------------------------------------------
 
