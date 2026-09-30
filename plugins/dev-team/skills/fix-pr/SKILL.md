@@ -13,7 +13,18 @@ Use the `identify-work-item` skill to determine the `work-item-id` from the user
 
 ### 2 — Read the task brief
 
-Use the `read-task-brief` skill with the `work-item-id` to load the original task brief and work summary from the context file, and ensure the working branch is set up. This context explains what was built and why.
+Use the `read-task-brief` skill with the `work-item-id` and `--tolerate-missing-brief` to load
+the original task brief and work summary from the context file, and ensure the working branch is
+set up. This context explains what was built and why.
+
+**If the returned brief is empty** (#233 — a task implemented outside the dev-team pipeline
+entirely has no context file brief to read): synthesize the equivalent context directly from the
+PR itself instead of stopping. Use `work-with-pr` to fetch the PR's own description
+(`mcp__plugin_github_github__pull_request_read(method="get", ...)`, `title`/`body`) and diff
+(`get_diff`) — the PR description explains what was built and why in place of a Researcher
+Brief, and the diff shows what already exists in place of an Implementation Summary. Proceed with
+the rest of this skill's steps using that in place of the task brief/work summary everywhere they
+would otherwise be referenced.
 
 ### 3 — Load developer standards
 
