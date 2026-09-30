@@ -34,7 +34,6 @@ if hasattr(sys.stderr, "reconfigure"):
 MAX_FIX_ITERATIONS = 5
 MAX_REVIEW_FIX_ITERATIONS = 3
 CONSECUTIVE_FAILURES_THRESHOLD = 3
-SIGNOFF_DEADLOCK_THRESHOLD = 2
 REVIEW_LOOP_THRESHOLD = MAX_REVIEW_FIX_ITERATIONS
 
 
@@ -447,7 +446,6 @@ def _troubleshooter_descriptor(
         "trigger": trigger,
         "context_file": str(context_path),
         "cycle_count": ctx.consecutive_failures if trigger == "consecutive_failures"
-                       else ctx.signoff_cycle_count if trigger == "signoff_deadlock"
                        else ctx.review_cycle_count,
     }
 
@@ -1281,22 +1279,33 @@ class DevTeamPipeline:
 
             _apply_counter_updates(self.ctx, current_state, trigger)
 
-            # Check trigger-based troubleshooter conditions
-            if self.ctx.signoff_cycle_count >= SIGNOFF_DEADLOCK_THRESHOLD:
-                self.ctx.save(self.context_path)
-                exit_with_actions([_troubleshooter_descriptor(
-                    "signoff_deadlock", self.context_path, self.ctx
-                )])
-
-            if self.ctx.review_cycle_count >= REVIEW_LOOP_THRESHOLD:
-                self.ctx.save(self.context_path)
-                exit_with_actions([_troubleshooter_descriptor(
-                    "review_loop", self.context_path, self.ctx
-                )])
-
             self.machine.transition(trigger)
             self.ctx.state = self.machine.state
             self.ctx.save(self.context_path)
+
+            # Check trigger-based troubleshooter conditions — only once the transition above has
+            # had its chance to run, and skipped entirely once we've already reached a terminal
+            # state on our own (e.g. fixing_pr's own max_retries -> failed) — that's already a
+            # clear, self-explanatory outcome reported via the normal "done"/failed descriptor
+            # below; escalating to a troubleshooter on top of it would be a redundant, confusing
+            # second signal for the same thing.
+            #
+            # There used to be an equivalent signoff_cycle_count-based "signoff_deadlock" check
+            # here (#205/#201's fix attempt) — removed entirely (not just re-threshold/re-ordered)
+            # after discovering no placement of it is actually correct for this workflow's shape:
+            # every changes_requested from signoff routes unconditionally to fixing_pr, which
+            # already has its own complete, correctly-ordered max_retries -> failed path. Any
+            # signoff_cycle_count check placed after the transition into fixing_pr — regardless of
+            # threshold — still runs before fixing_pr's own step ever gets a turn through this same
+            # loop whenever signoff itself resolved inline (a normal recovery re-entry), so it
+            # preempts fixing_pr's own legitimate resolution exactly like the original bug, just at
+            # a shifted cycle count. fixing_pr's own path already reaches a terminal, reported
+            # outcome on its own; nothing here needs to duplicate or race it.
+            if self.machine.state not in self.workflow.terminal_states:
+                if self.ctx.review_cycle_count >= REVIEW_LOOP_THRESHOLD:
+                    exit_with_actions([_troubleshooter_descriptor(
+                        "review_loop", self.context_path, self.ctx
+                    )])
 
         if self.machine.state == "done":
             exit_with_actions([{
