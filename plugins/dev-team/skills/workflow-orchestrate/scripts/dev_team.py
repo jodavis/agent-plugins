@@ -511,101 +511,10 @@ class FindSpecStep(Step):
         return "spec_found"
 
 
-class DebugStep(Step):
-    handles = "debugging"
-    EVENT_NAME = "debug"
-
-    _PENDING_KEY = "debug"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.debug_report:
-            # Result already available — inline step
-            return []
-        return [{
-            "action": "spawn_agent",
-            "message": f"Debugger is investigating {ctx.work_item_id}.",
-            "agent": "dev-team:debugger",
-            "skill": "investigate-bug",
-            "context_file": str(self._context_path),
-            "args": ctx.work_item_id,
-            "read_sections": [],
-            "write_section": "Debug Report",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.debug_report:
-            _handle_agent_success(ctx)
-            status = parse_json_output(ctx.debug_report).get("status", "")
-            if status == "reproduced":
-                return "debug_done"
-            ctx.last_failure = f"Bug could not be reproduced.\n\n{ctx.debug_report}"
-            return "reproduction_failed"
-        # Agent ran but wrote nothing
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        # If we get here, consecutive_failures has not hit threshold — return failure trigger
-        return "reproduction_failed"
-
-
-class ResearchStep(Step):
-    """Runs the `/fix` pipeline's `researching` state — investigates a bug report via the
-    `dev-team:researcher` agent's `researcher-issue` skill. See `PlanStep` for the `/implement`
-    pipeline's counterpart, which hardcodes a different agent+skill pair for spec-driven tasks."""
-
-    handles = "researching"
-    EVENT_NAME = "research"
-
-    _PENDING_KEY = "research"
-
-    def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
-        self._ctx = ctx
-        self._context_path = context_path
-
-    def get_actions(self) -> list[dict]:
-        ctx = self._ctx
-        if ctx.brief:
-            return []
-        read_sections = ["Debug Report"] if ctx.debug_report else []
-        return [{
-            "action": "spawn_agent",
-            "message": f"Researcher is planning work for {ctx.work_item_id}.",
-            "agent": "dev-team:researcher",
-            "skill": "researcher-issue",
-            "context_file": str(self._context_path),
-            "args": f"{ctx.work_item_id} {ctx.spec_path}",
-            "read_sections": read_sections,
-            "write_section": "Researcher Brief",
-            "result_format": "success | failed",
-        }]
-
-    def handle_results(self) -> str:
-        ctx = self._ctx
-        if ctx.brief:
-            _handle_agent_success(ctx)
-            return "research_done"
-        _handle_agent_failure(ctx)
-        _check_and_trigger_troubleshooter(
-            "consecutive_failures", CONSECUTIVE_FAILURES_THRESHOLD,
-            ctx.consecutive_failures, ctx, self._context_path,
-        )
-        return "research_done"
-
-
 class PlanStep(Step):
     """Runs the `/implement` pipeline's `planning` state — turns a spec section into a task
     brief via the `dev-team:planner` agent's `plan-task` skill, restricted to the spec and the
-    local codebase (no external research). See `ResearchStep` for the `/fix` pipeline's
-    counterpart.
+    local codebase (no external research).
 
     `handle_results()` always returns `"ready"` today — there is no `research_needed` branch
     wired up yet; this is the fork point a future research loop would use."""
@@ -1225,8 +1134,6 @@ class DevTeamPipeline:
         self.machine = StateMachine(workflow.transitions, initial=ctx.state)
         self.step_handlers: dict[str, Step] = {
             "spec-finding": FindSpecStep(ctx),
-            "debugging": DebugStep(ctx, context_path),
-            "researching": ResearchStep(ctx, context_path),
             "planning": PlanStep(ctx, context_path),
             "implementing": ImplementStep(ctx, context_path),
             "validating": ValidateStep(ctx, context_path, log_dir),

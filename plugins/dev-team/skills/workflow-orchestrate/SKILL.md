@@ -6,7 +6,7 @@ user-invocable: false
 ## Arguments
 
 - `--work-item-id` — the resolved work item identifier (e.g. `PROJ-123` or `Issue-444`)
-- `--workflow` — the pipeline filename stem (e.g. `implement-task-plan` or `fix-issue-plan`)
+- `--workflow` — the pipeline filename stem (e.g. `implement-task-plan`)
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory
 for this skill" path shown when this skill was invoked. Resolve it to that literal

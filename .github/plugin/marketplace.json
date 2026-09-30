@@ -7,7 +7,7 @@
         {
             "name": "dev-team",
             "source": "./plugins/dev-team",
-            "description": "Dev-team agent pipeline: researcher, developer, reviewer, and debugger agents for implementing Jira tasks and fixing GitHub issues."
+            "description": "Dev-team agent pipeline: researcher, developer, and reviewer agents for implementing Jira tasks."
         }
     ]
 }

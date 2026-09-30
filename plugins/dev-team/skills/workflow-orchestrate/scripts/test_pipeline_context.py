@@ -304,7 +304,6 @@ class TestPipelineContextBodySections:
         "field_name, value",
         [
             pytest.param("workspace_setup", "Cloned repo to /tmp/workspace", id="workspace_setup"),
-            pytest.param("debug_report", "Root cause: stale cache", id="debug_report"),
             pytest.param("brief", "Implement the frobnicator using the widget API.", id="brief"),
             pytest.param("project_configuration", "work_tracking: jira", id="project_configuration"),
             pytest.param("review_notes", "Please rename this variable.", id="review_notes"),

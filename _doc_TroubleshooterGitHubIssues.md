@@ -30,8 +30,7 @@ investigated or logged.
   fix-and-draft-PR flow; the `troubleshooter.can-fix` / `troubleshooter.can-push-fix` config
   schema; the `troubleshooter` GitHub label convention on `jodavis/agent-plugins`; the
   troubleshooter-dispatch prose in both `workflow-orchestrate` and `concurrent-orchestrate`.
-- **Does not own:** target-project bug tracking — that stays the `debugger` agent's,
-  `investigate-bug`'s, and `/dev-team:fix`'s job; the troubleshooter never files an issue about a
+- **Does not own:** target-project bug tracking — the troubleshooter never files an issue about a
   bug in the project being developed, only about the dev-team plugin's own pipeline logic.
   `dev_team.py`'s trigger-condition thresholds (`consecutive_failures`, `signoff_deadlock`,
   `review_loop`, `unknown_state`) are unchanged — they remain what proactively spawns a
