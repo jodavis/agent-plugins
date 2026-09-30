@@ -1343,6 +1343,27 @@ class TestCreatePrStep:
         assert trigger == "pr_created"
         assert ctx.pr_url == "https://github.com/org/repo/pull/42"
 
+    def test_get_actions_returns_empty_once_pr_url_section_is_on_disk(self, tmp_path):
+        """Regression (Issue #208): the re-entry right after the agent writes the "PR
+        URL" section must not re-dispatch create-pr-from-context a second time, even
+        though ctx.pr_url itself is still unset at that point (handle_results() is the
+        only thing that ever sets it, and it hasn't run yet on this re-entry)."""
+        from dev_team import CreatePrStep
+        ctx, context_path = self._make_ctx(tmp_path, work_summaries=["# Summary"])
+        # Simulate merge_pending_deliverables() having already merged the agent's
+        # scratch "PR URL" deliverable onto disk before this invocation, exactly as
+        # happens on the orchestration-loop re-entry after create-pr-from-context runs.
+        text = context_path.read_text(encoding="utf-8")
+        text += '\n<!-- section:PR URL -->\n\n{"pr_url": "https://github.com/org/repo/pull/42"}\n'
+        context_path.write_text(text, encoding="utf-8")
+
+        step = CreatePrStep(ctx, context_path)
+        assert step.get_actions() == []
+        # And the very same re-entry can now resolve it via handle_results().
+        trigger = step.handle_results()
+        assert trigger == "pr_created"
+        assert ctx.pr_url == "https://github.com/org/repo/pull/42"
+
     def test_handle_results_increments_failures_when_no_pr_url_written(self, tmp_path):
         """Failure path: agent ran but did not write PR URL."""
         from dev_team import CreatePrStep

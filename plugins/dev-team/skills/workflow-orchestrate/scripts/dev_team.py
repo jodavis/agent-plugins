@@ -661,10 +661,24 @@ class CreatePrStep(Step):
         self._ctx = ctx
         self._context_path = context_path
 
+    def _read_pr_url_section(self) -> str:
+        text = self._context_path.read_text(encoding="utf-8")
+        _, body = _parse_frontmatter(text)
+        sections = _parse_sections(body)
+        return sections.get("PR URL", "")
+
     def get_actions(self) -> list[dict]:
         ctx = self._ctx
         if ctx.pr_url:
             # Recovery re-entry — PR already created
+            return []
+        if self._read_pr_url_section():
+            # The agent already wrote the "PR URL" section on this re-entry (merged onto
+            # disk by merge_pending_deliverables() before this invocation, but never
+            # threaded through ctx.pr_url until handle_results() parses it below) —
+            # don't re-dispatch the agent a second time. Returning [] here lets
+            # _do_get_actions_and_exit() fall through to handle_results() in this same
+            # invocation instead of exiting with a duplicate spawn_agent action.
             return []
         read_sections = ["Researcher Brief", "Implementation Summary"]
         for i in range(1, len(ctx.work_summaries)):
@@ -688,10 +702,7 @@ class CreatePrStep(Step):
             _handle_agent_success(ctx)
             return "pr_created"
         # Extract pr_url from the JSON the skill wrote to the PR URL section
-        text = self._context_path.read_text(encoding="utf-8")
-        _, body = _parse_frontmatter(text)
-        sections = _parse_sections(body)
-        pr_url_section = sections.get("PR URL", "")
+        pr_url_section = self._read_pr_url_section()
         if pr_url_section:
             pr_url = parse_json_output(pr_url_section).get("pr_url", "")
             if pr_url:
