@@ -102,8 +102,12 @@ via `gh api` instead:
 gh api "repos/<owner>/<repo>/pulls/<number>/requested_reviewers" -X POST -f "reviewers[]=<github-username>"
 ```
 A `422` here means `<github-username>` isn't a collaborator on the repo (e.g. a bot like
-`copilot-pull-request-reviewer[bot]` that was never installed) — not a transient failure; report
-it as-is rather than retrying.
+`copilot-pull-request-reviewer[bot]` that was never installed) — not a transient failure, and not
+fixable by any agent (#254): don't retry, and don't report it as a plain failure either. Return
+`skipped: <github-username> is not a repo collaborator` — this specific wording (starting with
+`skipped:`) is what a caller dispatching this as a hook result checks for to avoid escalating an
+unfixable condition to the troubleshooter on every run (see `workflow-orchestrate/SKILL.md`'s
+hook-result handling). Any other error from this call is a genuine failure — report it as-is.
 
 Verify success via the PR's timeline/review history (a `review_requested` or
 `copilot_work_started` event, or an eventual submitted review), never via whether
