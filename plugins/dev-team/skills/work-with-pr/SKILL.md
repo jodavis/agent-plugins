@@ -92,10 +92,35 @@ mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullN
 
 ### request-review
 
-Given a GitHub username (supplied by the caller), request their review on the PR:
+Given a GitHub username (supplied by the caller), request their review on the PR. Requesting a
+review is a distinct GitHub REST endpoint
+(`POST /repos/{owner}/{repo}/pulls/{number}/requested_reviewers`) — `update_pull_request`'s
+underlying PR-update endpoint has no `reviewers` field, so calling it with one succeeds
+(no error) without ever actually creating a review request. Call the dedicated endpoint directly
+via `gh api` instead:
+```bash
+gh api "repos/<owner>/<repo>/pulls/<number>/requested_reviewers" -X POST -f "reviewers[]=<github-username>"
 ```
-mcp__plugin_github_github__update_pull_request(owner=<owner>, repo=<repo>, pullNumber=<number>, reviewers=["<github-username>"])
+A `422` here means `<github-username>` isn't a collaborator on the repo (e.g. a bot like
+`copilot-pull-request-reviewer[bot]` that was never installed) — not a transient failure; report
+it as-is rather than retrying.
+
+Verify success via the PR's timeline/review history (a `review_requested` or
+`copilot_work_started` event, or an eventual submitted review):
+```bash
+gh api "repos/<owner>/<repo>/issues/<number>/timeline" --paginate \
+  --jq '.[] | select(.event == "review_requested" or .event == "copilot_work_started" or .event == "reviewed") | {event, actor: (.actor.login // .user.login), created_at}'
 ```
+A matching entry for `<github-username>` confirms the request landed.
+
+This matters specifically for reviewers that clear themselves from `requested_reviewers` the
+instant they start work — confirmed for `copilot-pull-request-reviewer[bot]`, the root cause in
+#272 — where an empty `requested_reviewers` list does not mean the request failed, so the
+timeline check above is the only reliable signal. It is **not** a blanket rule for every
+reviewer: for a *human* reviewer, `requested_reviewers` staying populated is itself a normal,
+valid "still outstanding" signal — it only clears once they submit a review or the request is
+withdrawn — so checking it directly is fine there. Reach for the timeline check above only for
+bot/immediate-start reviewers, or when you don't already know which kind of reviewer this is.
 
 ### assign-issue
 
