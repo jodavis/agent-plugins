@@ -13,7 +13,13 @@ Use the `identify-work-item` skill to determine the `work-item-id` from the user
 
 ### 2 — Read the task brief
 
-Use the `read-task-brief` skill with the `work-item-id` to load the task brief and ensure the working branch is set up. Extract the **exit criteria** — these are the explicit list of things the implementation must satisfy. You will check each one during review.
+Use the `read-task-brief` skill with the `work-item-id` to load the task brief and ensure the working branch is set up.
+
+If the returned brief is empty, stop and report:
+
+> No task brief was found in the context file for `<work-item-id>`. Run the plan step before implementing.
+
+Extract the **exit criteria** — these are the explicit list of things the implementation must satisfy. You will check each one during review.
 
 Verify that `pr_url` is set in the context file. If it is empty, report an error and stop:
 

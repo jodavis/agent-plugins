@@ -15,6 +15,10 @@ Use the `identify-work-item` skill to determine the `work-item-id` from the user
 
 Use the `read-task-brief` skill with the `work-item-id` to load the task brief, ensure the working branch is set up, and retrieve the branch names from the context file.
 
+If the returned brief is empty, stop and report:
+
+> No task brief was found in the context file for `<work-item-id>`. Run the plan step before implementing.
+
 ### 3 — Check if PR already exists
 
 If `pr_url` is already set in the context file, the PR has already been created. Output the PR URL and stop:
