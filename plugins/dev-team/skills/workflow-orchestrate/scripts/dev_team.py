@@ -660,12 +660,15 @@ class CreatePrStep(Step):
     def __init__(self, ctx: "PipelineContext", context_path: Path) -> None:
         self._ctx = ctx
         self._context_path = context_path
+        self._pr_url_section_cache: str | None = None
 
     def _read_pr_url_section(self) -> str:
-        text = self._context_path.read_text(encoding="utf-8")
-        _, body = _parse_frontmatter(text)
-        sections = _parse_sections(body)
-        return sections.get("PR URL", "")
+        if self._pr_url_section_cache is None:
+            text = self._context_path.read_text(encoding="utf-8")
+            _, body = _parse_frontmatter(text)
+            sections = _parse_sections(body)
+            self._pr_url_section_cache = sections.get("PR URL", "")
+        return self._pr_url_section_cache
 
     def get_actions(self) -> list[dict]:
         ctx = self._ctx
