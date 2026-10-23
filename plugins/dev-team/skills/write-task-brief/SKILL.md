@@ -41,6 +41,11 @@ Format when populated:
   deployed first — owned by the platform team, not this task.
 ```
 
+If the exit criteria are Gherkin scenarios instead of a numbered checklist, identify the blocked
+one by its scenario title instead of a number, e.g. `Scenario "production smoke test passes"
+requires the EAC-2584 environment to be deployed first — owned by the platform team, not this
+task.`
+
 **Key design decisions**
 Decisions already made in the spec that directly constrain this task's implementation. Do not include decisions from other parts of the spec that don't affect this task.
 
