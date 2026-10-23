@@ -13,9 +13,9 @@ Use the `identify-work-item` skill to determine the `work-item-id` from the user
 
 ### 2 — Read the task brief
 
-Use the `read-task-brief` skill with the `work-item-id` and `--tolerate-missing-brief` to load
-the original task brief and work summary from the context file, and ensure the working branch is
-set up. This context explains what was built and why.
+Use the `read-task-brief` skill with the `work-item-id` to load the original task brief and work
+summary from the context file, and ensure the working branch is set up. This context explains
+what was built and why.
 
 **If the returned brief is empty** (#233 — a task implemented outside the dev-team pipeline
 entirely has no context file brief to read): synthesize the equivalent context directly from the

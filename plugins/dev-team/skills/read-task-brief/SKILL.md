@@ -6,10 +6,6 @@ user-invocable: false
 ## Arguments
 
 - `work-item-id` — the task to read a brief for.
-- `--tolerate-missing-brief` (optional) — when passed, step 2's "no brief found" case returns
-  empty content instead of stopping (see step 2 below). Only pass this when the caller has its
-  own fallback for building context without a brief (e.g. `fix-pr`, #233) — every other caller
-  should omit it, since for them a missing brief genuinely does mean the plan step was skipped.
 
 ## Steps
 
@@ -23,12 +19,8 @@ files in the next steps.
 
 Read the context file. Locate the `<!-- section:Researcher Brief -->` sentinel and extract all content that follows it until the next `<!-- section:` marker or end of file.
 
-If no task brief section is found:
-
-- **`--tolerate-missing-brief` was not passed:** stop and report:
-
-  > No task brief was found in the context file for `<work-item-id>`. Run the plan step before implementing.
-
-- **`--tolerate-missing-brief` was passed:** return empty content as the **task brief** instead of stopping — do not report anything about it here; the caller already knows to expect this and has its own fallback.
-
-Otherwise, return the extracted content as the **task brief**.
+Return the extracted content as the **task brief** — or empty content if no task brief section
+is found. This skill never stops or reports an error on a missing brief itself: whether that's
+expected (e.g. `fix-pr`, #233, has its own fallback for building context without one) or a real
+problem (e.g. the plan step was skipped) depends entirely on what the caller needs, so it's the
+caller's own job to check the returned content and decide — not this skill's.
