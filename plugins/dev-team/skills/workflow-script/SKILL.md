@@ -38,6 +38,10 @@ for this same reason).
 
 `<work-item-id>` (needed by `write-scratch-deliverable`'s own step 1) is `<context-file>`'s own
 filename without the `.md` extension — context files are always named `<work-item-id>.md`.
+`<context-file>` and `<write-section>` (this skill's own arguments, above) are exactly what
+`write-scratch-deliverable` needs to compute that scratch file's path — they stay in scope for
+this step since it runs directly in this same session, so there is nothing further to pass along
+explicitly.
 
 Compose the deliverable content exactly as:
 ```
@@ -46,11 +50,15 @@ Compose the deliverable content exactly as:
 log: <log_file>
 ```
 
-`dev_team.py`'s `merge_pending_deliverables()` picks up the scratch file and merges it into
-`<context-file>`'s `<write-section>` section on the next orchestration-loop iteration.
-
 ### 4 — Return status
 
+If `write-scratch-deliverable` itself failed (per its own step 3 contract — it returns a failure
+description instead of writing the scratch file when its work didn't genuinely complete), return
+that failure description now instead of proceeding below — the result from step 2 was never
+actually persisted, so reporting success for it would be exactly the silently-lost-status-line
+failure this skill exists to prevent.
+
+Otherwise:
 - If the exit code is zero: return `successful`
 - If the exit code is non-zero:
   - If the script failed because of build or test failures, that is expected and will be fixed
