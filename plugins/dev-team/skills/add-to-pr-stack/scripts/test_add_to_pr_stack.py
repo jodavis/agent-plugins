@@ -447,6 +447,44 @@ class TestResolveRealStackChain:
 
         assert result == ["dev/claude/ADR-1"]
 
+    def test_falls_back_to_single_anchor_when_gh_returns_non_list_json(self, monkeypatch):
+        """`gh pr list` prints valid JSON that isn't a list (e.g. an error/warning object) on
+        the very first hop — must not be trusted as a list of PRs (was an uncaught KeyError)."""
+        from add_to_pr_stack import _resolve_real_stack_chain
+
+        bad = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=json.dumps({"message": "rate limited"}), stderr=""
+        )
+        with patch("subprocess.run", return_value=bad):
+            result = _resolve_real_stack_chain("dev/claude/ADR-1")
+
+        assert result == ["dev/claude/ADR-1"]
+
+    def test_raises_when_later_hop_fails_after_partial_chain_resolved(self, monkeypatch):
+        """A lookup failure after at least one real member was already resolved must not
+        silently truncate the chain (that's #273's failure shape reintroduced by a transient
+        `gh` failure) — it must raise instead."""
+        from add_to_pr_stack import AddToPrStackError, _resolve_real_stack_chain
+
+        calls = [
+            _gh_pr_list_result([{"baseRefName": "dev/claude/ADR-1"}]),  # ADR-2's own PR — ok
+            subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="rate limited"),
+        ]
+        with patch("subprocess.run", side_effect=calls):
+            with pytest.raises(AddToPrStackError, match="dev/claude/ADR-1"):
+                _resolve_real_stack_chain("dev/claude/ADR-2")
+
+    def test_raises_when_later_hop_returns_non_list_json_after_partial_chain(self, monkeypatch):
+        from add_to_pr_stack import AddToPrStackError, _resolve_real_stack_chain
+
+        bad = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=json.dumps({"message": "rate limited"}), stderr=""
+        )
+        calls = [_gh_pr_list_result([{"baseRefName": "dev/claude/ADR-1"}]), bad]
+        with patch("subprocess.run", side_effect=calls):
+            with pytest.raises(AddToPrStackError):
+                _resolve_real_stack_chain("dev/claude/ADR-2")
+
 
 # ---------------------------------------------------------------------------
 # resolve_context_path

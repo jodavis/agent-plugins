@@ -29,9 +29,12 @@ retry; see `SKILL.md` for why that's a known, accepted risk rather than engineer
 """
 
 import json
+import logging
 import subprocess
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _SCRIPTS_DIR = Path(__file__).parent
 _SKILLS_DIR = _SCRIPTS_DIR.parent.parent
@@ -84,13 +87,31 @@ def _resolve_real_stack_chain(anchor_branch: str) -> list[str]:
     different worktree than the one that last registered the anchor's stack, so only a plain
     GitHub API read can be trusted here regardless of which worktree invoked it.
 
-    Falls back to `[anchor_branch]` alone if the chain can't be resolved (e.g. `gh` is
-    unavailable, unauthenticated, or `anchor_branch` unexpectedly has no open PR of its own) —
-    the same single-anchor behavior this function replaces, so a lookup failure degrades safely
-    instead of failing the whole add-to-pr-stack run."""
+    Falls back to `[anchor_branch]` alone if the chain can't be resolved on its very first hop
+    (e.g. `gh` is unavailable, unauthenticated, or `anchor_branch` unexpectedly has no open PR of
+    its own) — the same single-anchor behavior this function replaces, so a lookup failure there
+    degrades safely instead of failing the whole add-to-pr-stack run.
+
+    A lookup failure on a *later* hop — after one or more real members have already been
+    resolved — is not degraded the same way: silently returning that truncated-but-nonempty
+    chain would omit real earlier stack members from the `link` call this feeds, which is
+    exactly #273's failure shape, just reintroduced by a transient `gh` failure instead of a code
+    bug. That case raises `AddToPrStackError` instead so it surfaces loudly rather than being
+    mistaken for "there's genuinely nothing further down the stack." Every failure is also
+    logged at debug level (even the ones that still degrade safely), per CONTRIBUTING.md's
+    "never swallow a subprocess failure silently" guidance."""
     chain: list[str] = []
     branch = anchor_branch
     seen: set[str] = set()
+
+    def _lookup_failed(detail: str) -> None:
+        logger.debug("_resolve_real_stack_chain: lookup for '%s' failed: %s", branch, detail)
+        if chain:
+            raise AddToPrStackError(
+                f"could not resolve the real stack chain below '{branch}' after already "
+                f"resolving {chain} — refusing to silently truncate it (lookup failure: {detail})"
+            )
+
     for _ in range(_MAX_STACK_DEPTH):
         if not branch or branch in seen:
             break
@@ -100,21 +121,29 @@ def _resolve_real_stack_chain(anchor_branch: str) -> list[str]:
                 ["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "baseRefName"],
                 capture_output=True, text=True, timeout=30,
             )
-        except (OSError, subprocess.TimeoutExpired):
+        except (OSError, subprocess.TimeoutExpired) as e:
+            _lookup_failed(f"gh invocation failed: {e}")
             break
         if result.returncode != 0:
+            _lookup_failed(f"gh exited {result.returncode}: {result.stderr.strip()}")
             break
         try:
             prs = json.loads(result.stdout)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            _lookup_failed(f"could not parse gh output as JSON: {e}")
+            break
+        if not isinstance(prs, list):
+            _lookup_failed(f"gh returned a non-list JSON shape: {prs!r}")
             break
         if not prs:
             # `branch` has no open PR of its own — either it's the epic's feature/trunk
             # branch (never gets its own PR) or the lookup came up empty; either way, it's
-            # not a stack member to include, so stop walking further down.
+            # not a stack member to include, so stop walking further down. This is the normal
+            # terminating condition, not a failure, so it never goes through _lookup_failed.
             break
         chain.append(branch)
-        branch = prs[0].get("baseRefName", "")
+        head = prs[0]
+        branch = head.get("baseRefName", "") if isinstance(head, dict) else ""
 
     chain.reverse()
     return chain if chain else [anchor_branch]
@@ -157,6 +186,13 @@ def add_to_pr_stack(context_path: Path) -> dict:
         # this one runs add_to_pr_stack itself. `gh stack link` also structurally requires
         # at least 2 positional branch/PR arguments (confirmed against the installed
         # extension), so a lone `working_branch` call here would always fail regardless (#256).
+        #
+        # Deliberately not re-validating working_branch/base_branch here (the pre-refactor
+        # version of this branch raised AddToPrStackError if either was missing): nothing
+        # downstream of this early return needs either field, so there's nothing left for that
+        # check to protect in this path — a missing working_branch would still be caught the
+        # moment any other skill that actually needs it (e.g. create-pr-from-context) tries to
+        # read it.
         ctx.extra_frontmatter["stack_link_status"] = "not_applicable"
         ctx.save(context_path)
         return {"status": "not_applicable"}
