@@ -17,6 +17,7 @@ Exit code is 0 when all checks pass, 1 when checks fail or time out.
 """
 
 import json
+import re
 import subprocess
 import sys
 import time
@@ -33,6 +34,15 @@ POLL_INTERVAL = 15
 # yet.
 ZERO_CHECKS_MAX_ATTEMPTS = 3
 ZERO_CHECKS_RETRY_INTERVAL = 20
+SUBPROCESS_TIMEOUT_SECONDS = 30
+
+# Anchored on the two specific wordings `gh pr checks` actually uses for "zero registered
+# checks" (verified by TestIsNoChecksError's known-wording cases), not a loose two-substring
+# match — a bare "no checks" substring is broad enough to also match an unrelated real failure
+# like a required-status-checks misconfiguration ("required status checks: no checks match rule
+# '<name>'"), which would get silently waved through as a pass instead of surfaced as the
+# genuine failure it is.
+_NO_CHECKS_RE = re.compile(r"no checks reported|no status checks were found")
 
 
 def _fail(reason: str) -> None:
@@ -44,19 +54,22 @@ def _fail(reason: str) -> None:
 def _is_no_checks_error(detail: str) -> bool:
     """Matches `gh pr checks`' own wording for a branch/PR with no registered checks at all —
     case-insensitively, since exact wording isn't guaranteed stable across gh CLI versions."""
-    lowered = detail.lower()
-    return "no checks" in lowered or "no status checks" in lowered
+    return bool(_NO_CHECKS_RE.search(detail.lower()))
 
 
 def _get_checks(pr_url: str) -> list[dict] | None:
     """Returns the parsed checks list, or None if `gh pr checks` reports zero registered checks
     for this branch/PR — distinct from a real query failure, which calls _fail() and never
     returns."""
-    result = subprocess.run(
-        ["gh", "pr", "checks", pr_url, "--json", "bucket"],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "checks", pr_url, "--json", "bucket"],
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        _fail(f"gh pr checks did not respond within {SUBPROCESS_TIMEOUT_SECONDS}s")
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
         if _is_no_checks_error(detail):

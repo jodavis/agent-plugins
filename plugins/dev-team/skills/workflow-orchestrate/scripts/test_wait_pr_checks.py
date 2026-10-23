@@ -43,8 +43,11 @@ class TestIsNoChecksError:
         "authentication required",
         "network error: connection refused",
         "unknown pull request",
+        "required status checks: no checks match rule 'build'",
     ])
     def test_does_not_match_genuine_errors(self, detail):
+        """The last case is a real required-status-checks misconfiguration that happens to
+        contain the substring "no checks" — must not be mistaken for "no CI configured"."""
         from wait_pr_checks import _is_no_checks_error
         assert _is_no_checks_error(detail) is False
 
@@ -77,6 +80,22 @@ class TestGetChecks:
         from wait_pr_checks import _get_checks
         result = _completed(1, stderr="authentication required")
         with patch("subprocess.run", return_value=result):
+            with pytest.raises(SystemExit) as exc_info:
+                _get_checks("https://github.com/org/repo/pull/1")
+        assert exc_info.value.code == 1
+
+    def test_passes_a_bounded_timeout_to_subprocess_run(self):
+        """A hung `gh pr checks` must not be able to wedge this call indefinitely — especially
+        now that _get_checks_with_zero_check_retries() can call it up to three times in a row."""
+        from wait_pr_checks import SUBPROCESS_TIMEOUT_SECONDS, _get_checks
+        result = _completed(0, stdout=json.dumps([{"bucket": "pass"}]))
+        with patch("subprocess.run", return_value=result) as mock_run:
+            _get_checks("https://github.com/org/repo/pull/1")
+        assert mock_run.call_args.kwargs.get("timeout") == SUBPROCESS_TIMEOUT_SECONDS
+
+    def test_calls_fail_when_subprocess_times_out(self):
+        from wait_pr_checks import _get_checks
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="gh", timeout=30)):
             with pytest.raises(SystemExit) as exc_info:
                 _get_checks("https://github.com/org/repo/pull/1")
         assert exc_info.value.code == 1
