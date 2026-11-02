@@ -7,14 +7,17 @@ user-invocable: false
 
 ### Always build and test the code you implement
 
-After each change, build and test only the project(s) you modified:
+After each change, build and run just the tests for the class/module you touched, using this
+project's own build/test tooling — e.g. for .NET:
 
 ```bash
 dotnet build <project-path>
 dotnet test <test-project-path> --filter "FullyQualifiedName~<ClassName>"
 ```
 
-Where `<ClassName>` is the class you just modified or implemented. If the filter matches zero tests, run the full test project without `--filter`.
+for Python: `pytest <path-to-test-file-or-class>`; for JS/TS: `npm test -- <pattern>`. If a
+narrower filter/pattern matches zero tests, fall back to running the whole test project/module
+rather than skipping verification.
 
 Do not run full validation scripts (`scripts/validate-build`, `scripts/validate-tests`, etc.) — those are run by the orchestrator after your step. Running them here is redundant.
 

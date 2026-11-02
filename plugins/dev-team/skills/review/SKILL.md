@@ -9,7 +9,7 @@ You are working with an existing PR, reading from a workflow context file, learn
 
 ### 1 — Identify the work item
 
-Use the `identify-work-item` skill to determine the `work-item-id` from the user's input or conversation context.
+Use the `identify-project-work-items` skill to determine the `work-item-id` from the user's input or conversation context.
 
 ### 2 — Read the task brief
 
