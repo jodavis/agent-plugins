@@ -1,6 +1,7 @@
 ---
 name: update-project-configuration
 user-invocable: false
+description: Only use when instructed.
 ---
 
 This skill only writes files. It never edits the shipped default

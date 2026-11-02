@@ -1,6 +1,7 @@
 ---
 name: concurrent-orchestrate
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Arguments

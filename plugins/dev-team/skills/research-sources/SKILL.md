@@ -1,6 +1,7 @@
 ---
 name: research-sources
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps

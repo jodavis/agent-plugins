@@ -1,6 +1,7 @@
 ---
 name: review-sign-off
 user-invocable: false
+description: Only use when instructed.
 ---
 
 You are working with an existing PR, reading from a workflow context file, learning the architecture from documents in this repo, reviewing code changes, and creating a PR review.

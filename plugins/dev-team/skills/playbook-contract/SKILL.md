@@ -1,6 +1,7 @@
 ---
 name: playbook-contract
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Playbooks are skills with a vendor-neutral directory contract

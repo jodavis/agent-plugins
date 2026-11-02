@@ -1,6 +1,7 @@
 ---
 name: dev-spec-first-draft
 user-invocable: false
+description: Only use when instructed.
 ---
 
 You are writing a dev spec — a new one, or revising an existing one whose path the caller passed

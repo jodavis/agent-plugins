@@ -1,6 +1,7 @@
 ---
 name: design-create-work-items
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps

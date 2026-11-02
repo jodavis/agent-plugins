@@ -1,6 +1,7 @@
 ---
 name: workflow-troubleshoot
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Arguments

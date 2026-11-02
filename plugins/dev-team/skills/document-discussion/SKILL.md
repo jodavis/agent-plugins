@@ -1,6 +1,7 @@
 ---
 name: document-discussion
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps
