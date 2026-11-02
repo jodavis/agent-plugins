@@ -53,13 +53,27 @@ An unresolved `<name>/SKILL.md` link is reported as `warn`, not `error`, for the
 might be a deliberate external reference. Don't "fix" the checker to flag these again without
 re-confirming they're not still false positives.
 
-**Gotcha — case-insensitive mounts:** on a case-insensitive-but-case-preserving filesystem (e.g.
-a macOS-host `virtiofs` bind mount, common in this kind of container), `Path.resolve()` echoes
-back whatever case the *argument* used, not the true on-disk directory name — so a `name-mismatch`
-finding can be entirely an artifact of how the target path was typed, not a real mismatch. The
-checker already corrects for this (`_true_dirname()` scans the parent directory for the real
-entry); if a `name-mismatch` still looks wrong, re-run `ls` on the parent directly before trusting
-either the finding or the argument's casing.
+**Gotcha — case-insensitive mounts can alias one directory under two names at once:** on a
+case-insensitive-but-case-preserving filesystem (e.g. a macOS-host `virtiofs` bind mount, common
+in this kind of container), confirmed empirically in this plugin: a single `iterdir()` call on
+`skills/` returned both `work-with-github-issues` and `work-with-GitHub-issues` for the *same
+inode*, apparently because the directory had been looked up with inconsistent casing earlier in
+the session. "Find the one true on-disk name and string-compare against it" doesn't work against
+that — which alias a plain listing returns first is non-deterministic. The checker compares by
+inode instead (`_frontmatter_name_matches_dir()`): a `name-mismatch` only fires when no
+case-insensitive match among the parent's entries shares `skill_dir`'s inode, which is immune to
+however many aliases are floating around. If a `name-mismatch` still looks wrong, run
+`stat -c '%i %n' <both-casings>` to check for exactly this before trusting the finding.
+
+**Gotcha — a `missing-description` finding is real, but "delete the description" is the wrong
+fix.** This plugin's commit `7fc2e20` (#279/#280) deleted `description:` from 73 internal-only
+skills on the theory that a skill dispatched purely by name doesn't need one, and a missing
+field costs nothing. Both halves of that theory are false here: a skill with no `description:`
+gets one generated from its body, which can be as long as the skill itself and can read as a
+match for requests the skill was never meant to handle — the opposite of "never auto-triggers."
+When this finding is correct (the skill really is internal-only, dispatched by explicit name),
+the fix is Group B item 2's short, deliberately inert line — `description: Only use when
+instructed.` — never a bare deletion.
 
 ### 4 — Report
 

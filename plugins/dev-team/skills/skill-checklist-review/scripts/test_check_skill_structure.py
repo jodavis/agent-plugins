@@ -12,6 +12,8 @@ Covers:
 - check_scripts_have_tests(): a script with a matching test_*.py, one with none, and test files
   themselves never being flagged.
 - grep_historical(): a line matching a historical phrase, and a clean line producing nothing.
+- check_skill_md_length(): a long body with no references/ dir flags info; the same long body
+  with a references/ dir present does not; a short body never flags regardless.
 - evaluate() end-to-end: a fully clean skill directory produces zero findings and a 0 exit code
   via main(); a broken one produces the expected error/warn/info mix and exit code 1.
 """
@@ -30,15 +32,45 @@ from check_skill_structure import (  # noqa: E402
     check_frontmatter,
     check_references,
     check_scripts_have_tests,
+    check_skill_md_length,
     evaluate,
     grep_historical,
     parse_frontmatter,
+    _frontmatter_name_matches_dir,
 )
 
 
 def _write(path, content):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
+
+
+class _FakeStat:
+    def __init__(self, ino):
+        self.st_ino = ino
+
+
+class _FakeEntry:
+    """Duck-types a Path dirent: .name and .stat().st_ino, nothing else."""
+
+    def __init__(self, name, ino):
+        self.name = name
+        self._ino = ino
+
+    def stat(self):
+        return _FakeStat(self._ino)
+
+
+class _FakeDir(_FakeEntry):
+    """Duck-types a Path used as skill_dir: adds .parent.iterdir() over fixed siblings."""
+
+    def __init__(self, name, ino, siblings):
+        super().__init__(name, ino)
+        self._siblings = siblings
+        self.parent = self
+
+    def iterdir(self):
+        return iter(self._siblings)
 
 
 class TestParseFrontmatter:
@@ -110,17 +142,25 @@ class TestCheckFrontmatter:
 
         assert any(f["id"] == "long-description" and f["severity"] == "info" for f in findings)
 
-    def test_differently_cased_argument_resolves_to_true_dirname(self, tmp_path):
-        # Simulates a case-insensitive-but-case-preserving mount: the real directory is
-        # "my-skill" but the caller's argument (e.g. copy-pasted from an earlier case-insensitive
-        # lookup) was differently cased. check_frontmatter must compare against the real on-disk
-        # name, not the argument's casing, or it fabricates a name-mismatch.
-        (tmp_path / "my-skill").mkdir()
-        differently_cased_arg = tmp_path / "My-Skill"
+    def test_inode_aliased_entries_are_not_a_mismatch(self):
+        # Simulates the virtiofs bug confirmed empirically in this repo: a single directory
+        # listing returned the SAME inode under two different-case names at once
+        # ('work-with-github-issues' and 'work-with-GitHub-issues'). Not portably reproducible
+        # on a real (likely case-sensitive) test filesystem, so this drives
+        # _frontmatter_name_matches_dir directly with duck-typed stand-ins exposing only
+        # .name/.stat().st_ino/.parent.iterdir() — matching by inode must hold regardless of
+        # which case-variant entry a given run happens to list first.
+        real = _FakeEntry("work-with-github-issues", ino=42)
+        alias = _FakeEntry("work-with-GitHub-issues", ino=42)
+        skill_dir = _FakeDir("work-with-GitHub-issues", ino=42, siblings=[real, alias])
 
-        findings = check_frontmatter(differently_cased_arg, {"name": "my-skill", "description": "Use when X."})
+        assert _frontmatter_name_matches_dir(skill_dir, "work-with-github-issues") is True
 
-        assert findings == []
+    def test_genuinely_different_inode_is_a_mismatch(self):
+        other = _FakeEntry("some-other-skill", ino=99)
+        skill_dir = _FakeDir("my-skill", ino=1, siblings=[other])
+
+        assert _frontmatter_name_matches_dir(skill_dir, "some-other-skill") is False
 
 
 class TestCheckReferences:
@@ -224,6 +264,31 @@ class TestGrepHistorical:
 
     def test_clean_text_produces_nothing(self):
         assert grep_historical("SKILL.md", "Do the thing, then stop.\n") == []
+
+
+class TestCheckSkillMdLength:
+    def test_long_body_with_no_references_dir_is_info(self, tmp_path):
+        skill_dir = tmp_path / "my-skill"
+        skill_dir.mkdir()
+        text = "---\nname: my-skill\n---\n" + "line\n" * 200
+
+        findings = check_skill_md_length(skill_dir, text, frontmatter_lines=3)
+
+        assert any(f["id"] == "long-skill-md" and f["severity"] == "info" for f in findings)
+
+    def test_long_body_with_references_dir_is_not_flagged(self, tmp_path):
+        skill_dir = tmp_path / "my-skill"
+        _write(skill_dir / "references" / "details.md", "x")
+        text = "---\nname: my-skill\n---\n" + "line\n" * 200
+
+        assert check_skill_md_length(skill_dir, text, frontmatter_lines=3) == []
+
+    def test_short_body_is_never_flagged(self, tmp_path):
+        skill_dir = tmp_path / "my-skill"
+        skill_dir.mkdir()
+        text = "---\nname: my-skill\n---\n" + "line\n" * 10
+
+        assert check_skill_md_length(skill_dir, text, frontmatter_lines=3) == []
 
 
 class TestEvaluateEndToEnd:
