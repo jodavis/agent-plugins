@@ -1,6 +1,7 @@
 ---
 name: code-change-expectations
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Expectations

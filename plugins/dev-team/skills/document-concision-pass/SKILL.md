@@ -1,6 +1,7 @@
 ---
 name: document-concision-pass
 user-invocable: false
+description: Only use when instructed.
 ---
 
 Takes one argument: the path to the document. Makes no assumption about which template (or

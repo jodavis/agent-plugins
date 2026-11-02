@@ -1,6 +1,7 @@
 ---
 name: missing-test-harness
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Rules

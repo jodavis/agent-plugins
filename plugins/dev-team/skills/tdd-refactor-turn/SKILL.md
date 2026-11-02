@@ -1,6 +1,7 @@
 ---
 name: tdd-refactor-turn
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps

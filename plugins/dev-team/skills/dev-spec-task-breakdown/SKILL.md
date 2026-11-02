@@ -1,6 +1,7 @@
 ---
 name: dev-spec-task-breakdown
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Sizing rules

@@ -1,6 +1,7 @@
 ---
 name: source-work-item-sync
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Configured behavior

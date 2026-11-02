@@ -1,6 +1,7 @@
 ---
 name: get-project-configuration
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Getting the merged configuration

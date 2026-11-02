@@ -1,6 +1,7 @@
 ---
 name: component-taxonomy
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Component taxonomy

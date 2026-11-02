@@ -1,6 +1,7 @@
 ---
 name: document-section-interview
 user-invocable: false
+description: Only use when instructed.
 ---
 
 Takes the path to the section template and, if revising, the path (or already-read content) of

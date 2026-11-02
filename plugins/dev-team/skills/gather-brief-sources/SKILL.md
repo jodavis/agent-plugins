@@ -1,6 +1,7 @@
 ---
 name: gather-brief-sources
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps

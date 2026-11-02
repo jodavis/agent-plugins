@@ -1,6 +1,7 @@
 ---
 name: tdd-practices
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Practice rules

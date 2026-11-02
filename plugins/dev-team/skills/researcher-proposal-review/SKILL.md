@@ -1,6 +1,7 @@
 ---
 name: researcher-proposal-review
 user-invocable: false
+description: Only use when instructed.
 ---
 
 This is an objective, critical review of problem/solution fit — not an implementation-readiness

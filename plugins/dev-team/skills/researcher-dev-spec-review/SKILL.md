@@ -1,6 +1,7 @@
 ---
 name: researcher-dev-spec-review
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps

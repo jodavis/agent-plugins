@@ -1,6 +1,7 @@
 ---
 name: resolve-rebase-conflict
 user-invocable: false
+description: Only use when instructed.
 ---
 
 You are working entirely inside a rebase already left mid-flight with conflicts. You never

@@ -1,6 +1,7 @@
 ---
 name: use-context-file
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Resolving the context file path

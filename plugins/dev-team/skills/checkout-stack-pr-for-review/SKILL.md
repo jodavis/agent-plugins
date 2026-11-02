@@ -1,6 +1,7 @@
 ---
 name: checkout-stack-pr-for-review
 user-invocable: false
+description: Only use when instructed.
 ---
 
 `<skill-dir>` below refers to this skill's own base directory — the "Base directory for this
