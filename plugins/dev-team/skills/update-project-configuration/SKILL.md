@@ -59,7 +59,7 @@ Resolve `<repo-root>` the same way `merge_config.py` does: walk up from the curr
 
   > What would you like to configure?
   > - **Not yet configured**: <list sections/fields still equal to the shipped default or null>
-  > - Show everything (all eight sections, including ones already set)
+  > - Show everything (all sections, including ones already set)
   > - Run the full guided walkthrough top-to-bottom
 
   Default the menu to the "not yet configured" list per the user's own framing — but always offer the
@@ -235,10 +235,10 @@ writer in this plugin, only `merge_config.py`'s reader, and hand-editing preserv
 existing formatting:
 
 - **File doesn't exist yet**: create it (and the `.dev-team/` directory, if needed) containing only
-  the sections/fields the user actually set — don't dump the full six-section schema with placeholder
+  the sections/fields the user actually set — don't dump the full schema with placeholder
   values. Follow the style of the existing example configs (see either the shipped
-  `assets/default-config.yaml` or this repo's own `.dev-team/config.yaml` for indentation/quoting
-  conventions).
+  `get-project-configuration/assets/default-config.yaml` or this repo's own `.dev-team/config.yaml`
+  for indentation/quoting conventions).
 - **File exists**: make targeted edits — replace just the changed scalar/block, add new keys at the
   right nesting level, and leave everything else (including comments) untouched.
 - **Writing `config.local.yaml` for the first time**: check the target repo's `.gitignore` for a
