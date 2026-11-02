@@ -142,7 +142,10 @@ above. Read `troubleshooter.can-fix` and `troubleshooter.can-push-fix` through
    - **`can-push-fix` not also set:** stage and commit the change on that branch, then merge it
      directly into whatever branch is currently checked out in `<skill-dir>`'s repo root — no
      push, no PR. Add a comment to the issue describing the change (what was fixed and why).
-   - **`can-push-fix` also set:**
+   - **`can-push-fix` also set:** run `work-with-stacked-prs`'s Preflight check first if it
+     hasn't already run earlier this session — every step below shells out directly to
+     `gh stack`, and this skill may run outside the normal pipeline where that check would
+     otherwise already have happened.
      1. `gh stack view --json` (run from `<skill-dir>`'s repo root) to check whether a stack
         already exists in this checkout.
      2. **No stack yet:** run `gh stack init troubleshooter/<slug>` *before* committing —
