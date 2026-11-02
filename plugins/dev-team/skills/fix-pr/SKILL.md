@@ -77,7 +77,7 @@ run set it before spawning you), so this is a straightforward existing-line upda
 
 ### 7 — Self-review
 
-Review the diff for unintended scope, missed issues, and convention violations.
+Use `code-change-expectations`'s self-review checklist.
 
 ### 8 — Report
 
