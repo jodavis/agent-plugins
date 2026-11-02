@@ -1,6 +1,7 @@
 ---
 name: behavior-driven-development
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps

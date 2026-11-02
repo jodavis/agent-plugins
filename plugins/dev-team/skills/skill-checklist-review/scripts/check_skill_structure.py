@@ -13,6 +13,8 @@ Checks:
   - every non-test script under scripts/ has a corresponding test file
   - a soft grep for historical-record phrasing ("no longer", "used to", ...), surfaced as info
     for a human to resolve against the checklist's history-free item
+  - SKILL.md body length vs. a threshold when there's no references/ directory, surfaced as
+    info for a human to resolve against the checklist's reference-extraction item (#15)
 
 Prints one JSON object to stdout: {"skill": ..., "findings": [...], "counts": {...}}.
 Each finding is {"id", "severity" ("error"|"warn"|"info"), "message", "file", "line"}; `line`
@@ -107,11 +109,8 @@ def extract_local_refs(text):
 
 
 def _true_dirname(skill_dir):
-    """The on-disk directory name, case-corrected. Path.resolve() does not correct case on a
-    case-insensitive-but-case-preserving filesystem (e.g. a macOS-host virtiofs bind mount) — it
-    echoes back whatever case the caller's argument happened to use. Scanning the parent for the
-    real entry avoids a false name-mismatch finding caused by how the path was typed, not how the
-    skill is actually named on disk."""
+    """A display-only approximation of the on-disk directory name, for finding messages — not
+    used for the match decision itself (see _frontmatter_name_matches_dir)."""
     try:
         entries = {p.name.lower(): p.name for p in skill_dir.parent.iterdir()}
     except FileNotFoundError:
@@ -119,16 +118,42 @@ def _true_dirname(skill_dir):
     return entries.get(skill_dir.name.lower(), skill_dir.name)
 
 
+def _frontmatter_name_matches_dir(skill_dir, name):
+    """Whether `name` refers to skill_dir, compared by inode rather than by string equality.
+
+    A case-insensitive-but-case-preserving filesystem (e.g. a macOS-host virtiofs bind mount)
+    can expose the *same* directory under two different-case names in a single parent listing
+    at once — confirmed empirically: `os.listdir()` on this plugin's skills/ returned both
+    'work-with-github-issues' and 'work-with-GitHub-issues' for one inode in the same call,
+    evidently because the directory had been looked up with inconsistent casing earlier in the
+    session (e.g. a prior `find -iname`/`mv`). Picking "the" canonical name from that listing
+    (the earlier approach) is non-deterministic — whichever casing the dict comprehension kept
+    depends on iteration order. Comparing inodes instead sidesteps the ambiguity entirely: if
+    any entry matching `name` case-insensitively shares skill_dir's inode, the frontmatter name
+    is correct, full stop, regardless of which alias happened to be listed last."""
+    try:
+        target_ino = skill_dir.stat().st_ino
+        for entry in skill_dir.parent.iterdir():
+            if entry.name.lower() == name.lower():
+                try:
+                    if entry.stat().st_ino == target_ino:
+                        return True
+                except FileNotFoundError:
+                    continue
+        return False
+    except FileNotFoundError:
+        return False
+
+
 def check_frontmatter(skill_dir, data):
     findings = []
-    dirname = _true_dirname(skill_dir)
     name = data.get("name")
     if not name:
         findings.append(_finding("missing-name", "error", "Frontmatter has no 'name' key.", "SKILL.md"))
-    elif name != dirname:
+    elif not _frontmatter_name_matches_dir(skill_dir, name):
         findings.append(_finding(
             "name-mismatch", "error",
-            f"Frontmatter name '{name}' does not match directory name '{dirname}'.",
+            f"Frontmatter name '{name}' does not match directory name '{_true_dirname(skill_dir)}'.",
             "SKILL.md",
         ))
 
@@ -136,8 +161,11 @@ def check_frontmatter(skill_dir, data):
     if not description:
         findings.append(_finding(
             "missing-description", "warn",
-            "No 'description' in frontmatter — without one this skill can't be matched for "
-            "auto-loading.",
+            "No 'description' in frontmatter — this gets replaced by one generated from the "
+            "skill's body, not left blank, so it can end up longer and broader-matching than "
+            "intended. If this skill is meant to be dispatched only by explicit name, add a "
+            "short, deliberately inert description (e.g. 'Only use when instructed.') instead "
+            "of leaving the field out — see checklist Group B #2.",
             "SKILL.md",
         ))
     else:
@@ -252,19 +280,38 @@ def grep_historical(rel_path, text):
     return findings
 
 
+_LONG_SKILL_MD_THRESHOLD = 150
+
+
+def check_skill_md_length(skill_dir, text, frontmatter_lines):
+    if (skill_dir / "references").is_dir():
+        return []
+    body_lines = len(text.splitlines()) - frontmatter_lines
+    if body_lines <= _LONG_SKILL_MD_THRESHOLD:
+        return []
+    return [_finding(
+        "long-skill-md", "info",
+        f"SKILL.md body is {body_lines} lines with no references/ directory — review against "
+        "checklist Group B #15 (large or rarely-needed detail belongs in a reference file, not "
+        "inlined).",
+        "SKILL.md",
+    )]
+
+
 def evaluate(skill_dir):
     skill_md = skill_dir / "SKILL.md"
     if not skill_md.is_file():
         raise FileNotFoundError(f"{skill_md} not found")
 
     text = skill_md.read_text()
-    data, _ = parse_frontmatter(text)
+    data, frontmatter_lines = parse_frontmatter(text)
 
     findings = []
     findings += check_frontmatter(skill_dir, data)
     findings += check_references(skill_dir, text)
     findings += check_scripts_have_tests(skill_dir / "scripts")
     findings += grep_historical("SKILL.md", text)
+    findings += check_skill_md_length(skill_dir, text, frontmatter_lines)
 
     references_dir = skill_dir / "references"
     if references_dir.is_dir():
