@@ -1,6 +1,7 @@
 ---
 name: read-task-brief
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps

@@ -1,6 +1,7 @@
 ---
 name: write-scratch-deliverable
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps

@@ -1,6 +1,7 @@
 ---
 name: researcher-detailed-design-review
 user-invocable: false
+description: Only use when instructed.
 ---
 
 This is an objective, critical review of the detailed design's own completeness and internal

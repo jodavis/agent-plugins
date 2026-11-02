@@ -1,6 +1,7 @@
 ---
 name: proposal-first-draft
 user-invocable: false
+description: Only use when instructed.
 ---
 
 You are writing a Proposal document — a new one, or revising an existing one whose path the

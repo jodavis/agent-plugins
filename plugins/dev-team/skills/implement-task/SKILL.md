@@ -1,6 +1,7 @@
 ---
 name: implement-task
 user-invocable: false
+description: Only use when instructed.
 ---
 
 You are reading the workflow context file to find a task brief, dispatching each in-scope

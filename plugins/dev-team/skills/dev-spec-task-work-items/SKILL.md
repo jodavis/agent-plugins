@@ -1,6 +1,7 @@
 ---
 name: dev-spec-task-work-items
 user-invocable: false
+description: Only use when instructed.
 ---
 
 **Extension point skill** — configure this via `get-project-configuration`'s `work-tracking`

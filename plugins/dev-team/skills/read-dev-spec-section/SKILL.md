@@ -1,6 +1,7 @@
 ---
 name: read-dev-spec-section
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps

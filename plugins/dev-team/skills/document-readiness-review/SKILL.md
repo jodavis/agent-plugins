@@ -1,6 +1,7 @@
 ---
 name: document-readiness-review
 user-invocable: false
+description: Only use when instructed.
 ---
 
 Takes two arguments: the path to the document, and the name of the researcher skill to use for

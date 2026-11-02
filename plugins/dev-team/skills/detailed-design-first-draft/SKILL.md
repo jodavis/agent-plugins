@@ -1,6 +1,7 @@
 ---
 name: detailed-design-first-draft
 user-invocable: false
+description: Only use when instructed.
 ---
 
 You are writing a Detailed Design document — a new one, or revising an existing one whose path

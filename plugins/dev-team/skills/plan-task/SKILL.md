@@ -1,6 +1,7 @@
 ---
 name: plan-task
 user-invocable: false
+description: Only use when instructed.
 ---
 
 You need to identify a task-work-item and learn the architecture from documentation in this repo, then you are researching the work item and writing a task brief for the work item.

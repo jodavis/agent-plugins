@@ -1,6 +1,7 @@
 ---
 name: implement-direct
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Two callers, same implementation steps, different final step

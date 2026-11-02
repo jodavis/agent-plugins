@@ -1,6 +1,7 @@
 ---
 name: design-deliverable-breakdown
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Sizing rule: independently cuttable

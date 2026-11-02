@@ -1,6 +1,7 @@
 ---
 name: tdd-red-turn
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps
