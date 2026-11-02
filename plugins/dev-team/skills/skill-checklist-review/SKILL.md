@@ -75,7 +75,19 @@ When this finding is correct (the skill really is internal-only, dispatched by e
 the fix is Group B item 2's short, deliberately inert line — `description: Only use when
 instructed.` — never a bare deletion.
 
-### 4 — Report
+### 4 — Additional observations
+
+The 15 Group B items are not the ceiling. Beyond them, note anything else you're confident reads
+as an AI-skill-authoring best-practice violation — don't limit the review to only what someone
+already thought to enumerate. Hold these to the same evidence standard as the enumerated items
+(quote the passage, say why it's a violation, not a vibe). Report each as a **candidate for a new
+checklist item**, not a one-off fix — a real, recurring pattern belongs in
+`references/checklist.md` permanently, where it becomes a reproducible check every future review
+applies consistently, not something caught once by whichever reviewer happened to think of it
+that day. Skip this step's section entirely if nothing beyond the 15 items stands out — don't
+manufacture a finding to fill it.
+
+### 5 — Report
 
 Produce one report, organized as:
 
@@ -84,6 +96,8 @@ Produce one report, organized as:
 - **Warnings / info** — remaining Group A findings, each with the checklist item it maps to.
 - **Judgment findings** — every Group B item, in order, with its verdict and evidence. Include
   passing items too, briefly — a silent checklist item isn't a verified one.
+- **Additional observations** — anything step 4 found, each flagged as a checklist-item
+  candidate. Omit this section if step 4 found nothing.
 
 Every finding cites its evidence — a quoted passage, a file:line, or a named absence. No finding
 rests on a vibe.
