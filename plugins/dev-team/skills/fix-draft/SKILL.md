@@ -48,7 +48,7 @@ rather than skipping verification.
 
 ### 5 — Self-review
 
-Review the diff for unintended scope, missed issues, and convention violations.
+Use `code-change-expectations`'s self-review checklist.
 
 ### 6 — Report
 

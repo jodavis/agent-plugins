@@ -104,9 +104,7 @@ per-component commit made for this task in steps 6–7, plus whatever non-compon
 staged but not yet committed from step 7 — not just one flow's output:
 
 - Does every exit criterion have demonstrable coverage (code + test)?
-- Are there missing test cases (branches, error paths, invalid inputs)?
 - Do all files follow the standards loaded in step 3?
-- Is there any scope creep — changes not required by the brief?
 - For each dispatched or ad hoc component, was its tier-appropriate test expectation honored — no
   dedicated test for a `Wrapper` (expected, not a gap), a narrow primary-scenario integration
   test for an `Orchestrator`, and full branch/error/boundary/logging coverage for a `Testable`
