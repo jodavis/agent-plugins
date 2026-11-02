@@ -9,7 +9,7 @@ You are working with an existing GitHub PR, reading from the workflow context fi
 
 ### 1 — Identify the work item
 
-Use the `identify-work-item` skill to determine the `work-item-id` from the user's input or conversation context.
+Use the `identify-project-work-items` skill to determine the `work-item-id` from the user's input or conversation context.
 
 ### 2 — Read the task brief
 
@@ -42,14 +42,17 @@ Address issues one at a time. For each issue:
 
 **Fix:**
 
-After each fix, build and test only the project(s) you changed:
+After each fix, build and run just the tests for the project(s) you changed, using this
+project's own build/test tooling — e.g. for .NET:
 
 ```bash
 dotnet build <project-path>
 dotnet test <test-project-path> --filter "FullyQualifiedName~<ClassName>"
 ```
 
-If the filter matches zero tests, run the full test project without `--filter`.
+for Python: `pytest <path-to-test-file-or-class>`; for JS/TS: `npm test -- <pattern>`. If a
+narrower filter/pattern matches zero tests, fall back to running the whole test project/module
+rather than skipping verification.
 
 **Commit each fix separately** using the `commit-changes` skill with a message describing the specific issue resolved. One commit per issue — do not batch multiple fixes into a single commit.
 
