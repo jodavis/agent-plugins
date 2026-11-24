@@ -323,8 +323,14 @@ the Stack PR event detector's own `name.rsplit("/", 1)[-1]` convention) — that
 
 Use the `read-task-brief` skill with `<conflicting_task_id>` to fetch that task's own brief/spec
 context — the same content `resolve-rebase-conflict` needs as its argument to resolve conflict
-regions unambiguously. Use the `use-context-file` skill to compute that task's own context file
-path (`<task_context_file>`).
+regions unambiguously.
+
+If the returned brief is empty, run the troubleshooter agent with problem `"monitor-prs: no task
+brief found for conflicting task <conflicting_task_id>"` rather than proceeding without the
+context `resolve-rebase-conflict` needs.
+
+Use the `use-context-file` skill to compute that task's own context file path
+(`<task_context_file>`).
 
 Spawn the developer agent, nested, with no `isolation` of its own — it inherits this session's
 own worktree cwd, where the rebase is already left in progress:

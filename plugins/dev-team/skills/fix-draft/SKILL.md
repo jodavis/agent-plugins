@@ -15,6 +15,10 @@ Use the `identify-work-item` skill to determine the `work-item-id` from the user
 
 Use the `read-task-brief` skill with the `work-item-id` to load the original task brief and work summary from the context file, and ensure the working branch is set up.
 
+If the returned brief is empty, stop and report:
+
+> No task brief was found in the context file for `<work-item-id>`. Run the plan step before implementing.
+
 ### 3 — Load developer standards
 
 Use the `developer-standards` skill to load code guidelines and quality gates.

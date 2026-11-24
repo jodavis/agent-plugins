@@ -19,6 +19,10 @@ context-file path) to resolve, initialize, and read the context file. This deter
 
 Use the `read-task-brief` skill with the `work-item-id` to load the task brief and ensure the working branch is set up.
 
+If the returned brief is empty, stop and report:
+
+> No task brief was found in the context file for `<work-item-id>`. Run the plan step before implementing.
+
 ### 3 — Load developer standards
 
 Use the `developer-standards` skill to load code guidelines and quality gates.
