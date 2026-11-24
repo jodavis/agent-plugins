@@ -7,14 +7,14 @@ user-invocable: false
 
 ### 1 — Reconcile with existing work items
 
-If `write-design-spec` already gathered a list of related existing work items (its step 2, before
+If `write-detailed-design` already gathered a list of related existing work items (its step 2, before
 the first draft was written), use that list here instead of asking fresh: match each drafted
 deliverable against the list and reuse or repurpose the item that fits, if any. For any item on
 the list that doesn't match any drafted deliverable, tell the user it may no longer be relevant
 and ask whether to close it.
 
 If no such list is available — for example this skill was invoked on its own, outside the
-`write-design-spec` flow — ask the user now instead. Use `AskUserQuestion` to ask, per deliverable
+`write-detailed-design` flow — ask the user now instead. Use `AskUserQuestion` to ask, per deliverable
 (or in batches of up to 4): "Does this deliverable correspond to an existing feature-work-item?"
 with options "Yes — I'll provide the key", "No — create a new one".
 
