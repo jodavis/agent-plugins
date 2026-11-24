@@ -119,14 +119,46 @@ either (ADR-370 finding #1 — that state is worktree-private). Materialize the 
 worktree and land on a real member instead:
 
 ```bash
-gh pr list --base <feature-branch> --state open --json number --jq '.[0].number'
+gh pr list --base <feature-branch> --state open --json number,headRefName
 ```
 
 In a linear stack, exactly one open PR bases directly off the trunk — the bottom-most entry, the
 one whose task triggered this monitor's own auto-start. A missing result here means the "a task
 has already reached hand-off" precondition this skill requires wasn't actually met — run the
 troubleshooter agent with problem `"monitor-prs step 2a: no open PR based directly on
-<feature-branch> for epic <epic-id>"`. Otherwise call this `<member-pr-number>` and run:
+<feature-branch> for epic <epic-id>"`.
+
+**Do not assume the first (or only) result is a genuine stack member without checking.** A task
+with no declared dependency in its epic (`add-to-pr-stack` resolved `stack_link_status:
+not_applicable` for it — see #256/#271) has its own PR based directly on the trunk too, exactly
+like a real bottom-of-stack member, but was deliberately never registered into a real GitHub
+`gh stack`. Bootstrapping `stack_checkout.py` against that PR anyway makes `gh-stack` fall back to
+treating the repo's default branch as this stack's trunk instead of `<feature-branch>` — a
+confirmed cause of branch corruption once a later `sync` cascade-rebases against it (#260).
+
+Checking the candidate's *own* `stack_link_status` does not distinguish these two cases: that
+field only ever records whether *that task's own* `add-to-pr-stack` run found something to link
+against — never true for the bottom-most task itself, by construction, since it has nothing
+below it to link to. A *later*, dependent task linking the whole chain — including this
+candidate's branch — into a real `gh stack` only ever updates the dependent's own context file,
+never the candidate's; the candidate's `stack_link_status` stays `not_applicable` forever even
+after the stack is genuinely real. So ask GitHub directly instead, for each candidate PR's
+`headRefName`:
+
+```bash
+gh pr list --base <candidate-headRefName> --state open --json number
+```
+
+If this returns at least one PR, some other task's branch is based on the candidate's — a real,
+multi-member stack already exists on top of it, confirming the candidate as that stack's bottom
+member. If every candidate comes back empty here, no task has stacked onto any of them yet (the
+common case right when this monitor first auto-starts, before a second task's PR exists at all)
+— this is not the corrupted-state #260 describes, just a stack that's not multi-member yet, so
+don't escalate to the troubleshooter for it. Instead fall back to polling the known candidate(s)
+in plain PR mode: skip straight to "## PR mode" below's "### 1 — Poll loop" and run it with the
+candidate PRs' numbers (comma-separated) in place of whatever `--pr-numbers` would otherwise have
+provided — this is the one case stack mode hands off to PR mode's own loop mid-skill rather than
+at dispatch time. Otherwise call the accepted PR's number `<member-pr-number>` and run:
 
 ```bash
 python3 "<skill-dir>/../workflow-orchestrate/scripts/stack_checkout.py" <member-pr-number>
