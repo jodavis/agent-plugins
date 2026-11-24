@@ -1,6 +1,7 @@
 ---
 name: work-with-stacked-prs
 user-invocable: false
+description: Only use when instructed.
 ---
 
 This skill is the **sole owner** of every direct `gh stack` CLI invocation in this feature — no

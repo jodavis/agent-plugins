@@ -1,6 +1,7 @@
 ---
 name: fix-pr
 user-invocable: false
+description: Only use when instructed.
 ---
 
 You are working with an existing GitHub PR, reading from the workflow context file, fixing issues in existing code, and committing changes locally to the repo.

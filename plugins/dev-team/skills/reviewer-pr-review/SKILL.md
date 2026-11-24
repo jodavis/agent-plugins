@@ -1,6 +1,7 @@
 ---
 name: reviewer-pr-review
 user-invocable: false
+description: Only use when instructed.
 ---
 
 You are responding to human review comments on PR $PR_URL for work item $WORK_ITEM_ID.

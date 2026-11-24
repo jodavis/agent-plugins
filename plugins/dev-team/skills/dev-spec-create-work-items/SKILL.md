@@ -1,6 +1,7 @@
 ---
 name: dev-spec-create-work-items
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Steps

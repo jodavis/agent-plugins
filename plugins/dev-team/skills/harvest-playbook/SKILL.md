@@ -1,6 +1,7 @@
 ---
 name: harvest-playbook
 user-invocable: false
+description: Only use when instructed.
 ---
 
 You are gathering durable-artifact inputs, classifying which of their content is reusable

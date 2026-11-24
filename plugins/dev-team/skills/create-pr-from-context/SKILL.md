@@ -1,6 +1,7 @@
 ---
 name: create-pr-from-context
 user-invocable: false
+description: Only use when instructed.
 ---
 
 You are reading from the context file, creating a new pull request in GitHub, and updating the context file.

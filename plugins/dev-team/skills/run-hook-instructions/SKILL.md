@@ -1,6 +1,7 @@
 ---
 name: run-hook-instructions
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Arguments

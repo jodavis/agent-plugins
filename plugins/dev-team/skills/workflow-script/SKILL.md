@@ -1,6 +1,7 @@
 ---
 name: workflow-script
 user-invocable: false
+description: Only use when instructed.
 ---
 
 ## Arguments
