@@ -112,7 +112,11 @@ Let `descriptors` be the parsed JSON array. The array always has at least one it
 
 **If `descriptors` is a single-item array and `descriptors[0].action == "done"`:**
 - If `result == "success"`: report success to the user and stop.
-- If `result == "failed"`: report the failure reason to the user and stop.
+- If `result == "failed"`: before reporting, check the task's own brief for an **External
+  dependencies** sub-heading (#209) — a declared, still-genuinely-blocked external dependency
+  explains a legitimate exhaustion that no further fix attempt could have resolved, rather than a
+  code-level bug. Mention it in your report to the user if present. Report the failure reason
+  (and, if found, the external dependency it's blocked on) to the user and stop.
 
 **If `descriptors` is a single-item array and `descriptors[0].skill == "troubleshooter"`:**
 
