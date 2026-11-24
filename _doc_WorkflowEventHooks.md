@@ -104,8 +104,11 @@ contract.
   through `work-with-pr`/`work-with-GitHub-issues`, which do not yet define a retry of their own —
   nothing about this design prevents adding one there the same way, if and when that connection
   type needs it. `work-with-Jira-tasks` also documents a fallback `GetMcpTools`/`CallMcpTool`
-  discovery path and a third tool-name prefix (`mcp__plugin-atlassian-atlassian__*`) for
-  environments where `ToolSearch` doesn't surface individually-named Jira tools.
+  discovery path for environments where `ToolSearch` doesn't surface individually-named Jira
+  tools by name/suffix match instead — not a hardcoded tool-name prefix; agents are granted the
+  generic `ToolSearch`/`GetMcpTools`/`CallMcpTool` trio rather than any specific connector's
+  wildcard, precisely so the matched tool's actual name (which varies by which Atlassian/Jira MCP
+  server happens to be connected) never needs to be hardcoded into an agent's own tool grant.
 
 ## Key Classes / Interfaces
 
