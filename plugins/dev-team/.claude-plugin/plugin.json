@@ -1,6 +1,6 @@
 {
   "name": "dev-team",
-  "version": "1.6.4",
+  "version": "1.6.5",
   "description": "Dev-team agent pipeline: planner, researcher, developer, and reviewer agents for implementing Jira tasks.",
   "commands": "./commands"
 }
